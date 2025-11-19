@@ -1,0 +1,308 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model Cita {
+  ID_Cita          Int           @id(map: "PK__Cita__7C17FD16F4A2641F") @default(autoincrement())
+  FechaCita        DateTime      @db.Date
+  HoraCita         DateTime      @db.Time
+  MotivoConsulta   String        @db.NVarChar(200)
+  ID_TipoCita      Int
+  ID_DireccionCita Int
+  ID_EstadoCita    Int
+  ID_Paciente      Int
+  ID_Psicologo     Int
+  DireccionCita    DireccionCita @relation(fields: [ID_DireccionCita], references: [ID_DireccionCita], onUpdate: NoAction, map: "FK__Cita__ID_Direcci__7B5B524B")
+  EstadoCita       EstadoCita    @relation(fields: [ID_EstadoCita], references: [ID_EstadoCita], onUpdate: NoAction, map: "FK__Cita__ID_EstadoC__7C4F7684")
+  Paciente         Paciente      @relation(fields: [ID_Paciente], references: [ID_Paciente], onUpdate: NoAction, map: "FK__Cita__ID_Pacient__7D439ABD")
+  Psicologo        Psicologo     @relation(fields: [ID_Psicologo], references: [ID_Psicologo], onUpdate: NoAction, map: "FK__Cita__ID_Psicolo__7E37BEF6")
+  TipoDeCita       TipoDeCita    @relation(fields: [ID_TipoCita], references: [ID_TipoCita], onUpdate: NoAction, map: "FK__Cita__ID_TipoCit__7A672E12")
+  Factura          Factura[]
+}
+
+model DetalleFactura {
+  ID_DetalleFactura Int        @id(map: "PK__DetalleF__91FDCE07DFDFC4EA") @default(autoincrement())
+  ID_MetodoPago     Int
+  Cod_Factura       Int
+  PrecioDeCita      Decimal    @db.Decimal(10, 2)
+  FechaDePago       DateTime   @db.Date
+  HoraDePago        DateTime   @db.Time
+  Observacion       String?    @db.NVarChar(255)
+  Factura           Factura    @relation(fields: [Cod_Factura], references: [Cod_Factura], onUpdate: NoAction, map: "FK__DetalleFa__Cod_F__1EA48E88")
+  MetodoPago        MetodoPago @relation(fields: [ID_MetodoPago], references: [ID_MetodoPago], onUpdate: NoAction, map: "FK__DetalleFa__ID_Me__1F98B2C1")
+}
+
+model DireccionCita {
+  ID_DireccionCita Int    @id(map: "PK__Direccio__860D99D7D03C6947") @default(autoincrement())
+  Pais             String @db.NVarChar(50)
+  Departamento     String @db.NVarChar(50)
+  Ciudad           String @db.NVarChar(50)
+  Barrio           String @db.NVarChar(50)
+  Calle            String @db.NVarChar(100)
+  Cita             Cita[]
+}
+
+model DireccionPaciente {
+  ID_DireccionPaciente Int        @id(map: "PK__Direccio__445C06672D613AF2") @default(autoincrement())
+  Pais                 String     @db.NVarChar(50)
+  Departamento         String     @db.NVarChar(50)
+  Ciudad               String     @db.NVarChar(50)
+  Barrio               String     @db.NVarChar(50)
+  Calle                String     @db.NVarChar(100)
+  Paciente             Paciente[]
+}
+
+model DireccionPsicologo {
+  ID_DireccionPsicologo Int         @id(map: "PK__Direccio__3A50642787B237CC") @default(autoincrement())
+  Pais                  String      @db.NVarChar(50)
+  Departamento          String      @db.NVarChar(50)
+  Ciudad                String      @db.NVarChar(50)
+  Barrio                String      @db.NVarChar(50)
+  Calle                 String      @db.NVarChar(100)
+  Psicologo             Psicologo[]
+}
+
+model DireccionTutor {
+  ID_DireccionTutor Int     @id(map: "PK__Direccio__835C158E8613EEAD") @default(autoincrement())
+  Pais              String  @db.NVarChar(50)
+  Departamento      String  @db.NVarChar(50)
+  Ciudad            String  @db.NVarChar(50)
+  Barrio            String  @db.NVarChar(50)
+  Calle             String  @db.NVarChar(100)
+  Tutor             Tutor[]
+}
+
+model EspecialidadPsicologo {
+  ID_Especialidad                 Int                               @id(map: "PK__Especial__5D7732D7F075A3BD") @default(autoincrement())
+  NombreEspecialidad              String                            @db.NVarChar(100)
+  Psicologo_EspecialidadPsicologo Psicologo_EspecialidadPsicologo[]
+}
+
+model EstadoCita {
+  ID_EstadoCita Int    @id(map: "PK__EstadoCi__82FA13D9C093B401") @default(autoincrement())
+  NombreEstado  String @db.NVarChar(50)
+  Cita          Cita[]
+}
+
+model EstadoCivil {
+  ID_EstadoCivil    Int              @id(map: "PK__EstadoCi__D2E3FEE7D0D4C380") @default(autoincrement())
+  NombreEstadoCivil String           @db.NVarChar(50)
+  PacienteAdulto    PacienteAdulto[]
+  Tutor             Tutor[]
+}
+
+model EstadoDeActividad {
+  ID_EstadoDeActividad  Int         @id(map: "PK__EstadoDe__FA5FC6CB6991EA12") @default(autoincrement())
+  NombreEstadoActividad String      @db.NVarChar(50)
+  Paciente              Paciente[]
+  Psicologo             Psicologo[]
+}
+
+model Expediente {
+  ID_Expediente Int      @id(map: "PK__Expedien__5D219D4B2DA0EAC6") @default(autoincrement())
+  No_Expediente String   @db.NVarChar(50)
+  FechaIngreso  DateTime @db.Date
+  Sesion        Sesion[]
+}
+
+model ExploracionPsicologica {
+  ID_ExploracionPsicologica      Int                             @id(map: "PK__Explorac__34F22EBAC395BFC6") @default(autoincrement())
+  NombreDeExploracionPsicologica String                          @db.NVarChar(100)
+  Sesion_ExploracionPsicologica  Sesion_ExploracionPsicologica[]
+}
+
+model Factura {
+  Cod_Factura    Int              @id(map: "PK__Factura__D730975C6F5C372C") @default(autoincrement())
+  ID_Cita        Int
+  FechaFactura   DateTime         @db.Date
+  MontoTotal     Decimal          @db.Decimal(10, 2)
+  DetalleFactura DetalleFactura[]
+  Cita           Cita             @relation(fields: [ID_Cita], references: [ID_Cita], onUpdate: NoAction, map: "FK__Factura__ID_Cita__1BC821DD")
+}
+
+model MetodoPago {
+  ID_MetodoPago  Int              @id(map: "PK__MetodoPa__E2BFEC3E62BBCCCB") @default(autoincrement())
+  NombreMetodo   String           @db.NVarChar(100)
+  DetalleFactura DetalleFactura[]
+}
+
+model Ocupacion {
+  ID_Ocupacion      Int              @id(map: "PK__Ocupacio__F231BE62D5CA278B") @default(autoincrement())
+  NombreDeOcupacion String           @db.NVarChar(100)
+  PacienteAdulto    PacienteAdulto[]
+  Tutor             Tutor[]
+}
+
+model Paciente {
+  ID_Paciente          Int               @id(map: "PK__Paciente__5F365061DB60C3B5") @default(autoincrement())
+  Nombre               String            @db.NVarChar(50)
+  Apellido             String            @db.NVarChar(50)
+  Fecha_Nac            DateTime          @db.Date
+  Genero               String            @db.NVarChar(20)
+  Nacionalidad         String            @db.NVarChar(50)
+  ID_DireccionPaciente Int
+  ID_EstadoDeActividad Int
+  Cita                 Cita[]
+  DireccionPaciente    DireccionPaciente @relation(fields: [ID_DireccionPaciente], references: [ID_DireccionPaciente], onUpdate: NoAction, map: "FK__Paciente__ID_Dir__5165187F")
+  EstadoDeActividad    EstadoDeActividad @relation(fields: [ID_EstadoDeActividad], references: [ID_EstadoDeActividad], onUpdate: NoAction, map: "FK__Paciente__ID_Est__52593CB8")
+  PacienteAdulto       PacienteAdulto?
+  PacienteMenor        PacienteMenor?
+  Sesion               Sesion[]
+}
+
+model PacienteAdulto {
+  ID_PacienteAdulto Int         @id(map: "PK__Paciente__1669669CB32A0E75")
+  No_Cedula         String      @db.NVarChar(25)
+  No_Telefono       String      @db.NVarChar(20)
+  ID_Ocupacion      Int
+  ID_EstadoCivil    Int
+  EstadoCivil       EstadoCivil @relation(fields: [ID_EstadoCivil], references: [ID_EstadoCivil], onUpdate: NoAction, map: "FK__PacienteA__ID_Es__571DF1D5")
+  Ocupacion         Ocupacion   @relation(fields: [ID_Ocupacion], references: [ID_Ocupacion], onUpdate: NoAction, map: "FK__PacienteA__ID_Oc__5629CD9C")
+  Paciente          Paciente    @relation(fields: [ID_PacienteAdulto], references: [ID_Paciente], onUpdate: NoAction, map: "FK__PacienteA__ID_Pa__5535A963")
+}
+
+model PacienteMenor {
+  ID_PacienteMenor Int      @id(map: "PK__Paciente__7439F99712290E21")
+  PartNacimiento   String   @db.NVarChar(50)
+  GradoEscolar     String   @db.NVarChar(50)
+  ID_Tutor         Int
+  Paciente         Paciente @relation(fields: [ID_PacienteMenor], references: [ID_Paciente], onUpdate: NoAction, map: "FK__PacienteM__ID_Pa__6383C8BA")
+  Tutor            Tutor    @relation(fields: [ID_Tutor], references: [ID_Tutor], onUpdate: NoAction, map: "FK__PacienteM__ID_Tu__6477ECF3")
+}
+
+model Parentesco {
+  ID_Parentesco      Int     @id(map: "PK__Parentes__9620BBD5F57AAC69") @default(autoincrement())
+  NombreDeParentesco String  @db.NVarChar(50)
+  Tutor              Tutor[]
+}
+
+model Psicologo {
+  ID_Psicologo                    Int                               @id(map: "PK__Psicolog__66BB77D0A8AFDAB4") @default(autoincrement())
+  CodigoDeMinsa                   String                            @db.NVarChar(50)
+  Nombre                          String                            @db.NVarChar(100)
+  Apellido                        String                            @db.NVarChar(100)
+  No_Telefono                     String                            @db.NVarChar(20)
+  Email                           String                            @db.NVarChar(100)
+  ID_DireccionPsicologo           Int
+  ID_EstadoDeActividad            Int
+  Cita                            Cita[]
+  DireccionPsicologo              DireccionPsicologo                @relation(fields: [ID_DireccionPsicologo], references: [ID_DireccionPsicologo], onUpdate: NoAction, map: "FK__Psicologo__ID_Di__6B24EA82")
+  EstadoDeActividad               EstadoDeActividad                 @relation(fields: [ID_EstadoDeActividad], references: [ID_EstadoDeActividad], onUpdate: NoAction, map: "FK__Psicologo__ID_Es__6C190EBB")
+  Psicologo_EspecialidadPsicologo Psicologo_EspecialidadPsicologo[]
+  Sesion                          Sesion[]
+}
+
+model Psicologo_EspecialidadPsicologo {
+  ID_Psicologo          Int
+  ID_Especialidad       Int
+  EspecialidadPsicologo EspecialidadPsicologo @relation(fields: [ID_Especialidad], references: [ID_Especialidad], onUpdate: NoAction, map: "FK__Psicologo__ID_Es__6FE99F9F")
+  Psicologo             Psicologo             @relation(fields: [ID_Psicologo], references: [ID_Psicologo], onUpdate: NoAction, map: "FK__Psicologo__ID_Ps__6EF57B66")
+
+  @@id([ID_Psicologo, ID_Especialidad], map: "PK__Psicolog__036C04FD5AC2FE7B")
+}
+
+model Sesion {
+  ID_Sesion                     Int                             @id(map: "PK__Sesion__20FD61FF1E213D90") @default(autoincrement())
+  HoraDeInicio                  DateTime                        @db.Time
+  HoraFinal                     DateTime?                       @db.Time
+  Observaciones                 String?                         @db.NVarChar(255)
+  DiagnosticoDiferencial        String?                         @db.NVarChar(255)
+  HistorialDevolucion           String?                         @db.NVarChar(255)
+  CriteriosDeDiagnostico        String?                         @db.NVarChar(255)
+  ID_Paciente                   Int
+  ID_Psicologo                  Int
+  ID_Expediente                 Int
+  Expediente                    Expediente                      @relation(fields: [ID_Expediente], references: [ID_Expediente], onUpdate: NoAction, map: "FK__Sesion__ID_Exped__02FC7413")
+  Paciente                      Paciente                        @relation(fields: [ID_Paciente], references: [ID_Paciente], onUpdate: NoAction, map: "FK__Sesion__ID_Pacie__01142BA1")
+  Psicologo                     Psicologo                       @relation(fields: [ID_Psicologo], references: [ID_Psicologo], onUpdate: NoAction, map: "FK__Sesion__ID_Psico__02084FDA")
+  Sesion_ExploracionPsicologica Sesion_ExploracionPsicologica[]
+  Tratamiento                   Tratamiento[]
+}
+
+model Sesion_ExploracionPsicologica {
+  ID_Sesion                 Int
+  ID_ExploracionPsicologica Int
+  ExploracionPsicologica    ExploracionPsicologica @relation(fields: [ID_ExploracionPsicologica], references: [ID_ExploracionPsicologica], onUpdate: NoAction, map: "FK__Sesion_Ex__ID_Ex__08B54D69")
+  Sesion                    Sesion                 @relation(fields: [ID_Sesion], references: [ID_Sesion], onUpdate: NoAction, map: "FK__Sesion_Ex__ID_Se__07C12930")
+
+  @@id([ID_Sesion, ID_ExploracionPsicologica], map: "PK__Sesion_E__93B2431478C57577")
+}
+
+model sysdiagrams {
+  name         String @db.NVarChar(128)
+  principal_id Int
+  diagram_id   Int    @id(map: "PK__sysdiagr__C2B05B61CADF7672") @default(autoincrement())
+  version      Int?
+  definition   Bytes?
+
+  @@unique([principal_id, name], map: "UK_principal_name")
+}
+
+model TipoDeCita {
+  ID_TipoCita  Int    @id(map: "PK__TipoDeCi__9D5E7183E5191929") @default(autoincrement())
+  NombreDeCita String @db.NVarChar(50)
+  Cita         Cita[]
+}
+
+model TipoDeTerapia {
+  ID_TipoTerapia         Int                      @id(map: "PK__TipoDeTe__C7A98B4F90FEAA5A") @default(autoincrement())
+  NombreDeTerapia        String                   @db.NVarChar(100)
+  TratamientoTerapeutico TratamientoTerapeutico[]
+}
+
+model Tratamiento {
+  ID_Tratamiento          Int                      @id(map: "PK__Tratamie__37F4ED15C461BC56") @default(autoincrement())
+  ID_Sesion               Int
+  FechaInicio             DateTime                 @db.Date
+  FechaFin                DateTime?                @db.Date
+  Frecuencia              String                   @db.NVarChar(50)
+  Sesion                  Sesion                   @relation(fields: [ID_Sesion], references: [ID_Sesion], onUpdate: NoAction, map: "FK__Tratamien__ID_Se__0F624AF8")
+  TratamientoFarmaceutico TratamientoFarmaceutico?
+  TratamientoTerapeutico  TratamientoTerapeutico?
+}
+
+model TratamientoFarmaceutico {
+  ID_TratamientoFarmaceutico Int               @id(map: "PK__Tratamie__94D9284E71376979")
+  ID_ViaAdministracion       Int
+  NombreMedicamento          String            @db.NVarChar(150)
+  Dosis                      String            @db.NVarChar(50)
+  Tratamiento                Tratamiento       @relation(fields: [ID_TratamientoFarmaceutico], references: [ID_Tratamiento], onUpdate: NoAction, map: "FK__Tratamien__ID_Tr__160F4887")
+  ViaAdministracion          ViaAdministracion @relation(fields: [ID_ViaAdministracion], references: [ID_ViaAdministracion], onUpdate: NoAction, map: "FK__Tratamien__ID_Vi__17036CC0")
+}
+
+model TratamientoTerapeutico {
+  ID_TratamientoTerapeutico Int           @id(map: "PK__Tratamie__DF867A0A834D2D40")
+  ID_TipoTerapia            Int
+  Objetivo                  String        @db.NVarChar(255)
+  TipoDeTerapia             TipoDeTerapia @relation(fields: [ID_TipoTerapia], references: [ID_TipoTerapia], onUpdate: NoAction, map: "FK__Tratamien__ID_Ti__1332DBDC")
+  Tratamiento               Tratamiento   @relation(fields: [ID_TratamientoTerapeutico], references: [ID_Tratamiento], onUpdate: NoAction, map: "FK__Tratamien__ID_Tr__123EB7A3")
+}
+
+model Tutor {
+  ID_Tutor          Int             @id(map: "PK__Tutor__9D71D65A5DF41B6A") @default(autoincrement())
+  No_Cedula         String          @db.NVarChar(30)
+  Nombre            String          @db.NVarChar(50)
+  Apellido          String          @db.NVarChar(50)
+  No_Telefono       String          @db.NVarChar(30)
+  ID_Parentesco     Int
+  ID_DireccionTutor Int
+  ID_Ocupacion      Int
+  ID_EstadoCivil    Int
+  PacienteMenor     PacienteMenor[]
+  DireccionTutor    DireccionTutor  @relation(fields: [ID_DireccionTutor], references: [ID_DireccionTutor], onUpdate: NoAction, map: "FK__Tutor__ID_Direcc__5EBF139D")
+  EstadoCivil       EstadoCivil     @relation(fields: [ID_EstadoCivil], references: [ID_EstadoCivil], onUpdate: NoAction, map: "FK__Tutor__ID_Estado__60A75C0F")
+  Ocupacion         Ocupacion       @relation(fields: [ID_Ocupacion], references: [ID_Ocupacion], onUpdate: NoAction, map: "FK__Tutor__ID_Ocupac__5FB337D6")
+  Parentesco        Parentesco      @relation(fields: [ID_Parentesco], references: [ID_Parentesco], onUpdate: NoAction, map: "FK__Tutor__ID_Parent__5DCAEF64")
+}
+
+model ViaAdministracion {
+  ID_ViaAdministracion    Int                       @id(map: "PK__ViaAdmin__1DEFBD24B8F9B00E") @default(autoincrement())
+  NombreDePresentacion    String                    @db.NVarChar(100)
+  TratamientoFarmaceutico TratamientoFarmaceutico[]
+}

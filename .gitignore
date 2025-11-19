@@ -1,0 +1,17 @@
+# Dependencias (Se instalan, no se suben)
+node_modules/
+*/node_modules/
+
+# Archivos de entorno (Tienen contraseñas)
+.env
+*/.env
+
+# Archivos de compilación
+dist/
+*/dist
+build/
+*/build
+
+# Logs y sistemas
+*.log
+.DS_Store

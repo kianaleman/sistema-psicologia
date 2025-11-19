@@ -1,0 +1,19 @@
+@import "tailwindcss";
+@plugin "daisyui";
+
+/* Configuración del tema visual */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* src/index.css */
+html, body {
+    /* Esto previene el rebote del navegador */
+    overscroll-behavior-y: none;
+    overscroll-behavior-x: none; 
+}
+
+/* Esto fuerza el modo claro/profesional por defecto */
+:root {
+  color-scheme: light;
+}
