@@ -8,6 +8,8 @@ import sesionRoutes from './routes/sesion.routes';
 import psicologoRoutes from './routes/psicologo.routes';
 import tutorRoutes from './routes/tutor.routes';
 import generalRoutes from './routes/general.routes';
+import facturaRoutes from './routes/factura.routes';
+import configuracionRoutes from './routes/configuracion.routes';
 
 const app = express();
 const PORT = 3000;
@@ -24,6 +26,8 @@ app.use('/api/citas', citaRoutes);
 app.use('/api/sesiones', sesionRoutes);
 app.use('/api/psicologos', psicologoRoutes);
 app.use('/api/tutores', tutorRoutes);
+app.use('/api/facturas', facturaRoutes);
+app.use('/api/config', configuracionRoutes);
 
 // 2. Rutas Generales (Dashboard, Catálogos, Historial)
 // Nota: Estas rutas no tienen un prefijo común fuerte, así que las montamos en /api

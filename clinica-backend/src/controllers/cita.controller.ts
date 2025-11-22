@@ -1,89 +1,89 @@
 import type { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { CitaService } from '../services/cita.service';
 
 // GET: Obtener todas las citas
 export const getCitas = async (req: Request, res: Response) => {
   try {
-    const citas = await prisma.cita.findMany({
-      include: {
-        Paciente: true, 
-        Psicologo: true,
-        TipoDeCita: true,
-        EstadoCita: true
-      }
-    });
+    const citas = await CitaService.getAll();
     res.json(citas);
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Error al obtener citas' });
   }
 };
 
-// GET: Catálogos específicos para el formulario de citas
+// GET: Catálogos
 export const getCatalogosCitas = async (req: Request, res: Response) => {
   try {
-    const [tiposCita, estadosCita, metodosPago] = await Promise.all([
-      prisma.tipoDeCita.findMany(),
-      prisma.estadoCita.findMany(),
-      prisma.metodoPago.findMany()
-    ]);
-    res.json({ tiposCita, estadosCita, metodosPago });
+    const catalogos = await CitaService.getCatalogos();
+    res.json(catalogos);
   } catch (error) {
     res.status(500).json({ error: 'Error cargando catálogos de citas' });
   }
 };
 
-// POST: Crear Nueva Cita (Con Factura y Validación de Hora)
 export const createCita = async (req: Request, res: Response) => {
-  const { fecha, hora, motivo, tipoCitaId, pacienteId, psicologoId, precio } = req.body;
-
   try {
-    // Validación y parseo de hora manual
-    const [horas, minutos] = hora.split(':').map(Number);
-    if (isNaN(horas) || isNaN(minutos)) {
-      return res.status(400).json({ error: 'Hora inválida' });
-    }
+    // ... (tu lógica de preparación de datos igual) ...
+    const { fecha, hora, motivo, tipoCitaId, pacienteId, psicologoId, precio, metodoPagoId, direccion } = req.body;
 
-    const fechaDeLaCita = new Date(fecha);
-    fechaDeLaCita.setHours(horas, minutos, 0, 0);
-
-    const [nuevaCita, nuevaFactura] = await prisma.$transaction(async (tx) => {
-      // 1. Crear Dirección Genérica
-      const direccionClinica = await tx.direccionCita.create({
-        data: { Pais: 'Nicaragua', Departamento: 'Managua', Ciudad: 'Managua', Barrio: 'Central', Calle: 'Clínica Principal' }
-      });
-
-      // 2. Crear Cita
-      const citaCreada = await tx.cita.create({
-        data: {
-          FechaCita: new Date(fecha),
-          HoraCita: fechaDeLaCita,
-          MotivoConsulta: motivo,
-          ID_TipoCita: parseInt(tipoCitaId),
-          ID_EstadoCita: 1, // Programada
-          ID_Paciente: parseInt(pacienteId),
-          ID_Psicologo: parseInt(psicologoId),
-          ID_DireccionCita: direccionClinica.ID_DireccionCita
-        }
-      });
-
-      // 3. Crear Factura
-      const facturaCreada = await tx.factura.create({
-        data: {
-          ID_Cita: citaCreada.ID_Cita,
-          FechaFactura: new Date(fecha),
-          MontoTotal: parseFloat(precio) || 0.00
-        }
-      });
-      
-      return [citaCreada, facturaCreada];
+    const result = await CitaService.create({ /* ... datos ... */ 
+      fecha, hora, motivo, 
+      tipoCitaId: parseInt(tipoCitaId), 
+      pacienteId: parseInt(pacienteId), 
+      psicologoId: parseInt(psicologoId), 
+      precio: parseFloat(precio) || 0, 
+      metodoPagoId: parseInt(metodoPagoId) ,
+      // Pasamos la dirección al servicio (asegurando que exista, o enviando defaults)
+      direccion: direccion || { departamento: 'Managua', ciudad: 'Managua', barrio: 'Central', calle: 'Clínica' }
     });
 
-    res.json({ nuevaCita, nuevaFactura });
-  } catch (error) {
+    res.json({ nuevaCita: result.cita, nuevaFactura: result.factura });
+
+  } catch (error: any) {
+    console.error(error); // Log en consola para ti
+    
+    // DETECCIÓN DEL ERROR DE DISPONIBILIDAD
+    if (error.message === 'El psicólogo ya tiene una cita agendada en este horario.') {
+      // 409 = Conflict (Ideal para duplicados o choques de agenda)
+      return res.status(409).json({ error: error.message });
+    }
+
+    if (error.message === 'Hora inválida') {
+       return res.status(400).json({ error: error.message });
+    }
+    
+    res.status(500).json({ error: 'Error interno al agendar la cita' });
+  }
+};
+
+// PUT: Editar Cita
+export const updateCita = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    // ... (tu lógica de preparación) ...
+    const { fecha, hora, motivo, tipoCitaId, pacienteId, psicologoId, precio, metodoPagoId } = req.body;
+
+    const result = await CitaService.update(parseInt(id), { /* ... datos ... */ 
+      fecha, hora, motivo,
+      tipoCitaId: parseInt(tipoCitaId),
+      pacienteId: parseInt(pacienteId),
+      psicologoId: parseInt(psicologoId),
+      precio: parseFloat(precio) || 0,
+      metodoPagoId: parseInt(metodoPagoId)
+    });
+
+    res.json(result);
+
+  } catch (error: any) {
     console.error(error);
-    res.status(500).json({ error: 'Error al agendar cita' });
+    
+    // DETECCIÓN DEL ERROR DE DISPONIBILIDAD
+    if (error.message === 'El psicólogo ya tiene una cita agendada en este horario.') {
+      return res.status(409).json({ error: error.message });
+    }
+    
+    res.status(500).json({ error: 'Error al actualizar la cita' });
   }
 };
 
@@ -91,11 +91,8 @@ export const createCita = async (req: Request, res: Response) => {
 export const cancelCita = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    const citaCancelada = await prisma.cita.update({
-      where: { ID_Cita: parseInt(id) },
-      data: { ID_EstadoCita: 3 } // 3 = Cancelada
-    });
-    res.json(citaCancelada);
+    const result = await CitaService.cancel(parseInt(id));
+    res.json(result);
   } catch (error) {
     res.status(500).json({ error: 'Error al cancelar cita' });
   }
