@@ -22,76 +22,58 @@ interface UpdatePacienteDTO extends CreatePacienteDTO {
   ID_EstadoDeActividad: string | number;
 }
 
-// --- HELPER 1: VALIDACIÓN FORMATO CÉDULA ---
+// --- HELPERS ---
 const validarFormatoCedula = (cedula: string, contexto: string) => {
-  // Regex estricto: 3 digitos - 6 digitos - 4 digitos + Letra Mayúscula
   const regex = /^\d{3}-\d{6}-\d{4}[A-Z]$/;
   if (!regex.test(cedula)) {
     throw new Error(`La cédula proporcionada para ${contexto} (${cedula}) tiene un formato inválido. Debe ser XXX-XXXXXX-XXXXL`);
   }
 };
 
-// --- HELPER 2: VALIDACIÓN DUPLICADOS (UNICIDAD) ---
 const validarCedulaUnica = async (cedula: string, tipo: 'paciente' | 'tutor', idExcluir?: number) => {
   if (tipo === 'paciente') {
     const existe = await prisma.pacienteAdulto.findFirst({
-      where: {
-        No_Cedula: cedula,
-        // Si estamos editando, excluimos al propio paciente de la búsqueda
-        ID_PacienteAdulto: idExcluir ? { not: idExcluir } : undefined
-      }
+      where: { No_Cedula: cedula, ID_PacienteAdulto: idExcluir ? { not: idExcluir } : undefined }
     });
     if (existe) throw new Error(`La cédula ${cedula} ya está registrada en otro PACIENTE.`);
   } 
-  
   if (tipo === 'tutor') {
     const existe = await prisma.tutor.findFirst({
-      where: {
-        No_Cedula: cedula,
-        ID_Tutor: idExcluir ? { not: idExcluir } : undefined
-      }
+      where: { No_Cedula: cedula, ID_Tutor: idExcluir ? { not: idExcluir } : undefined }
     });
     if (existe) throw new Error(`La cédula ${cedula} ya está registrada en otro TUTOR.`);
   }
 };
 
-// --- HELPER 3: MATCHING SECUENCIAL (LÓGICA DE FECHAS) ---
+const validarTelefonoNica = (telefono: string, contexto: string) => {
+  const limpio = telefono.replace(/[\s-]/g, '');
+  const regex = /^[2578]\d{7}$/;
+  if (!regex.test(limpio)) {
+    throw new Error(`El teléfono de ${contexto} es inválido. Debe ser un número de Nicaragua (8 dígitos).`);
+  }
+  return limpio; 
+};
+
 const corregirFechasSesiones = (sesiones: any[], citas: any[]) => {
-  // 1. Filtramos solo citas COMPLETADAS (ID 2) y las ordenamos por fecha descendente.
   let citasDisponibles = citas
     .filter(c => c.ID_EstadoCita === 2)
     .sort((a, b) => new Date(b.FechaCita).getTime() - new Date(a.FechaCita).getTime());
 
   return sesiones.map(sesion => {
-    // 2. Buscamos la primera cita disponible de ESTE doctor.
     const matchIndex = citasDisponibles.findIndex(c => c.ID_Psicologo === sesion.ID_Psicologo);
-
     let nuevaFechaInicio;
 
     if (matchIndex !== -1) {
-      // ¡MATCH ENCONTRADO!
       const cita = citasDisponibles[matchIndex];
-      
-      // 3. Construimos la fecha correcta: Año/Mes/Dia de Cita + Hora de Sesion
       const fechaBaseCita = new Date(cita.FechaCita);
       const horaSesion = new Date(sesion.HoraDeInicio);
-      
       nuevaFechaInicio = new Date(fechaBaseCita);
-      // Inyectamos la hora usando UTC
       nuevaFechaInicio.setUTCHours(horaSesion.getUTCHours(), horaSesion.getUTCMinutes(), 0, 0);
-      
-      // 4. "Consumimos" la cita
       citasDisponibles.splice(matchIndex, 1);
     } else {
-      // Fallback
       nuevaFechaInicio = new Date(sesion.HoraDeInicio);
     }
-
-    return {
-      ...sesion,
-      HoraDeInicio: nuevaFechaInicio,
-      FechaReal: nuevaFechaInicio 
-    };
+    return { ...sesion, HoraDeInicio: nuevaFechaInicio, FechaReal: nuevaFechaInicio };
   });
 };
 
@@ -110,72 +92,90 @@ export const PacienteService = {
 
   getExpediente: async (id: number) => {
     const [paciente, citas, sesionesRaw] = await Promise.all([
-      // 1. Paciente
       prisma.paciente.findUnique({
         where: { ID_Paciente: id },
         include: {
           DireccionPaciente: true,
           EstadoDeActividad: true,
-          PacienteAdulto: { include: { Ocupacion: true, EstadoCivil: true } },
+          PacienteAdulto: { include: { Ocupacion: true, EstadoCivil: true } }, 
           PacienteMenor: { 
             include: { 
-              Tutor: { include: { Parentesco: true, Ocupacion: true, EstadoCivil: true, DireccionTutor: true } } 
+              Tutor: { 
+                  include: { 
+                      Parentesco: true, Ocupacion: true, EstadoCivil: true, DireccionTutor: true 
+                  } 
+              } 
             } 
           }
         }
       }),
-      // 2. Citas (Traemos TODAS para poder filtrar en el helper)
       prisma.cita.findMany({
         where: { ID_Paciente: id },
-        include: { Psicologo: true, TipoDeCita: true, EstadoCita: true },
+        select: {
+            ID_Cita: true, FechaCita: true, HoraCita: true, MotivoConsulta: true, ID_EstadoCita: true, ID_Psicologo: true,
+            EstadoCita: { select: { NombreEstado: true } },
+            TipoDeCita: { select: { NombreDeCita: true } },
+            Psicologo: { select: { Nombre: true, Apellido: true } }
+        },
         orderBy: { FechaCita: 'desc' }
       }),
-      // 3. Sesiones
       prisma.sesion.findMany({
         where: { ID_Paciente: id },
-        include: { Psicologo: true },
+        select: {
+            ID_Sesion: true, HoraDeInicio: true, HoraFinal: true, Observaciones: true, DiagnosticoDiferencial: true, HistorialDevolucion: true, CriteriosDeDiagnostico: true, ID_Psicologo: true,
+            Psicologo: { select: { Nombre: true, Apellido: true } },
+            Tratamiento: {
+                select: {
+                    Frecuencia: true, FechaInicio: true,
+                    TratamientoFarmaceutico: { select: { NombreMedicamento: true, Dosis: true } },
+                    TratamientoTerapeutico: { select: { Objetivo: true } }
+                }
+            }
+        },
         orderBy: { ID_Sesion: 'desc' }
       })
     ]);
 
     if (!paciente) return null;
-
-    // Aplicamos la corrección secuencial
     const sesionesCorregidas = corregirFechasSesiones(sesionesRaw, citas);
-
     return { paciente, citas, sesiones: sesionesCorregidas };
   },
 
   create: async (data: CreatePacienteDTO) => {
-    // --- VALIDACIONES PREVIAS (Backend Check) ---
-    
-    // 1. Validar Paciente Adulto (Cédula y Unicidad)
-    if (data.esAdulto && data.datosAdulto) {
-       const cedula = data.datosAdulto.cedula;
-       validarFormatoCedula(cedula, 'Paciente Adulto');
-       await validarCedulaUnica(cedula, 'paciente');
+    const fechaNacObj = new Date(data.fechaNac);
+    const anio = fechaNacObj.getFullYear();
+    if (isNaN(fechaNacObj.getTime()) || anio < 1900 || anio > new Date().getFullYear()) {
+        throw new Error("Fecha de nacimiento inválida.");
     }
 
-    // 2. Validar Nuevo Tutor (Cédula y Unicidad)
+    let cedulaFinal = null;
+    let telefonoFinal = null;
+
+    if (data.esAdulto && data.datosAdulto) {
+       validarFormatoCedula(data.datosAdulto.cedula, 'Paciente Adulto');
+       await validarCedulaUnica(data.datosAdulto.cedula, 'paciente');
+       data.datosAdulto.telefono = validarTelefonoNica(data.datosAdulto.telefono, 'Paciente Adulto');
+       
+       cedulaFinal = data.datosAdulto.cedula;
+       telefonoFinal = data.datosAdulto.telefono;
+
+       if (!Number(data.datosAdulto.ocupacionId) || !Number(data.datosAdulto.estadoCivilId)) {
+            throw new Error("Datos de Ocupación o Estado Civil inválidos.");
+       }
+    }
+
     if (!data.esAdulto && data.datosMenor?.modoTutor === 'nuevo' && data.datosMenor.nuevoTutor) {
        const tutor = data.datosMenor.nuevoTutor;
-       
-       // A. Validar Cédula
        validarFormatoCedula(tutor.cedula, 'Nuevo Tutor');
        await validarCedulaUnica(tutor.cedula, 'tutor');
+       tutor.telefono = validarTelefonoNica(tutor.telefono, 'Nuevo Tutor');
 
-       // B. VALIDACIÓN DE CATÁLOGOS (¡AQUÍ ESTÁ LA CORRECCIÓN DEL ERROR FK!)
-       if (!Number(tutor.ocupacionId) || Number(tutor.ocupacionId) <= 0) {
-          throw new Error("Debe seleccionar una Ocupación válida para el Tutor.");
-       }
-       if (!Number(tutor.estadoCivilId) || Number(tutor.estadoCivilId) <= 0) {
-          throw new Error("Debe seleccionar un Estado Civil válido para el Tutor.");
-       }
-       if (!Number(tutor.parentescoId) || Number(tutor.parentescoId) <= 0) {
-          throw new Error("Debe seleccionar un Parentesco válido para el Tutor.");
+       if (!Number(tutor.ocupacionId) || Number(tutor.ocupacionId) <= 0 || 
+           !Number(tutor.estadoCivilId) || Number(tutor.estadoCivilId) <= 0 || 
+           !Number(tutor.parentescoId) || Number(tutor.parentescoId) <= 0) {
+          throw new Error("Datos incompletos para el Tutor.");
        }
     }
-    // --------------------------------------------
 
     return await prisma.$transaction(async (tx) => {
       const nuevaDireccion = await tx.direccionPaciente.create({
@@ -187,14 +187,12 @@ export const PacienteService = {
           Calle: data.direccion.calle
         }
       });
-      
-      // ... (Resto del código create igual) ...
-      
+
       const nuevoPaciente = await tx.paciente.create({
         data: {
           Nombre: data.nombre,
           Apellido: data.apellido,
-          Fecha_Nac: new Date(data.fechaNac),
+          Fecha_Nac: fechaNacObj,
           Genero: data.genero,
           Nacionalidad: data.nacionalidad,
           ID_DireccionPaciente: nuevaDireccion.ID_DireccionPaciente,
@@ -203,11 +201,6 @@ export const PacienteService = {
       });
 
       if (data.esAdulto && data.datosAdulto) {
-        // Validamos también aquí por seguridad extra
-        if (!Number(data.datosAdulto.ocupacionId) || !Number(data.datosAdulto.estadoCivilId)) {
-            throw new Error("Datos de Ocupación o Estado Civil inválidos para el Paciente Adulto.");
-        }
-
         await tx.pacienteAdulto.create({
           data: {
             ID_PacienteAdulto: nuevoPaciente.ID_Paciente,
@@ -233,8 +226,6 @@ export const PacienteService = {
                Calle: tutorData.direccion.calle
              }
            });
-           
-           // Al llegar aquí, ya validamos arriba que los IDs son números válidos > 0
            const tutorCreado = await tx.tutor.create({
              data: {
                No_Cedula: tutorData.cedula,
@@ -266,15 +257,14 @@ export const PacienteService = {
   },
 
   update: async (id: number, data: UpdatePacienteDTO) => {
-    // --- VALIDACIONES PREVIAS (Update) ---
+    const fechaNacObj = new Date(data.fechaNac);
+    if (isNaN(fechaNacObj.getTime())) throw new Error("Fecha inválida");
+
     if (data.esAdulto && data.datosAdulto) {
-        const cedula = data.datosAdulto.cedula;
-        validarFormatoCedula(cedula, 'Paciente Adulto');
-        // Validamos duplicado excluyendo el ID actual para permitir guardar sin cambios
-        await validarCedulaUnica(cedula, 'paciente', id);
+        validarFormatoCedula(data.datosAdulto.cedula, 'Paciente');
+        await validarCedulaUnica(data.datosAdulto.cedula, 'paciente', id);
+        data.datosAdulto.telefono = validarTelefonoNica(data.datosAdulto.telefono, 'Paciente');
     }
-    // Nota: No validamos tutor aquí porque solo enlazamos ID, no creamos uno nuevo.
-    // -------------------------------------
 
     return await prisma.$transaction(async (tx) => {
       const pacienteActualizado = await tx.paciente.update({
@@ -283,7 +273,7 @@ export const PacienteService = {
           ID_EstadoDeActividad: Number(data.ID_EstadoDeActividad),
           Nombre: data.nombre,
           Apellido: data.apellido,
-          Fecha_Nac: new Date(data.fechaNac),
+          Fecha_Nac: fechaNacObj,
           Genero: data.genero,
           Nacionalidad: data.nacionalidad,
         }
@@ -323,7 +313,8 @@ export const PacienteService = {
     });
   },
 
-  getHistorial: async (id: number) => {
+  // --- ESTA ES LA FUNCIÓN QUE FALTABA ---
+  getHistorialPaciente: async (id: number) => {
     const sesiones = await prisma.sesion.findMany({
       where: { ID_Paciente: id },
       include: { 
@@ -339,10 +330,7 @@ export const PacienteService = {
       orderBy: { ID_Sesion: 'desc' } 
     });
 
-    const citas = await prisma.cita.findMany({
-      where: { ID_Paciente: id } 
-    });
-
+    const citas = await prisma.cita.findMany({ where: { ID_Paciente: id } });
     return corregirFechasSesiones(sesiones, citas);
   }
 };

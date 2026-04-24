@@ -1,82 +1,95 @@
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../services/api';
-import { toast } from 'sonner';
 import type { Factura } from '../types';
 
-export function useFacturacion() {
+export const useFacturacion = () => {
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Estado unificado para filtros
+  
+  // Filtros locales
   const [filtros, setFiltros] = useState({
     busqueda: '',
     fechaInicio: '',
     fechaFin: ''
   });
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const fetchFacturas = async () => {
+    setLoading(true);
     try {
       const data = await api.facturas.getAll();
-      // @ts-ignore (Casting seguro dada la estructura del backend)
       setFacturas(data);
     } catch (error) {
       console.error(error);
-      toast.error("Error al cargar el historial de facturación");
     } finally {
       setLoading(false);
     }
   };
 
-  // --- LÓGICA DE FILTRADO ---
+  useEffect(() => {
+    fetchFacturas();
+  }, []);
+
+  // --- LÓGICA DE FILTRADO AVANZADA ---
   const facturasFiltradas = useMemo(() => {
     return facturas.filter(f => {
-      const texto = filtros.busqueda.toLowerCase();
-      const paciente = `${f.Cita.Paciente.Nombre} ${f.Cita.Paciente.Apellido}`.toLowerCase();
-      const psicologo = `${f.Cita.Psicologo.Nombre} ${f.Cita.Psicologo.Apellido}`.toLowerCase();
+      // 1. Filtro de Fechas
+      const fechaFac = f.FechaFactura.split('T')[0];
+      if (filtros.fechaInicio && fechaFac < filtros.fechaInicio) return false;
+      if (filtros.fechaFin && fechaFac > filtros.fechaFin) return false;
+
+      // 2. Filtro de Búsqueda (Texto)
+      if (!filtros.busqueda) return true;
+
+      const term = filtros.busqueda.toLowerCase();
       
-      const matchTexto = 
-        !texto || 
-        paciente.includes(texto) || 
-        psicologo.includes(texto) || 
-        f.Cod_Factura.toString().includes(texto);
+      // Datos Paciente
+      const pacienteNombre = `${f.Cita.Paciente.Nombre} ${f.Cita.Paciente.Apellido}`.toLowerCase();
+      const cedulaPaciente = f.Cita.Paciente.PacienteAdulto?.No_Cedula?.toLowerCase() || '';
+      const partidaNacimiento = f.Cita.Paciente.PacienteMenor?.PartNacimiento?.toLowerCase() || '';
 
-      const fechaFac = f.FechaFactura.split('T')[0]; 
-      let matchFecha = true;
-      if (filtros.fechaInicio && fechaFac < filtros.fechaInicio) matchFecha = false;
-      if (filtros.fechaFin && fechaFac > filtros.fechaFin) matchFecha = false;
+      // Datos Doctor
+      const doctorNombre = `${f.Cita.Psicologo.Nombre} ${f.Cita.Psicologo.Apellido}`.toLowerCase();
+      const codigoMinsa = f.Cita.Psicologo.CodigoDeMinsa?.toLowerCase() || ''; // Asumiendo que el backend lo envía en el include
 
-      return matchTexto && matchFecha;
+      // Datos Factura
+      const numFactura = f.Cod_Factura.toString();
+
+      // Verificamos coincidencias
+      return (
+        pacienteNombre.includes(term) ||
+        cedulaPaciente.includes(term) ||
+        partidaNacimiento.includes(term) ||
+        doctorNombre.includes(term) ||
+        codigoMinsa.includes(term) ||
+        numFactura.includes(term)
+      );
     });
   }, [facturas, filtros]);
 
-  // --- CÁLCULOS AUTOMÁTICOS ---
+  // --- CÁLCULO DE TOTALES (KPIs) ---
   const totales = useMemo(() => {
-    const ingresos = facturasFiltradas.reduce((sum, f) => sum + Number(f.MontoTotal), 0);
+    const ingresos = facturasFiltradas.reduce((acc, curr) => acc + Number(curr.MontoTotal), 0);
     const transacciones = facturasFiltradas.length;
-    return {
-      ingresos,
-      transacciones,
-      ticketPromedio: transacciones > 0 ? ingresos / transacciones : 0
-    };
+    const ticketPromedio = transacciones > 0 ? ingresos / transacciones : 0;
+
+    return { ingresos, transacciones, ticketPromedio };
   }, [facturasFiltradas]);
 
-  // Helpers para inputs
-  const setFiltro = (campo: keyof typeof filtros, valor: string) => {
-    setFiltros(prev => ({ ...prev, [campo]: valor }));
+  const setFiltro = (key: string, value: string) => {
+    setFiltros(prev => ({ ...prev, [key]: value }));
   };
 
-  const limpiarFiltros = () => setFiltros({ busqueda: '', fechaInicio: '', fechaFin: '' });
+  const limpiarFiltros = () => {
+    setFiltros({ busqueda: '', fechaInicio: '', fechaFin: '' });
+  };
 
   return {
-    facturas: facturasFiltradas, // Devolvemos ya filtradas
+    facturas: facturasFiltradas,
     loading,
     filtros,
+    totales,
     setFiltro,
     limpiarFiltros,
-    totales
+    recargar: fetchFacturas
   };
-}
+};

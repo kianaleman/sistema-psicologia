@@ -1,65 +1,32 @@
 import type { Request, Response } from 'express';
 import { PsicologoService } from '../services/psicologo.service';
 
-// GET: Listar Psicólogos
-export const getPsicologos = async (req: Request, res: Response) => {
+export const getPsicologos = async (_req: Request, res: Response) => {
   try {
     const psicologos = await PsicologoService.getAll();
     res.json(psicologos);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error al obtener psicólogos' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 };
 
-// POST: Crear Psicólogo
 export const createPsicologo = async (req: Request, res: Response) => {
   try {
-    const { Nombre, Apellido, CodigoDeMinsa, No_Telefono, Email, ID_EstadoDeActividad, direccion, especialidadIds } = req.body;
-
-    const nuevoPsicologo = await PsicologoService.create({
-      Nombre, Apellido, CodigoDeMinsa, No_Telefono, Email,
-      ID_EstadoDeActividad: parseInt(ID_EstadoDeActividad),
-      direccion,
-      especialidadIds: especialidadIds || []
-    });
-
-    res.json(nuevoPsicologo);
+    // CORRECCIÓN: Pasamos req.body completo para no perder el campo 'telefono'
+    const psicologo = await PsicologoService.create(req.body);
+    res.json(psicologo);
   } catch (error: any) {
-    console.error(error);
-    // Manejo de duplicados (Unique constraint violation)
-    if (error.code === 'P2002') {
-      return res.status(400).json({ error: 'El Email o Código MINSA ya existe.' });
-    }
-    res.status(500).json({ error: 'Error al crear psicólogo' });
+    // Devolvemos 400 para errores de validación (como teléfono inválido)
+    res.status(400).json({ error: error.message });
   }
 };
 
-// PUT: Actualizar Psicólogo
 export const updatePsicologo = async (req: Request, res: Response) => {
-  const { id } = req.params;
   try {
-    const { Nombre, Apellido, CodigoDeMinsa, No_Telefono, Email, ID_EstadoDeActividad, direccion, especialidadIds } = req.body;
-
-    const result = await PsicologoService.update(parseInt(id), {
-      Nombre, Apellido, CodigoDeMinsa, No_Telefono, Email,
-      ID_EstadoDeActividad: parseInt(ID_EstadoDeActividad),
-      direccion,
-      especialidadIds: especialidadIds || []
-    });
-
-    res.json(result);
+    const { id } = req.params;
+    const psicologo = await PsicologoService.update(Number(id), req.body);
+    res.json(psicologo);
   } catch (error: any) {
-    console.error(error);
-    
-    if (error.message === 'Psicólogo no encontrado') {
-      return res.status(404).json({ error: error.message });
-    }
-    
-    if (error.code === 'P2002') {
-      return res.status(400).json({ error: 'Datos duplicados (Email o Código).' });
-    }
-    
-    res.status(500).json({ error: 'Error al actualizar psicólogo' });
+    res.status(400).json({ error: error.message });
   }
 };

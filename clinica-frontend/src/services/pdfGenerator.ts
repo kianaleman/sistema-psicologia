@@ -3,19 +3,47 @@ import autoTable from 'jspdf-autotable';
 
 // --- CONFIGURACIÓN DE ESTILOS GLOBALES ---
 const COLORS = {
-  primary: [37, 99, 235],    // Azul Corporativo (Blue-600)
+  primary: [37, 99, 235], // Azul Corporativo (Blue-600)
   secondary: [100, 116, 139], // Gris Texto (Slate-500)
-  header: [30, 41, 59],      // Oscuro (Slate-800)
-  accent: [16, 185, 129],    // Verde Dinero (Emerald-500)
-  light: [241, 245, 249],    // Fondo Claro (Slate-100)
-  text: [0, 0, 0]            // Negro puro para totales
+  header: [30, 41, 59], // Oscuro (Slate-800)
+  accent: [16, 185, 129], // Verde Dinero (Emerald-500)
+  light: [241, 245, 249], // Fondo Claro (Slate-100)
+  text: [0, 0, 0] // Negro puro para totales
 };
+
+// ==========================================
+// FUNCIÓN HELPER CRÍTICA: PROCESAR TRATAMIENTOS POLIMÓRFICOS
+// ==========================================
+const procesarTratamientos = (tratamientos: any): { farmacos: any[], terapias: any[] } => {
+  if (!Array.isArray(tratamientos)) return { farmacos: [], terapias: [] };
+
+  const farmacos = tratamientos
+    .filter((t: any) => t.TratamientoFarmaceutico !== null)
+    .map((t: any) => [
+      t.TratamientoFarmaceutico.NombreMedicamento,
+      t.TratamientoFarmaceutico.Dosis,
+      t.Frecuencia,
+      t.TratamientoFarmaceutico.ViaAdministracion?.NombreDePresentacion || 'N/A'
+    ]);
+
+  const terapias = tratamientos
+    .filter((t: any) => t.TratamientoTerapeutico !== null)
+    .map((t: any) => [
+      t.TratamientoTerapeutico.TipoDeTerapia?.NombreDeTerapia || 'Terapia General',
+      t.TratamientoTerapeutico.Objetivo,
+      t.Frecuencia
+    ]);
+
+  return { farmacos, terapias };
+};
+
 
 // ==========================================
 // 1. RECETA MÉDICA
 // ==========================================
 export const generarPDFReceta = (sesion: any, pacienteNombre: string) => {
   const doc = new jsPDF();
+  const tratamientosProcesados = procesarTratamientos(sesion.Tratamiento);
 
   // Barra lateral decorativa
   doc.setFillColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
@@ -25,7 +53,7 @@ export const generarPDFReceta = (sesion: any, pacienteNombre: string) => {
   doc.setFontSize(24);
   doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
   doc.setFont("helvetica", "bold");
-  doc.text("RECETA MÉDICA", 180, 25, { align: "right" });
+  doc.text("INDICACIONES CLÍNICAS", 180, 25, { align: "right" });
 
   doc.setFontSize(16);
   doc.setTextColor(COLORS.header[0], COLORS.header[1], COLORS.header[2]);
@@ -62,9 +90,9 @@ export const generarPDFReceta = (sesion: any, pacienteNombre: string) => {
   doc.text(fechaStr, 150, yPos + 6);
 
   // Diagnóstico
-  yPos += 20;
-  doc.setFillColor(240, 248, 255); 
-  doc.roundedRect(25, yPos, 165, 18, 2, 2, 'F');
+  yPos += 20; 
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(25, yPos, 165, 18, 2, 2, 'F'); 
   
   doc.setFontSize(10);
   doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
@@ -75,31 +103,69 @@ export const generarPDFReceta = (sesion: any, pacienteNombre: string) => {
   doc.setTextColor(0);
   doc.text(sesion.DiagnosticoDiferencial || "Sin diagnóstico especificado", 30, yPos + 12);
 
-  // Tabla Medicamentos
-  const filasFarmacos = sesion.Tratamiento
-    ?.filter((t: any) => t.TratamientoFarmaceutico !== null)
-    .map((t: any) => [
-      t.TratamientoFarmaceutico.NombreMedicamento,
-      t.TratamientoFarmaceutico.Dosis,
-      t.Frecuencia,
-      t.TratamientoFarmaceutico.ViaAdministracion?.NombreDePresentacion || 'N/A'
-    ]) || [];
+  // Área Tratamientos
+  yPos += 30; 
 
-  if (filasFarmacos.length > 0) {
+  // --- TABLA 1: MEDICAMENTOS (FÁRMACOS) ---
+  if (tratamientosProcesados.farmacos.length > 0) {
+    doc.setFontSize(14);
+    doc.setTextColor(COLORS.header[0], COLORS.header[1], COLORS.header[2]);
+    doc.setFont("helvetica", "bold");
+    doc.text("Tratamiento Farmacológico", 25, yPos); 
+    yPos += 5; 
+    
     autoTable(doc, {
-      startY: yPos + 25,
+      startY: yPos + 2,
       margin: { left: 25 },
       head: [['MEDICAMENTO', 'DOSIS', 'FRECUENCIA', 'VÍA']],
-      body: filasFarmacos,
-      theme: 'grid',
-      headStyles: { fillColor: COLORS.primary, textColor: 255, fontStyle: 'bold' },
-      styles: { fontSize: 10, cellPadding: 4 }
+      body: tratamientosProcesados.farmacos,
+      theme: 'striped',
+      headStyles: { fillColor: COLORS.primary, textColor: 255, fontStyle: 'bold', fontSize: 9 },
+      styles: { fontSize: 10, cellPadding: 4, textColor: COLORS.header[0] },
+      alternateRowStyles: { fillColor: [248, 250, 252] }
     });
+    // @ts-ignore
+    yPos = doc.lastAutoTable.finalY + 15;
   } else {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.setTextColor(150);
-    doc.text("(No se recetaron medicamentos)", 25, yPos + 35);
+    doc.text("(No se recetaron medicamentos)", 25, yPos);
+    yPos += 15;
+  }
+  
+  // --- TABLA 2: TERAPIAS Y OBJETIVOS ---
+  if (tratamientosProcesados.terapias.length > 0) {
+    if (tratamientosProcesados.farmacos.length > 0) {
+      doc.setDrawColor(220); 
+      doc.line(25, yPos - 5, 190, yPos - 5);
+      yPos += 5;
+    }
+    
+    doc.setFontSize(14);
+    doc.setTextColor(COLORS.header[0], COLORS.header[1], COLORS.header[2]);
+    doc.setFont("helvetica", "bold");
+    doc.text("Indicaciones Terapéuticas", 25, yPos); 
+    yPos += 5;
+
+    autoTable(doc, {
+      startY: yPos + 2,
+      margin: { left: 25 },
+      head: [['TIPO DE TERAPIA', 'OBJETIVO', 'FRECUENCIA']],
+      body: tratamientosProcesados.terapias,
+      theme: 'striped',
+      headStyles: { fillColor: COLORS.secondary, textColor: 255, fontStyle: 'bold', fontSize: 9 },
+      styles: { fontSize: 10, cellPadding: 4, textColor: COLORS.header[0] },
+      alternateRowStyles: { fillColor: [248, 250, 252] }
+    });
+    // @ts-ignore
+    yPos = doc.lastAutoTable.finalY + 15;
+  } else {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(150);
+    doc.text("(No se indicaron terapias o seguimiento)", 25, yPos);
+    yPos += 15;
   }
 
   // Firma
@@ -115,7 +181,7 @@ export const generarPDFReceta = (sesion: any, pacienteNombre: string) => {
 
 
 // ==========================================
-// 2. FACTURA INDIVIDUAL (CORREGIDA)
+// 2. FACTURA INDIVIDUAL
 // ==========================================
 export const generarPDFFactura = (factura: any) => {
   const doc = new jsPDF();
@@ -136,7 +202,7 @@ export const generarPDFFactura = (factura: any) => {
   doc.text("Dirección: Managua, Nicaragua", 14, 36);
   doc.text("Teléfono: 2222-0000 | RUC: J031000000000", 14, 41);
 
-  // Datos Factura (Derecha)
+  // Datos Factura
   doc.setFontSize(26);
   doc.setTextColor(220); 
   doc.setFont("helvetica", "bold");
@@ -148,11 +214,10 @@ export const generarPDFFactura = (factura: any) => {
   doc.setFontSize(12);
   doc.text(`#${factura.Cod_Factura.toString().padStart(6, '0')}`, 196, 50, { align: "right" });
 
-  // Fecha
   const fechaRaw = factura.FechaFactura.split('T')[0];
   const partes = fechaRaw.split('-');
   const fechaObj = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
-  
+
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
   doc.text(fechaObj.toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' }), 196, 58, { align: "right" });
@@ -183,7 +248,6 @@ export const generarPDFFactura = (factura: any) => {
     doc.text(`Tel: ${p.PacienteAdulto.No_Telefono}`, 70, posY);
   } else if (p.PacienteMenor) {
     doc.text(`Partida Nac: ${p.PacienteMenor.PartNacimiento}`, 18, posY);
-    
     if (p.PacienteMenor.Tutor) {
       const t = p.PacienteMenor.Tutor;
       doc.setFontSize(9);
@@ -218,25 +282,21 @@ export const generarPDFFactura = (factura: any) => {
     alternateRowStyles: { fillColor: COLORS.light }
   });
 
-  // --- TOTALES (CORREGIDO: ESPACIO Y COLOR NEGRO) ---
   // @ts-ignore
   const finalY = doc.lastAutoTable.finalY + 15;
   
   doc.setDrawColor(COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]);
-  doc.line(130, finalY, 196, finalY); // Línea sobre el total
+  doc.line(130, finalY, 196, finalY); 
 
   doc.setFontSize(12);
   doc.setTextColor(100);
-  // Moví la etiqueta más a la izquierda (x=135) para que no choque
   doc.text("TOTAL A PAGAR:", 110, finalY + 8);
   
   doc.setFontSize(16);
   doc.setFont("helvetica", "bold");
-  doc.setTextColor(0, 0, 0); // Color NEGRO puro
-  // El número alineado a la derecha al borde (x=196)
+  doc.setTextColor(0, 0, 0); 
   doc.text(`C$ ${Number(factura.MontoTotal).toFixed(2)}`, 196, finalY + 8, { align: "right" });
 
-  // Pie
   const pageHeight = doc.internal.pageSize.height;
   doc.setFillColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
   doc.rect(0, pageHeight - 5, 210, 5, 'F');
@@ -246,7 +306,7 @@ export const generarPDFFactura = (factura: any) => {
 
 
 // ==========================================
-// 3. REPORTE FINANCIERO GENERAL (CORREGIDO)
+// 3. REPORTE FINANCIERO GENERAL (MODIFICADO)
 // ==========================================
 export const generarPDFReporteFinanciero = (facturas: any[], fechaInicio: string, fechaFin: string) => {
   const doc = new jsPDF();
@@ -266,13 +326,13 @@ export const generarPDFReporteFinanciero = (facturas: any[], fechaInicio: string
   doc.text(`Generado el: ${hoy}`, 14, 28);
   doc.text("Clínica Psicológica Resiliencia", 196, 20, { align: "right" });
 
-  // KPIs
+  // Cálculo de Totales
   const totalIngresos = facturas.reduce((acc, curr) => acc + Number(curr.MontoTotal), 0);
   const totalTransacciones = facturas.length;
-  const ticketPromedio = totalTransacciones > 0 ? totalIngresos / totalTransacciones : 0;
-
+  
   let yStats = 50;
   
+  // Texto Periodo
   doc.setTextColor(COLORS.header[0], COLORS.header[1], COLORS.header[2]);
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
@@ -283,43 +343,19 @@ export const generarPDFReporteFinanciero = (facturas: any[], fechaInicio: string
   yStats += 10;
   const cardWidth = 60;
   const cardHeight = 25;
-  const gap = 5;
-
-  // Cards
-  doc.setFillColor(240, 253, 244);
-  doc.setDrawColor(187, 247, 208);
+  
+  // Card: TRANSACCIONES (Movida al inicio, Ingresos se movió abajo)
+  doc.setFillColor(248, 250, 252); 
+  doc.setDrawColor(226, 232, 240);
   doc.roundedRect(14, yStats, cardWidth, cardHeight, 2, 2, 'FD');
   doc.setFontSize(9);
   doc.setTextColor(COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]);
-  doc.text("INGRESOS TOTALES", 19, yStats + 8);
-  doc.setFontSize(14);
-  doc.setTextColor(COLORS.accent[0], COLORS.accent[1], COLORS.accent[2]); 
-  doc.setFont("helvetica", "bold");
-  doc.text(`C$ ${totalIngresos.toFixed(2)}`, 19, yStats + 18);
-
-  doc.setFillColor(248, 250, 252); 
-  doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(14 + cardWidth + gap, yStats, cardWidth, cardHeight, 2, 2, 'FD');
-  doc.setFontSize(9);
-  doc.setTextColor(COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]);
   doc.setFont("helvetica", "normal");
-  doc.text("TRANSACCIONES", 19 + cardWidth + gap, yStats + 8);
+  doc.text("TRANSACCIONES", 19, yStats + 8);
   doc.setFontSize(14);
   doc.setTextColor(COLORS.header[0], COLORS.header[1], COLORS.header[2]);
   doc.setFont("helvetica", "bold");
-  doc.text(`${totalTransacciones}`, 19 + cardWidth + gap, yStats + 18);
-
-  doc.setFillColor(239, 246, 255); 
-  doc.setDrawColor(191, 219, 254);
-  doc.roundedRect(14 + (cardWidth + gap) * 2, yStats, cardWidth, cardHeight, 2, 2, 'FD');
-  doc.setFontSize(9);
-  doc.setTextColor(COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]);
-  doc.setFont("helvetica", "normal");
-  doc.text("TICKET PROMEDIO", 19 + (cardWidth + gap) * 2, yStats + 8);
-  doc.setFontSize(14);
-  doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]); 
-  doc.setFont("helvetica", "bold");
-  doc.text(`C$ ${ticketPromedio.toFixed(2)}`, 19 + (cardWidth + gap) * 2, yStats + 18);
+  doc.text(`${totalTransacciones}`, 19, yStats + 18);
 
   // Tabla Detallada
   const filas = facturas.map((f: any) => {
@@ -331,7 +367,7 @@ export const generarPDFReporteFinanciero = (facturas: any[], fechaInicio: string
       `#${f.Cod_Factura}`,
       fecha,
       `${f.Cita.Paciente.Nombre} ${f.Cita.Paciente.Apellido}`,
-      `Dr. ${f.Cita.Psicologo.Nombre} ${f.Cita.Psicologo.Apellido}`, // <--- AQUI SE AGREGÓ NOMBRE COMPLETO DEL DR
+      `Dr. ${f.Cita.Psicologo.Nombre} ${f.Cita.Psicologo.Apellido}`,
       f.DetalleFactura[0]?.MetodoPago?.NombreMetodo || 'N/A',
       `C$ ${Number(f.MontoTotal).toFixed(2)}`
     ];
@@ -348,6 +384,22 @@ export const generarPDFReporteFinanciero = (facturas: any[], fechaInicio: string
     },
     styles: { fontSize: 9, cellPadding: 3 }
   });
+
+  // --- TOTAL GENERAL AL PIE DE LA TABLA (MODIFICADO) ---
+  // @ts-ignore
+  const finalY = doc.lastAutoTable.finalY + 10;
+  
+  doc.setDrawColor(COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]);
+  doc.line(140, finalY, 196, finalY); 
+
+  doc.setFontSize(11);
+  doc.setTextColor(100);
+  doc.text("TOTAL INGRESOS:", 110, finalY + 8, { align: "left" });
+  
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(COLORS.accent[0], COLORS.accent[1], COLORS.accent[2]); // Verde para el total
+  doc.text(`C$ ${totalIngresos.toFixed(2)}`, 196, finalY + 8, { align: "right" });
 
   doc.save(`Reporte_Financiero_${hoy.replace(/\//g, '-')}.pdf`);
 };

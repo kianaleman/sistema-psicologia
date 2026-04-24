@@ -1,32 +1,30 @@
 import { useState, useEffect } from 'react';
-import { api } from '../services/api';
 import { toast } from 'sonner';
+import { api } from '../services/api';
 
-// Exportamos la configuración para usarla en el hook y en la vista si es necesario
+// CONFIGURACIÓN MAESTRA DE CATÁLOGOS
+// Aquí definimos cómo se llaman los campos en la Base de Datos para cada tabla
 export const CATALOGOS_CONFIG = [
-  { key: 'ocupacion', label: 'Ocupaciones', idField: 'ID_Ocupacion', nameField: 'NombreDeOcupacion' },
-  { key: 'estadocivil', label: 'Estado Civil', idField: 'ID_EstadoCivil', nameField: 'NombreEstadoCivil' },
-  { key: 'parentesco', label: 'Parentescos', idField: 'ID_Parentesco', nameField: 'NombreDeParentesco' },
-  { key: 'especialidad', label: 'Especialidades (Psic)', idField: 'ID_Especialidad', nameField: 'NombreEspecialidad' },
-  { key: 'exploracion', label: 'Exploraciones (Tests)', idField: 'ID_ExploracionPsicologica', nameField: 'NombreDeExploracionPsicologica' },
-  { key: 'terapia', label: 'Tipos de Terapia', idField: 'ID_TipoTerapia', nameField: 'NombreDeTerapia' },
-  { key: 'via', label: 'Vías Admin. (Med)', idField: 'ID_ViaAdministracion', nameField: 'NombreDePresentacion' },
-  { key: 'metodo', label: 'Métodos de Pago', idField: 'ID_MetodoPago', nameField: 'NombreMetodo' },
+  { label: 'Ocupaciones', key: 'ocupacion', idField: 'ID_Ocupacion', nameField: 'NombreDeOcupacion' },
+  { label: 'Estados Civiles', key: 'estadocivil', idField: 'ID_EstadoCivil', nameField: 'NombreEstadoCivil' },
+  { label: 'Parentescos', key: 'parentesco', idField: 'ID_Parentesco', nameField: 'NombreDeParentesco' },
+  { label: 'Especialidades', key: 'especialidad', idField: 'ID_Especialidad', nameField: 'NombreEspecialidad' },
+  { label: 'Exploraciones', key: 'exploracion', idField: 'ID_ExploracionPsicologica', nameField: 'NombreDeExploracionPsicologica' },
+  { label: 'Tipos Terapia', key: 'terapia', idField: 'ID_TipoTerapia', nameField: 'NombreDeTerapia' },
+  { label: 'Vías Admin.', key: 'via', idField: 'ID_ViaAdministracion', nameField: 'NombreDePresentacion' },
+  { label: 'Métodos Pago', key: 'metodo', idField: 'ID_MetodoPago', nameField: 'NombreMetodo' },
+  { label: 'Motivos Cancelación', key: 'motivo', idField: 'ID_Motivo', nameField: 'Categoria' } // <--- NUEVO
 ];
 
-export function useConfiguracion() {
+export const useConfiguracion = () => {
   const [activeTab, setActiveTab] = useState(CATALOGOS_CONFIG[0]);
   const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // Estados para el modal
+  const [loading, setLoading] = useState(false);
+  
+  // Estado del Modal
   const [modalOpen, setModalOpen] = useState(false);
-  const [editItem, setEditItem] = useState<any>(null);
+  const [editItem, setEditItem] = useState<any | null>(null);
   const [inputValue, setInputValue] = useState('');
-
-  useEffect(() => {
-    loadItems();
-  }, [activeTab]);
 
   const loadItems = async () => {
     setLoading(true);
@@ -35,16 +33,24 @@ export function useConfiguracion() {
       setItems(data);
     } catch (error) {
       console.error(error);
-      toast.error("Error al cargar el catálogo.");
+      toast.error(`Error cargando ${activeTab.label}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // Acciones del Modal
+  useEffect(() => {
+    loadItems();
+  }, [activeTab]);
+
   const openModal = (item?: any) => {
-    setEditItem(item || null);
-    setInputValue(item ? item[activeTab.nameField] : '');
+    if (item) {
+      setEditItem(item);
+      setInputValue(item[activeTab.nameField]);
+    } else {
+      setEditItem(null);
+      setInputValue('');
+    }
     setModalOpen(true);
   };
 
@@ -54,64 +60,43 @@ export function useConfiguracion() {
     setInputValue('');
   };
 
-  // Acciones CRUD
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputValue.trim()) return toast.warning("El nombre no puede estar vacío");
+    if (!inputValue.trim()) return;
 
-    const promise = new Promise(async (resolve, reject) => {
-      try {
-        if (editItem) {
-          await api.config.update(activeTab.key, editItem[activeTab.idField], inputValue);
-        } else {
-          await api.config.create(activeTab.key, inputValue);
-        }
-        closeModal();
-        loadItems();
-        resolve(true);
-      } catch (e: any) {
-        reject(e.message || 'Error desconocido');
+    try {
+      if (editItem) {
+        await api.config.update(activeTab.key, editItem[activeTab.idField], inputValue);
+        toast.success('Actualizado correctamente');
+      } else {
+        await api.config.create(activeTab.key, inputValue);
+        toast.success('Creado correctamente');
       }
-    });
-
-    toast.promise(promise, {
-      loading: 'Guardando...',
-      success: `Registro ${editItem ? 'actualizado' : 'creado'} correctamente`,
-      error: (err) => `Error: ${err}`
-    });
+      closeModal();
+      loadItems();
+    } catch (error) {
+      toast.error('Error al guardar');
+    }
   };
 
-  const handleDelete = (id: number) => {
-    toast(`¿Seguro que deseas eliminar este registro de ${activeTab.label}?`, {
-      description: "Si está siendo usado, no se podrá borrar.",
-      action: {
-        label: "Eliminar",
-        onClick: async () => {
-          try {
-            await api.config.delete(activeTab.key, id);
-            toast.success("Registro eliminado");
-            loadItems();
-          } catch (e: any) {
-            toast.error("Error al eliminar: " + e.message);
-          }
-        }
-      },
-      cancel: { label: "Cancelar" }
-    });
+  const handleDelete = async (id: number) => {
+    if (!window.confirm('¿Estás seguro de eliminar este registro?')) return;
+    try {
+      await api.config.delete(activeTab.key, id);
+      toast.success('Eliminado correctamente');
+      loadItems();
+    } catch (error: any) {
+      // Aquí capturamos el error de validación del backend (FK constraint)
+      const msg = error.response?.data?.error || 'Error al eliminar';
+      toast.error(msg);
+    }
   };
 
   return {
-    activeTab,
-    setActiveTab,
-    items,
-    loading,
-    modalOpen,
-    inputValue,
-    setInputValue,
-    editItem,
-    openModal,
-    closeModal,
-    handleSave,
-    handleDelete
+    activeTab, setActiveTab,
+    items, loading,
+    modalOpen, closeModal,
+    inputValue, setInputValue, editItem,
+    openModal, handleSave, handleDelete
   };
-}
+};

@@ -1,186 +1,190 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { api } from '../services/api';
+import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
-// 1. Importamos los nuevos tipos
-import type { 
-    Cita, Paciente, Psicologo, CreateCitaDTO,
-    ViaAdministracion, TipoDeTerapia, Exploracion,
-    TipoCitaCatalogo, EstadoCitaCatalogo, MetodoPago 
-} from '../types';
+import { api } from '../services/api';
+import type { Cita, CreateCitaDTO } from '../types';
 
-export function useCitas() {
-  // Estado Principal
+export const useCitas = () => {
   const [citas, setCitas] = useState<Cita[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Catálogos Esenciales
-  const [pacientes, setPacientes] = useState<Paciente[]>([]);
-  const [psicologos, setPsicologos] = useState<Psicologo[]>([]);
+  const [error, setError] = useState<string | null>(null);
   
-  // 2. Corregimos los 'any' usando las interfaces
-  const [tiposCita, setTiposCita] = useState<TipoCitaCatalogo[]>([]);
-  const [estadosCita, setEstadosCita] = useState<EstadoCitaCatalogo[]>([]);
-  const [metodosPago, setMetodosPago] = useState<MetodoPago[]>([]);
-
-  // Catálogos Clínicos
-  const [viasAdmin, setViasAdmin] = useState<ViaAdministracion[]>([]);
-  const [tiposTerapia, setTiposTerapia] = useState<TipoDeTerapia[]>([]);
-  const [exploraciones, setExploraciones] = useState<Exploracion[]>([]);
-
-  // ... (El resto del archivo sigue igual)
-
-  // Filtros
   const [filtros, setFiltros] = useState({
-    periodo: 'todos' as 'todos' | 'hoy' | 'semana' | 'mes' | 'rango',
-    estado: '',    
-    fechaInicio: '', 
+    periodo: 'hoy',
+    fechaInicio: '',
     fechaFin: '',
-    paciente: '',  
-    psicologo: ''  
+    estado: '',
+    paciente: '',
+    psicologo: ''
   });
 
-  const loadData = useCallback(async () => {
+  // Estado inicial de catálogos
+  const [catalogos, setCatalogos] = useState<any>({
+    tiposCita: [],
+    estadosCita: [],
+    metodosPago: [],
+    pacientes: [],
+    psicologos: [],
+    viasAdmin: [],       
+    tiposTerapia: [],    
+    exploraciones: []    
+  });
+
+  const fetchCitas = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      
-      // Ejecutamos en paralelo para velocidad
-      const [
-          dataCitas, 
-          dataPacientes, 
-          dataPsicologos, 
-          dataCatalogosCita,
-          // Solo cargamos catálogos generales si realmente se usan aquí (opcional)
-          dataCatalogosGen 
-      ] = await Promise.all([
-        api.citas.getAll(),
-        api.pacientes.getAll(),
-        api.psicologos.getAll(),
-        api.general.catalogosCitas(),
-        api.general.catalogos()
-      ]);
-
-      setCitas(dataCitas);
-      setPacientes(dataPacientes);
-      setPsicologos(dataPsicologos);
-      
-      // Asignación segura
-      setTiposCita(dataCatalogosCita.tiposCita || []);
-      setEstadosCita(dataCatalogosCita.estadosCita || []);
-      setMetodosPago(dataCatalogosCita.metodosPago || []);
-      
-      // Asignación de catálogos clínicos
-      if (dataCatalogosGen) {
-          setViasAdmin(dataCatalogosGen.viasAdministracion || []);
-          setTiposTerapia(dataCatalogosGen.tiposTerapia || []);
-          setExploraciones(dataCatalogosGen.exploraciones || []);
-      }
-
-    } catch (error) {
-      console.error(error);
-      toast.error("Error cargando la agenda");
+      const data = await api.citas.getAll();
+      setCitas(data);
+      setError(null);
+    } catch (err: any) {
+      console.error(err);
+      setError('Error al cargar citas');
+      toast.error('No se pudo cargar la agenda');
     } finally {
       setLoading(false);
     }
   }, []);
 
+  const fetchCatalogos = useCallback(async () => {
+    try {
+      const general: any = await api.general.catalogos();
+      setCatalogos({
+         tiposCita: general.tiposCita || [],
+         estadosCita: general.estadosCita || [],
+         metodosPago: general.metodosPago || [],
+         pacientes: general.pacientes || [],
+         psicologos: general.psicologos || [],
+         viasAdmin: general.viasAdministracion || [], 
+         tiposTerapia: general.tiposTerapia || [],
+         exploraciones: general.exploraciones || []
+      });
+    } catch (err) {
+      console.error("Error catalogos", err);
+    }
+  }, []);
+
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    fetchCitas();
+    fetchCatalogos();
+  }, [fetchCitas, fetchCatalogos]);
 
-  // --- LÓGICA DE FILTRADO ---
-  const citasFiltradas = useMemo(() => {
-    if (!citas) return [];
-    
-    return citas.filter(c => {
-      // 1. Filtro Estado
-      if (filtros.estado && c.ID_EstadoCita.toString() !== filtros.estado) return false;
+  // --- ACCIONES ---
 
-      // 2. Filtro Paciente (Búsqueda segura)
-      if (filtros.paciente) {
-        const nombre = c.Paciente ? `${c.Paciente.Nombre} ${c.Paciente.Apellido}`.toLowerCase() : '';
-        if (!nombre.includes(filtros.paciente.toLowerCase())) return false;
-      }
-
-      // 3. Filtro Psicólogo
-      if (filtros.psicologo) {
-        const nombre = c.Psicologo ? `${c.Psicologo.Nombre} ${c.Psicologo.Apellido}`.toLowerCase() : '';
-        if (!nombre.includes(filtros.psicologo.toLowerCase())) return false;
-      }
-
-      // 4. Filtro Fechas
-      if (!c.FechaCita) return false;
-      const fechaCitaStr = c.FechaCita.toString().split('T')[0];
-      const hoyStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
-
-      if (filtros.periodo === 'hoy') return fechaCitaStr === hoyStr;
-      
-      if (filtros.periodo === 'mes') {
-          return fechaCitaStr.substring(0, 7) === hoyStr.substring(0, 7);
-      }
-      
-      if (filtros.periodo === 'semana') {
-        const d = new Date();
-        const day = d.getDay(); // 0 (Dom) - 6 (Sab)
-        // Calcular Lunes de esta semana
-        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-        const lunes = new Date(d.setDate(diff)).toISOString().split('T')[0];
-        const domingo = new Date(d.setDate(diff + 6)).toISOString().split('T')[0];
-        return fechaCitaStr >= lunes && fechaCitaStr <= domingo;
-      }
-
-      if (filtros.periodo === 'rango') {
-        if (!filtros.fechaInicio || !filtros.fechaFin) return true;
-        return fechaCitaStr >= filtros.fechaInicio && fechaCitaStr <= filtros.fechaFin;
-      }
-
-      return true; // 'todos'
-    });
-  }, [citas, filtros]);
-
-  const setFiltro = (campo: keyof typeof filtros, valor: any) => {
-    setFiltros(prev => ({ ...prev, [campo]: valor }));
+  const crearCita = async (data: CreateCitaDTO) => {
+    try {
+      await api.citas.create(data);
+      toast.success('Cita agendada correctamente');
+      fetchCitas();
+      return true;
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.message || 'Error al agendar cita';
+      toast.error(msg);
+      return false;
+    }
   };
 
-  // Acciones CRUD Tipadas
-  const crearCita = async (data: CreateCitaDTO) => { 
-      try {
-          await api.citas.create(data); 
-          toast.success("Cita agendada correctamente");
-          await loadData();
-          return true; // ÉXITO: El modal se cerrará
-      } catch (e: any) { 
-          // AQUÍ ESTÁ LA MAGIA: Mostramos el mensaje exacto que viene del backend
-          toast.error(e.message || "No se pudo agendar la cita");
-          return false; // FALLO: El modal NO se cerrará
-      }
+  const actualizarCita = async (id: number, data: any) => {
+    try {
+      await api.citas.update(id, data);
+      toast.success('Cita actualizada');
+      fetchCitas();
+      return true;
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.message || 'Error al actualizar cita';
+      toast.error(msg);
+      return false;
+    }
   };
 
-  const actualizarCita = async (id: number, data: Partial<CreateCitaDTO>) => { 
-      try {
-          await api.citas.update(id, data); 
-          toast.success("Cita actualizada");
-          await loadData(); 
-          return true; // ÉXITO
-      } catch (e: any) { 
-          toast.error(e.message || "No se pudo actualizar");
-          return false; // FALLO
-      }
+  const cancelarCita = async (id: number, motivoId: number, notas: string) => {
+    try {
+      await api.citas.cancel(id, motivoId, notas);
+      toast.success('Cita cancelada');
+      fetchCitas();
+      return true;
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.message || 'Error al cancelar cita';
+      toast.error(msg);
+      return false;
+    }
   };
 
-  const cancelarCita = async (id: number) => { 
-      try {
-          await api.citas.cancel(id); 
-          toast.info("Cita cancelada");
-          await loadData();
-      } catch (e) { toast.error("No se pudo cancelar"); }
+  const guardarSesion = async (data: any) => {
+     try {
+        await api.sesiones.create(data);
+        fetchCitas();
+     } catch (err: any) {
+        throw new Error(err.response?.data?.error || 'Error al guardar sesión');
+     }
+  };
+
+  // --- FILTRADO CORREGIDO (ZONA HORARIA LOCAL) ---
+  // --- FILTRADO CORREGIDO (SOLUCIÓN FECHA EXACTA) ---
+  const citasFiltradas = citas.filter(c => {
+     // 1. TRUCO: Leer la fecha como string puro para evitar que el navegador reste horas
+     // c.FechaCita viene como "2025-11-28T00:00:00.000Z" -> tomamos "2025-11-28"
+     const fechaCitaStr = c.FechaCita.toString().split('T')[0];
+     
+     // Fecha de "Hoy" en formato local YYYY-MM-DD (ej: Nicaragua)
+     // Usamos 'en-CA' porque devuelve formato ISO (YYYY-MM-DD) que es fácil de comparar
+     const hoyStr = new Date().toLocaleDateString('en-CA');
+
+     let matchPeriodo = true;
+
+     if (filtros.periodo === 'hoy') {
+        matchPeriodo = fechaCitaStr === hoyStr;
+     } 
+     else if (filtros.periodo === 'semana') {
+        const fechaCitaObj = new Date(fechaCitaStr + "T00:00:00"); // Forzamos fecha local
+        const hoy = new Date();
+        
+        const primerDia = new Date(hoy); 
+        primerDia.setDate(hoy.getDate() - hoy.getDay());
+        primerDia.setHours(0, 0, 0, 0);
+
+        const ultimoDia = new Date(hoy); 
+        ultimoDia.setDate(hoy.getDate() - hoy.getDay() + 6);
+        ultimoDia.setHours(23, 59, 59, 999);
+
+        matchPeriodo = fechaCitaObj >= primerDia && fechaCitaObj <= ultimoDia;
+     } 
+     else if (filtros.periodo === 'mes') {
+        const fechaCitaObj = new Date(fechaCitaStr + "T00:00:00");
+        const hoy = new Date();
+        matchPeriodo = fechaCitaObj.getMonth() === hoy.getMonth() && fechaCitaObj.getFullYear() === hoy.getFullYear();
+     } 
+     else if (filtros.periodo === 'rango' && filtros.fechaInicio && filtros.fechaFin) {
+        // Comparación de strings directa funciona perfecto con formato YYYY-MM-DD
+        matchPeriodo = fechaCitaStr >= filtros.fechaInicio && fechaCitaStr <= filtros.fechaFin;
+     }
+
+     // Filtros de texto y estado (sin cambios)
+     let matchEstado = true;
+     if (filtros.estado) matchEstado = c.ID_EstadoCita.toString() === filtros.estado;
+
+     let matchTexto = true;
+     if (filtros.paciente) {
+        const pName = `${c.Paciente.Nombre} ${c.Paciente.Apellido}`.toLowerCase();
+        matchTexto = matchTexto && pName.includes(filtros.paciente.toLowerCase());
+     }
+     if (filtros.psicologo) {
+        const dName = `${c.Psicologo.Nombre} ${c.Psicologo.Apellido}`.toLowerCase();
+        matchTexto = matchTexto && dName.includes(filtros.psicologo.toLowerCase());
+     }
+
+     return matchPeriodo && matchEstado && matchTexto;
+  });
+
+  const setFiltro = (key: string, value: string) => {
+    setFiltros(prev => ({ ...prev, [key]: value }));
   };
 
   return {
     citas: citasFiltradas,
     loading,
+    error,
     filtros,
     setFiltro,
-    catalogos: { pacientes, psicologos, tiposCita, estadosCita, metodosPago, viasAdmin, tiposTerapia, exploraciones },
-    acciones: { crearCita, actualizarCita, cancelarCita, reload: loadData }
+    catalogos, 
+    acciones: { crearCita, actualizarCita, cancelarCita, guardarSesion }
   };
-}
+};

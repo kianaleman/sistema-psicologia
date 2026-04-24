@@ -24,36 +24,34 @@ export const getCatalogosCitas = async (req: Request, res: Response) => {
 
 export const createCita = async (req: Request, res: Response) => {
   try {
-    // ... (tu lógica de preparación de datos igual) ...
     const { fecha, hora, motivo, tipoCitaId, pacienteId, psicologoId, precio, metodoPagoId, direccion } = req.body;
 
-    const result = await CitaService.create({ /* ... datos ... */ 
-      fecha, hora, motivo, 
+    const result = await CitaService.create({
+      fecha,
+      hora,
+      motivo, 
       tipoCitaId: parseInt(tipoCitaId), 
       pacienteId: parseInt(pacienteId), 
       psicologoId: parseInt(psicologoId), 
       precio: parseFloat(precio) || 0, 
-      metodoPagoId: parseInt(metodoPagoId) ,
+      metodoPagoId: parseInt(metodoPagoId),
       // Pasamos la dirección al servicio (asegurando que exista, o enviando defaults)
-      direccion: direccion || { departamento: 'Managua', ciudad: 'Managua', barrio: 'Central', calle: 'Clínica' }
+      direccion: direccion || { pais: 'Nicaragua', departamento: 'Managua', ciudad: 'Managua', barrio: 'Central', calle: 'Clínica' }
     });
 
     res.json({ nuevaCita: result.cita, nuevaFactura: result.factura });
 
   } catch (error: any) {
-    console.error(error); // Log en consola para ti
-    
-    // DETECCIÓN DEL ERROR DE DISPONIBILIDAD
+    console.error(error);
+
+    // 1. DETECCIÓN DEL ERROR DE DISPONIBILIDAD (Conflicto)
     if (error.message === 'El psicólogo ya tiene una cita agendada en este horario.') {
-      // 409 = Conflict (Ideal para duplicados o choques de agenda)
       return res.status(409).json({ error: error.message });
     }
 
-    if (error.message === 'Hora inválida') {
-       return res.status(400).json({ error: error.message });
-    }
-    
-    res.status(500).json({ error: 'Error interno al agendar la cita' });
+    // 2. ERRORES DE VALIDACIÓN (Fechas pasadas, Hora inválida, Paciente Inactivo)
+    // Devolvemos 400 para que el frontend muestre el mensaje específico del servicio
+    return res.status(400).json({ error: error.message });
   }
 };
 
@@ -61,16 +59,19 @@ export const createCita = async (req: Request, res: Response) => {
 export const updateCita = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    // ... (tu lógica de preparación) ...
-    const { fecha, hora, motivo, tipoCitaId, pacienteId, psicologoId, precio, metodoPagoId } = req.body;
+    const { fecha, hora, motivo, tipoCitaId, pacienteId, psicologoId, precio, metodoPagoId, direccion } = req.body;
 
-    const result = await CitaService.update(parseInt(id), { /* ... datos ... */ 
-      fecha, hora, motivo,
+    const result = await CitaService.update(parseInt(id), { 
+      fecha, 
+      hora, 
+      motivo,
       tipoCitaId: parseInt(tipoCitaId),
       pacienteId: parseInt(pacienteId),
       psicologoId: parseInt(psicologoId),
       precio: parseFloat(precio) || 0,
-      metodoPagoId: parseInt(metodoPagoId)
+      metodoPagoId: parseInt(metodoPagoId),
+      // Mantenemos estructura DTO
+      direccion: direccion || { pais: 'Nicaragua', departamento: '', ciudad: '', barrio: '', calle: '' }
     });
 
     res.json(result);
@@ -78,22 +79,27 @@ export const updateCita = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error(error);
     
-    // DETECCIÓN DEL ERROR DE DISPONIBILIDAD
+    // 1. DETECCIÓN DEL ERROR DE DISPONIBILIDAD
     if (error.message === 'El psicólogo ya tiene una cita agendada en este horario.') {
       return res.status(409).json({ error: error.message });
     }
     
-    res.status(500).json({ error: 'Error al actualizar la cita' });
+    // 2. ERRORES DE VALIDACIÓN (Fechas pasadas, etc.)
+    return res.status(400).json({ error: error.message });
   }
 };
 
 // PATCH: Cancelar Cita
 export const cancelCita = async (req: Request, res: Response) => {
-  const { id } = req.params;
   try {
-    const result = await CitaService.cancel(parseInt(id));
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al cancelar cita' });
+    const { id } = req.params;
+    const { motivoId, notas } = req.body; 
+
+    if (!motivoId) return res.status(400).json({ error: "Debe seleccionar un motivo." });
+
+    await CitaService.cancel(Number(id), motivoId, notas);
+    res.json({ message: 'Cita cancelada correctamente' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 };

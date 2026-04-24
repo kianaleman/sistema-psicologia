@@ -4,124 +4,133 @@ const prisma = new PrismaClient();
 
 // DTOs
 interface CreatePsicologoDTO {
-  Nombre: string;
-  Apellido: string;
-  CodigoDeMinsa: string;
-  No_Telefono: string;
-  Email: string;
-  ID_EstadoDeActividad: number;
-  direccion: {
-    Pais?: string;
-    Departamento: string;
-    Ciudad: string;
-    Barrio: string;
-    Calle: string;
-  };
+  nombre: string;
+  apellido: string;
+  codigoMinsa: string;
+  telefono: string;
+  email: string;
+  direccion: { pais?: string; departamento: string; ciudad: string; barrio: string; calle: string; };
   especialidadIds: number[];
+  // Compatibilidad por si llega con otro nombre
+  No_Telefono?: string;
 }
 
-interface UpdatePsicologoDTO extends CreatePsicologoDTO {}
+// --- HELPER VALIDACIÓN ---
+const validarTelefonoNica = (telefono: string | undefined | null) => {
+  if (!telefono) {
+    throw new Error('El teléfono es obligatorio y no fue recibido.');
+  }
+  const limpio = String(telefono).replace(/[\s-]/g, '');
+  const regex = /^[2578]\d{7}$/;
+  if (!regex.test(limpio)) {
+    throw new Error(`Teléfono inválido (${telefono}). Debe ser de 8 dígitos e iniciar con 2, 5, 7 u 8.`);
+  }
+  return limpio;
+};
 
 export const PsicologoService = {
   
   getAll: async () => {
     return await prisma.psicologo.findMany({
       include: {
-        DireccionPsicologo: true, 
+        DireccionPsicologo: true,
         EstadoDeActividad: true,
-        Psicologo_EspecialidadPsicologo: { 
-          include: { EspecialidadPsicologo: true }
-        }
+        Psicologo_EspecialidadPsicologo: { include: { EspecialidadPsicologo: true } }
       },
-      orderBy: { Nombre: 'asc' }
+      orderBy: { Apellido: 'asc' }
     });
   },
 
   create: async (data: CreatePsicologoDTO) => {
+    if (!data) throw new Error("No se recibieron datos.");
+
+    // 1. Normalización: Buscamos 'telefono' O 'No_Telefono'
+    const telefonoRaw = data.telefono || data.No_Telefono;
+    
+    // 2. Validación
+    const telefonoLimpio = validarTelefonoNica(telefonoRaw);
+
     return await prisma.$transaction(async (tx) => {
-      // 1. Crear Dirección
-      const nuevaDireccion = await tx.direccionPsicologo.create({
-        data: {
-          Pais: data.direccion.Pais || 'Nicaragua',
-          Departamento: data.direccion.Departamento,
-          Ciudad: data.direccion.Ciudad,
-          Barrio: data.direccion.Barrio,
-          Calle: data.direccion.Calle
-        }
-      });
+       const direccion = await tx.direccionPsicologo.create({
+          data: {
+             Pais: data.direccion?.pais || 'Nicaragua',
+             Departamento: data.direccion?.departamento || 'Managua',
+             Ciudad: data.direccion?.ciudad || 'Managua',
+             Barrio: data.direccion?.barrio || '',
+             Calle: data.direccion?.calle || ''
+          }
+       });
 
-      // 2. Crear Psicólogo
-      const psicologoCreado = await tx.psicologo.create({
-        data: {
-          CodigoDeMinsa: data.CodigoDeMinsa,
-          Nombre: data.Nombre,
-          Apellido: data.Apellido,
-          No_Telefono: data.No_Telefono,
-          Email: data.Email,
-          ID_DireccionPsicologo: nuevaDireccion.ID_DireccionPsicologo,
-          ID_EstadoDeActividad: data.ID_EstadoDeActividad
-        }
-      });
+       const psicologo = await tx.psicologo.create({
+          data: {
+             Nombre: data.nombre,
+             Apellido: data.apellido,
+             CodigoDeMinsa: data.codigoMinsa,
+             No_Telefono: telefonoLimpio, // Guardamos el validado
+             Email: data.email,
+             ID_DireccionPsicologo: direccion.ID_DireccionPsicologo,
+             ID_EstadoDeActividad: 1
+          }
+       });
 
-      // 3. Asignar Especialidades (Relación M:N)
-      if (data.especialidadIds && data.especialidadIds.length > 0) {
-        const especialidadesData = data.especialidadIds.map((id) => ({
-          ID_Psicologo: psicologoCreado.ID_Psicologo,
-          ID_Especialidad: id
-        }));
-        await tx.psicologo_EspecialidadPsicologo.createMany({ data: especialidadesData });
-      }
-      
-      return psicologoCreado;
+       if (data.especialidadIds && data.especialidadIds.length > 0) {
+           const relaciones = data.especialidadIds.map(espId => ({
+               ID_Psicologo: psicologo.ID_Psicologo,
+               ID_Especialidad: Number(espId)
+           }));
+           await tx.psicologo_EspecialidadPsicologo.createMany({ data: relaciones });
+       }
+
+       return psicologo;
     });
   },
 
-  update: async (id: number, data: UpdatePsicologoDTO) => {
-    // Verificamos existencia previa para obtener el ID de la dirección
-    const psicologoActual = await prisma.psicologo.findUnique({
-      where: { ID_Psicologo: id },
-      select: { ID_DireccionPsicologo: true }
-    });
+  update: async (id: number, data: any) => {
+    // Normalización y Validación en Update
+    let telefonoLimpio = undefined;
+    const telefonoRaw = data.telefono || data.No_Telefono;
 
-    if (!psicologoActual) throw new Error('Psicólogo no encontrado');
+    if (telefonoRaw) {
+       telefonoLimpio = validarTelefonoNica(telefonoRaw);
+    }
 
     return await prisma.$transaction(async (tx) => {
-      // 1. Actualizar Datos Básicos
-      await tx.psicologo.update({
-        where: { ID_Psicologo: id },
-        data: { 
-          CodigoDeMinsa: data.CodigoDeMinsa,
-          Nombre: data.Nombre, 
-          Apellido: data.Apellido, 
-          No_Telefono: data.No_Telefono, 
-          Email: data.Email, 
-          ID_EstadoDeActividad: data.ID_EstadoDeActividad 
-        }
-      });
+       const psicologo = await tx.psicologo.update({
+          where: { ID_Psicologo: id },
+          data: {
+             Nombre: data.nombre,
+             Apellido: data.apellido,
+             CodigoDeMinsa: data.codigoMinsa,
+             No_Telefono: telefonoLimpio, // Si es undefined no se actualiza
+             Email: data.email,
+             ID_EstadoDeActividad: Number(data.ID_EstadoDeActividad)
+          }
+       });
 
-      // 2. Actualizar Dirección
-      await tx.direccionPsicologo.update({
-        where: { ID_DireccionPsicologo: psicologoActual.ID_DireccionPsicologo },
-        data: {
-          Departamento: data.direccion.Departamento,
-          Ciudad: data.direccion.Ciudad,
-          Barrio: data.direccion.Barrio,
-          Calle: data.direccion.Calle
-        }
-      });
+       if (data.direccion) {
+           await tx.direccionPsicologo.update({
+               where: { ID_DireccionPsicologo: psicologo.ID_DireccionPsicologo },
+               data: {
+                   Departamento: data.direccion.departamento,
+                   Ciudad: data.direccion.ciudad,
+                   Barrio: data.direccion.barrio,
+                   Calle: data.direccion.calle
+               }
+           });
+       }
 
-      // 3. Actualizar Especialidades (Estrategia: Borrar y Recrear)
-      await tx.psicologo_EspecialidadPsicologo.deleteMany({ where: { ID_Psicologo: id } });
+       if (data.especialidadIds) {
+           await tx.psicologo_EspecialidadPsicologo.deleteMany({ where: { ID_Psicologo: id } });
+           if (data.especialidadIds.length > 0) {
+               const relaciones = data.especialidadIds.map((espId: any) => ({
+                   ID_Psicologo: id,
+                   ID_Especialidad: Number(espId)
+               }));
+               await tx.psicologo_EspecialidadPsicologo.createMany({ data: relaciones });
+           }
+       }
 
-      if (data.especialidadIds && data.especialidadIds.length > 0) {
-        const especialidadesData = data.especialidadIds.map((espId) => ({
-          ID_Psicologo: id,
-          ID_Especialidad: espId
-        }));
-        await tx.psicologo_EspecialidadPsicologo.createMany({ data: especialidadesData });
-      }
-      
-      return { message: 'Psicólogo actualizado correctamente' };
+       return psicologo;
     });
   }
 };

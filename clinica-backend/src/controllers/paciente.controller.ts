@@ -1,12 +1,12 @@
 import type { Request, Response } from 'express';
-import { PacienteService } from '../services/paciente.service'; 
+import { PacienteService } from '../services/paciente.service.js'; 
 
 // GET: Obtener todos los pacientes
 export const getPacientes = async (req: Request, res: Response) => {
   try {
     const pacientes = await PacienteService.getAll();
     res.json(pacientes);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 };
@@ -15,7 +15,6 @@ export const getPacientes = async (req: Request, res: Response) => {
 export const getExpediente = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    // Toda la lógica de matching secuencial y Promise.all ahora vive aquí:
     const expediente = await PacienteService.getExpediente(Number(id));
     
     if (!expediente) {
@@ -23,8 +22,8 @@ export const getExpediente = async (req: Request, res: Response) => {
     }
     
     res.json(expediente);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message }); 
   }
 };
 
@@ -33,7 +32,7 @@ export const createPaciente = async (req: Request, res: Response) => {
   try {
     const nuevoPaciente = await PacienteService.create(req.body);
     res.json(nuevoPaciente);
-  } catch (error) {
+  } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
 };
@@ -44,22 +43,23 @@ export const updatePaciente = async (req: Request, res: Response) => {
   try {
     const result = await PacienteService.update(Number(id), req.body);
     res.json(result);
-  } catch (error) {
+  } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
 };
 
-// GET: Historial (Si este endpoint es distinto a getExpediente)
+// GET: Historial (CORREGIDO)
 export const getHistorialPaciente = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    // Nota: Asegúrate de que el service tenga getHistorial implementado con la lógica que deseas
-    const historial = await PacienteService.getHistorial(Number(id)); 
+    // 1. Llamamos al método ESPECÍFICO del servicio para historial
+    const historial = await PacienteService.getHistorialPaciente(Number(id)); 
     
-    // @ts-ignore (Si getHistorial retorna array)
-    if (historial && historial.length > 0) res.json(historial);
-    else res.status(404).json({ error: 'Sin sesiones previas' });
-  } catch (error) {
+    // 2. Devolvemos el array (incluso si está vacío, es una respuesta válida 200 OK)
+    // El frontend se encarga de mostrar "No hay registros" si viene vacío.
+    res.json(historial || []);
+    
+  } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: 'Error buscando historial' });
   }

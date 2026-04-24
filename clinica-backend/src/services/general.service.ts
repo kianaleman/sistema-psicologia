@@ -4,7 +4,7 @@ const prisma = new PrismaClient();
 
 export const GeneralService = {
 
-  // 1. Catálogos Generales
+  // 1. Catálogos Generales (CORREGIDO: Incluye Pacientes y Psicólogos)
   getCatalogos: async () => {
     const [
       ocupaciones, 
@@ -15,7 +15,10 @@ export const GeneralService = {
       estadosActividad,
       viasAdministracion,
       tiposTerapia,
-      exploraciones
+      exploraciones,
+      tiposCita,
+      estadosCita,
+      metodosPago
     ] = await Promise.all([
       prisma.ocupacion.findMany(),
       prisma.estadoCivil.findMany(),
@@ -25,12 +28,34 @@ export const GeneralService = {
       prisma.estadoDeActividad.findMany(),
       prisma.viaAdministracion.findMany(),
       prisma.tipoDeTerapia.findMany(),
-      prisma.exploracionPsicologica.findMany()
+      prisma.exploracionPsicologica.findMany(),
+      prisma.tipoDeCita.findMany(),
+      prisma.estadoCita.findMany(),
+      prisma.metodoPago.findMany()
     ]);
+
+    // --- LÓGICA AGREGADA PARA CITA FORM MODAL ---
+    const [pacientes, psicologos] = await Promise.all([
+        prisma.paciente.findMany({ 
+            where: { ID_EstadoDeActividad: 1 }, // Solo activos
+            select: { ID_Paciente: true, Nombre: true, Apellido: true, PacienteAdulto: { select: { No_Cedula: true } }, ID_EstadoDeActividad: true, DireccionPaciente: true } 
+        }),
+        prisma.psicologo.findMany({ 
+            where: { ID_EstadoDeActividad: 1 }, // Solo activos
+            select: { ID_Psicologo: true, Nombre: true, Apellido: true, ID_EstadoDeActividad: true } 
+        })
+    ]);
+    // --------------------------------------------
 
     return { 
       ocupaciones, estadosCiviles, parentescos, tutores, especialidades, 
-      estadosActividad, viasAdministracion, tiposTerapia, exploraciones
+      estadosActividad, viasAdministracion, tiposTerapia, exploraciones,
+      tiposCita,
+      estadosCita,
+      metodosPago,
+      // Retornamos también estos para que el hook useCitas los reciba
+      pacientes, 
+      psicologos
     };
   },
 
@@ -152,5 +177,9 @@ export const GeneralService = {
         { name: 'Mayores (60+)', value: edades.Mayores, fill: '#64748b' },
       ].filter(d => d.value > 0)
     };
+  },
+
+  getMotivosCancelacion: async () => {
+    return await prisma.motivoCancelacion.findMany();
   }
 };

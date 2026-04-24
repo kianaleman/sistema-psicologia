@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { iniciarCronJobs } from './cron/scheduler'; // <--- IMPORTAR AQUÍ
 
 // Importar Rutas Modulares
 import pacienteRoutes from './routes/paciente.routes';
@@ -33,8 +34,11 @@ app.use('/api/config', configuracionRoutes);
 // Nota: Estas rutas no tienen un prefijo común fuerte, así que las montamos en /api
 app.use('/api', generalRoutes); 
 
+app.use('/api/general', generalRoutes);
+
 // --- INICIO DEL SERVIDOR ---
 app.listen(PORT, () => {
   console.log(`🚀 Servidor ONLINE en http://localhost:${PORT}`);
   console.log(`📂 Arquitectura MVC cargada correctamente.`);
+  iniciarCronJobs();
 });

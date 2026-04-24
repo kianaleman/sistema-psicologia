@@ -60,9 +60,13 @@ const formatearFecha = (f: string) => {
   const formatearHora = (h: string) => {
     if (!h) return "--:--";
     const fecha = new Date(h);
-    const horas = fecha.getUTCHours().toString().padStart(2, '0');
-    const minutos = fecha.getUTCMinutes().toString().padStart(2, '0');
-    return `${horas}:${minutos}`;
+    // Forzamos UTC para que lea "20:30" tal cual está en la BD
+    // en lugar de restarle 6 horas.
+    return fecha.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        timeZone: 'UTC' 
+    });
   };
 
   // 3. Colores de estado

@@ -7,7 +7,8 @@ import type {
   Factura, 
   Ocupacion, 
   EstadoCivil, 
-  Parentesco 
+  Parentesco, 
+  MotivoCancelacion
 } from '../types';
 
 const API_URL = 'http://localhost:3000/api';
@@ -95,7 +96,11 @@ export const api = {
     getAll: () => request<Cita[]>('/citas'),
     update: (id: number, data: any) => request(`/citas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     create: (data: any) => request('/citas', { method: 'POST', body: JSON.stringify(data) }),
-    cancel: (id: number) => request(`/citas/${id}/cancelar`, { method: 'PATCH' }),
+    cancel: (id: number, motivoId: number, notas: string) => 
+      request(`/citas/${id}/cancelar`, { 
+        method: 'PATCH',
+        body: JSON.stringify({ motivoId, notas }) 
+      }),
   },
 
   sesiones: {
@@ -124,5 +129,6 @@ export const api = {
       if (fin) params.append('fin', fin);
       return request<any>(`/dashboard-graficos?${params.toString()}`);
     },
+    motivosCancelacion: () => request<MotivoCancelacion[]>('/general/motivos-cancelacion'),
   }
 };

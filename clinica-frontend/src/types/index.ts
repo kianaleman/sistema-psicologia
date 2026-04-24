@@ -151,6 +151,11 @@ export interface TipoCitaCatalogo {
   NombreDeCita: string;
 }
 
+export interface MotivoCancelacion {
+  ID_Motivo: number;
+  Categoria: string;
+}
+
 export interface EstadoCitaCatalogo {
   ID_EstadoCita: number;
   NombreEstado: string;
@@ -165,6 +170,13 @@ export interface Cita {
   ID_Paciente: number;
   ID_Psicologo: number;
   ID_TipoCita: number;
+  ID_Motivo?: number;
+  NotasCancelacion?: string;
+
+  MotivoCancelacion? : {
+      D_Motivo: number;
+      Categoria: string;
+  };
   
   // CORRECCIÓN IMPORTANTE:
   // Prisma devuelve el objeto completo cuando usamos 'include'.

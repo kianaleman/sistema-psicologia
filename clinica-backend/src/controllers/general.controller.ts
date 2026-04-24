@@ -49,3 +49,12 @@ export const getGraficosData = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Error calculando gráficos' });
   }
 };
+
+export const getMotivosCancelacion = async (_req: Request, res: Response) => {
+  try {
+    const motivos = await GeneralService.getMotivosCancelacion();
+    res.json(motivos);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
