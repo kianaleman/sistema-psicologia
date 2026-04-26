@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { CitaService } from '../services/cita.service';
+import { CitaService } from '../services/cita.service.js';
 
 export const iniciarCronJobs = () => {
   // Sintaxis Cron: "minuto hora dia mes dia_semana"

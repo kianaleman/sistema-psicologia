@@ -17,11 +17,11 @@ export const useCitas = () => {
     psicologo: ''
   });
 
-  // Estado inicial de catálogos
   const [catalogos, setCatalogos] = useState<any>({
     tiposCita: [],
     estadosCita: [],
     metodosPago: [],
+    divisas: [], // Agregado para bimoneda
     pacientes: [],
     psicologos: [],
     viasAdmin: [],       
@@ -46,19 +46,21 @@ export const useCitas = () => {
 
   const fetchCatalogos = useCallback(async () => {
     try {
-      const general: any = await api.general.catalogos();
+      // Sincronizado con la nueva ruta unificada del Backend
+      const data: any = await api.citas.getCatalogos(); 
       setCatalogos({
-         tiposCita: general.tiposCita || [],
-         estadosCita: general.estadosCita || [],
-         metodosPago: general.metodosPago || [],
-         pacientes: general.pacientes || [],
-         psicologos: general.psicologos || [],
-         viasAdmin: general.viasAdministracion || [], 
-         tiposTerapia: general.tiposTerapia || [],
-         exploraciones: general.exploraciones || []
+         tiposCita: data.tiposCita || [],
+         estadosCita: data.estadosCita || [],
+         metodosPago: data.metodosPago || [],
+         divisas: data.divisas || [], // Sincronizado con el backend bimoneda
+         pacientes: data.pacientes || [],
+         psicologos: data.psicologos || [],
+         viasAdmin: data.viasAdmin || [], 
+         tiposTerapia: data.tiposTerapia || [],
+         exploraciones: data.exploraciones || []
       });
     } catch (err) {
-      console.error("Error catalogos", err);
+      console.error("Error al cargar catálogos de citas", err);
     }
   }, []);
 
@@ -111,40 +113,32 @@ export const useCitas = () => {
   const guardarSesion = async (data: any) => {
      try {
         await api.sesiones.create(data);
+        toast.success('Sesión guardada');
         fetchCitas();
      } catch (err: any) {
         throw new Error(err.response?.data?.error || 'Error al guardar sesión');
      }
   };
 
-  // --- FILTRADO CORREGIDO (ZONA HORARIA LOCAL) ---
-  // --- FILTRADO CORREGIDO (SOLUCIÓN FECHA EXACTA) ---
+  // --- FILTRADO ADAPTADO A SNAKE_CASE ---
   const citasFiltradas = citas.filter(c => {
-     // 1. TRUCO: Leer la fecha como string puro para evitar que el navegador reste horas
-     // c.FechaCita viene como "2025-11-28T00:00:00.000Z" -> tomamos "2025-11-28"
+     // Prisma devuelve FechaCita
      const fechaCitaStr = c.FechaCita.toString().split('T')[0];
-     
-     // Fecha de "Hoy" en formato local YYYY-MM-DD (ej: Nicaragua)
-     // Usamos 'en-CA' porque devuelve formato ISO (YYYY-MM-DD) que es fácil de comparar
      const hoyStr = new Date().toLocaleDateString('en-CA');
 
      let matchPeriodo = true;
-
      if (filtros.periodo === 'hoy') {
         matchPeriodo = fechaCitaStr === hoyStr;
      } 
      else if (filtros.periodo === 'semana') {
-        const fechaCitaObj = new Date(fechaCitaStr + "T00:00:00"); // Forzamos fecha local
+        const fechaCitaObj = new Date(fechaCitaStr + "T00:00:00");
         const hoy = new Date();
-        
         const primerDia = new Date(hoy); 
         primerDia.setDate(hoy.getDate() - hoy.getDay());
         primerDia.setHours(0, 0, 0, 0);
-
         const ultimoDia = new Date(hoy); 
         ultimoDia.setDate(hoy.getDate() - hoy.getDay() + 6);
         ultimoDia.setHours(23, 59, 59, 999);
-
         matchPeriodo = fechaCitaObj >= primerDia && fechaCitaObj <= ultimoDia;
      } 
      else if (filtros.periodo === 'mes') {
@@ -153,20 +147,19 @@ export const useCitas = () => {
         matchPeriodo = fechaCitaObj.getMonth() === hoy.getMonth() && fechaCitaObj.getFullYear() === hoy.getFullYear();
      } 
      else if (filtros.periodo === 'rango' && filtros.fechaInicio && filtros.fechaFin) {
-        // Comparación de strings directa funciona perfecto con formato YYYY-MM-DD
         matchPeriodo = fechaCitaStr >= filtros.fechaInicio && fechaCitaStr <= filtros.fechaFin;
      }
 
-     // Filtros de texto y estado (sin cambios)
      let matchEstado = true;
      if (filtros.estado) matchEstado = c.ID_EstadoCita.toString() === filtros.estado;
 
      let matchTexto = true;
-     if (filtros.paciente) {
+     // IMPORTANTE: Acceso a Paciente y Psicologo con PascalCase de Prisma
+     if (filtros.paciente && c.Paciente) {
         const pName = `${c.Paciente.Nombre} ${c.Paciente.Apellido}`.toLowerCase();
         matchTexto = matchTexto && pName.includes(filtros.paciente.toLowerCase());
      }
-     if (filtros.psicologo) {
+     if (filtros.psicologo && c.Psicologo) {
         const dName = `${c.Psicologo.Nombre} ${c.Psicologo.Apellido}`.toLowerCase();
         matchTexto = matchTexto && dName.includes(filtros.psicologo.toLowerCase());
      }

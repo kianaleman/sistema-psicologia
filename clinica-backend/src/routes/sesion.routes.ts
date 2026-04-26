@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createSesion, searchSesion } from '../controllers/sesion.controller';
+import { createSesion, searchSesion } from '../controllers/sesion.controller.js';
 
 const router = Router();
 

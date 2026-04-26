@@ -1,27 +1,30 @@
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../services/api';
 import { toast } from 'sonner';
-import type { Tutor } from '../types';
+import type { Tutor, Ocupacion, EstadoCivil, Parentesco } from '../types';
 
-// Interface extendida para incluir datos anidados necesarios en esta vista
+// Interfaz extendida para la vista de administración de tutores
 export interface TutorCompleto extends Tutor {
-  No_Telefono: string;
-  ID_Parentesco: number;
-  ID_Ocupacion: number;
-  ID_EstadoCivil: number;
-  Ocupacion: { NombreDeOcupacion: string };
-  DireccionTutor: { Departamento: string, Ciudad: string, Barrio: string, Calle: string };
-  PacienteMenor: { 
-    PartNacimiento: string; 
-    GradoEscolar: string;
-    Paciente: { Nombre: string, Apellido: string } 
+  // Ajuste a la relación real de Prisma N:M
+  Tutor_PacienteMenor?: {
+    Parentesco: Parentesco;
+    Paciente_Menor: {
+      PartidaDeNacimiento: string;
+      Grado_Escolar: string;
+      Paciente: { Nombre: string; Apellido: string };
+    };
   }[];
 }
 
 const initialState = {
-  Nombre: '', Apellido: '', No_Cedula: '', No_Telefono: '',
-  ID_Parentesco: 0, ID_Ocupacion: 0, ID_EstadoCivil: 0,
-  DireccionTutor: { Departamento: '', Ciudad: '', Barrio: '', Calle: '' }
+  Nombre: '',
+  Apellido: '',
+  No_Cedula: '',
+  No_Telefono: '',
+  ID_Ocupacion: 0,
+  ID_EstadoCivil: 0,
+  // Nota: En el nuevo backend la dirección suele estar asociada al Paciente, 
+  // pero si el Tutor tiene la propia, asegúrate que el campo sea ID_Direccion
 };
 
 export function useTutores() {
@@ -29,12 +32,11 @@ export function useTutores() {
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   
-  // Catálogos
-  const [ocupaciones, setOcupaciones] = useState<any[]>([]);
-  const [estadosCiviles, setEstadosCiviles] = useState<any[]>([]);
-  const [parentescos, setParentescos] = useState<any[]>([]);
+  // Catálogos tipados
+  const [ocupaciones, setOcupaciones] = useState<Ocupacion[]>([]);
+  const [estadosCiviles, setEstadosCiviles] = useState<EstadoCivil[]>([]);
+  const [parentescos, setParentescos] = useState<Parentesco[]>([]);
 
-  // Estado de Edición
   const [tutorSeleccionado, setTutorSeleccionado] = useState<TutorCompleto | null>(null);
   const [formData, setFormData] = useState<any>(initialState);
 
@@ -46,51 +48,56 @@ export function useTutores() {
     try {
       setLoading(true);
       const [dataTutores, dataCatalogos] = await Promise.all([
-        api.tutores.getAll(),
+        api.tutores.getAll(), // Asegúrate que en api.ts devuelva Tutor[]
         api.general.catalogos()
       ]);
-      // @ts-ignore
+      
       setTutores(dataTutores);
-      setOcupaciones(dataCatalogos.ocupaciones);
-      setEstadosCiviles(dataCatalogos.estadosCiviles);
-      setParentescos(dataCatalogos.parentescos);
+      setOcupaciones(dataCatalogos.ocupaciones || []);
+      setEstadosCiviles(dataCatalogos.estadosCiviles || []);
+      setParentescos(dataCatalogos.parentescos || []);
     } catch (error) {
-      console.error(error);
+      console.error("Error cargando tutores:", error);
       toast.error("Error al cargar la lista de tutores");
     } finally {
       setLoading(false);
     }
   };
 
-  // Lógica de Filtrado Memoizada
+  // Lógica de Filtrado (PascalCase)
   const tutoresFiltrados = useMemo(() => {
     return tutores.filter(t => {
-      const busquedaLower = busqueda.toLowerCase();
+      const busquedaLower = busqueda.toLowerCase().trim();
       const nombreCompleto = `${t.Nombre} ${t.Apellido}`.toLowerCase();
-      return nombreCompleto.includes(busquedaLower) || t.No_Cedula.includes(busquedaLower);
+      const cedula = t.No_Cedula?.toLowerCase() || '';
+      
+      return nombreCompleto.includes(busquedaLower) || cedula.includes(busquedaLower);
     });
   }, [tutores, busqueda]);
 
-  // Preparar datos para edición
   const prepareEdit = (tutor: TutorCompleto) => {
     setTutorSeleccionado(tutor);
     setFormData({
       Nombre: tutor.Nombre,
       Apellido: tutor.Apellido,
       No_Cedula: tutor.No_Cedula,
-      No_Telefono: tutor.No_Telefono,
-      ID_Parentesco: tutor.ID_Parentesco,
-      ID_Ocupacion: tutor.ID_Ocupacion,
-      ID_EstadoCivil: tutor.ID_EstadoCivil,
-      DireccionTutor: tutor.DireccionTutor || initialState.DireccionTutor
+      No_Telefono: tutor.No_Telefono || '',
+      ID_Ocupacion: tutor.Ocupacion_Tutor?.ID_Ocupacion || 0,
+      ID_EstadoCivil: tutor.EstadoCivil_Tutor?.ID_EstadoCivil || 0
     });
   };
 
-  // Guardar cambios
   const saveTutor = async () => {
-    if (!tutorSeleccionado) return;
-    await api.tutores.update(tutorSeleccionado.ID_Tutor, formData);
-    await loadData();
+    try {
+      if (!tutorSeleccionado) return false;
+      await api.tutores.update(tutorSeleccionado.ID_Tutor, formData);
+      toast.success("Información del tutor actualizada");
+      await loadData();
+      return true;
+    } catch (error) {
+      toast.error("Error al guardar cambios");
+      return false;
+    }
   };
 
   return {

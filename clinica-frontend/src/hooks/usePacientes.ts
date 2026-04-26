@@ -8,85 +8,81 @@ export function usePacientes() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Catálogos (Tipados correctamente)
+  // Catálogos con tipado estricto
   const [ocupaciones, setOcupaciones] = useState<Ocupacion[]>([]);
   const [estadosCiviles, setEstadosCiviles] = useState<EstadoCivil[]>([]);
   const [parentescos, setParentescos] = useState<Parentesco[]>([]);
   const [listaTutores, setListaTutores] = useState<Tutor[]>([]);
 
-  // Filtros
+  // Filtros de la UI
   const [filtros, setFiltros] = useState({
     busqueda: '',
     tipo: 'todos' as 'todos' | 'adultos' | 'menores',
     actividad: 'todos' as 'todos' | 'activos' | 'inactivos'
   });
 
-  // Usamos useCallback para que la función no cambie en cada render
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Ejecutamos en paralelo pero manejamos fallos individuales si fuera necesario
+      // Peticiones paralelas al nuevo backend
       const [dataPacientes, dataCatalogos] = await Promise.all([
         api.pacientes.getAll(),
-        api.general.catalogos()
+        api.general.catalogos() // Asegúrate que en api.ts apunte a /general/catalogos
       ]);
 
       setPacientes(dataPacientes);
       
-      // Asignación segura
+      // CORRECCIÓN DE TIPOS: Asignación segura de catálogos
       if (dataCatalogos) {
           setOcupaciones(dataCatalogos.ocupaciones || []);
           setEstadosCiviles(dataCatalogos.estadosCiviles || []);
           setParentescos(dataCatalogos.parentescos || []);
-          setListaTutores(dataCatalogos.tutores || []);
+          // Aquí estaba el error: se asignaban psicólogos a tutores. Corregido:
+          setListaTutores(dataCatalogos.tutores || []); 
       }
       
     } catch (err: any) {
-      console.error("Error cargando datos:", err);
+      console.error("Error cargando datos de pacientes:", err);
       setError(err.message);
-      toast.error("No se pudieron cargar los datos. Verifica tu conexión.");
+      toast.error("Error de conexión con el servidor.");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Carga inicial
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // --- LÓGICA DE FILTRADO (Optimizada) ---
+  // --- LÓGICA DE FILTRADO (Sincronizada con PascalCase y Snake_Case) ---
   const pacientesFiltrados = useMemo(() => {
     if (!pacientes) return [];
 
     return pacientes.filter(p => {
       const term = filtros.busqueda.toLowerCase().trim();
       
-      // 1. Búsqueda Texto
+      // 1. Búsqueda por Texto (Usa Nombre/Apellido con Mayúscula de Prisma)
       let matchTexto = true;
       if (term) {
         const nombreCompleto = `${p.Nombre} ${p.Apellido}`.toLowerCase();
         const cedula = p.PacienteAdulto?.No_Cedula?.toLowerCase() || '';
-        // Manejo seguro de null en PacienteMenor
-        const partida = p.PacienteMenor?.PartNacimiento?.toLowerCase() || '';
+        // Ajuste a Paciente_Menor y PartidaDeNacimiento del nuevo schema
+        const partida = p.Paciente_Menor?.PartidaDeNacimiento?.toLowerCase() || '';
         
         matchTexto = nombreCompleto.includes(term) || cedula.includes(term) || partida.includes(term);
       }
 
-      // 2. Filtro Tipo
+      // 2. Filtro por Tipo de Paciente
       let matchTipo = true;
-      if (filtros.tipo === 'adultos') matchTipo = p.PacienteAdulto !== null && p.PacienteAdulto !== undefined;
-      if (filtros.tipo === 'menores') matchTipo = p.PacienteMenor !== null && p.PacienteMenor !== undefined;
+      if (filtros.tipo === 'adultos') matchTipo = !!p.PacienteAdulto;
+      if (filtros.tipo === 'menores') matchTipo = !!p.Paciente_Menor;
 
-      // 3. Filtro Actividad
+      // 3. Filtro por Estado (Usa el nuevo booleano 'Activo')
       let matchActividad = true;
-      const estadoNombre = p.EstadoDeActividad?.NombreEstadoActividad?.toLowerCase();
-      
-      // Mapeo seguro de estados (asumiendo que tu BD usa "Activo" e "Inactivo")
-      if (filtros.actividad === 'activos') matchActividad = estadoNombre === 'activo';
-      if (filtros.actividad === 'inactivos') matchActividad = estadoNombre === 'inactivo';
+      if (filtros.actividad === 'activos') matchActividad = p.Activo === true;
+      if (filtros.actividad === 'inactivos') matchActividad = p.Activo === false;
 
       return matchTexto && matchTipo && matchActividad;
     });
@@ -96,33 +92,29 @@ export function usePacientes() {
     setFiltros(prev => ({ ...prev, [campo]: valor }));
   };
 
-  // Acciones CRUD con manejo de UI Optimista (Opcional, por ahora simple)
+  // --- ACCIONES CRUD ---
+
   const crearPaciente = async (data: CreatePacienteDTO) => {
     try {
         await api.pacientes.create(data);
-        toast.success("Paciente registrado exitosamente");
-        await loadData(); // Recargamos para ver el nuevo paciente
-        return true; // Retornamos éxito
-    } catch (e: any) {
-        console.error(e);
-      // CORRECCIÓN: Leemos el mensaje que manda el Backend (paciente.service.ts)
-      const msg = e.response?.data?.error || 'Error desconocido al registrar paciente';
-      toast.error(msg);
-        return false;
-    }
-  };
-
-  const actualizarPaciente = async (id: number, data: any) => {
-    try {
-        await api.pacientes.update(id, data);
-        toast.success("Paciente actualizado correctamente");
+        toast.success("Paciente registrado correctamente");
         await loadData();
         return true;
     } catch (e: any) {
-        // CORRECCIÓN: Leemos el mensaje que manda el Backend (paciente.service.ts)
-      const msg = e.response?.data?.error || 'Error desconocido al registrar paciente';
+      const msg = e.response?.data?.error || 'Error al registrar paciente';
       toast.error(msg);
-        return false;
+      return false;
+    }
+  };
+
+  const toggleEstado = async (id: number, estadoActual: boolean) => {
+    try {
+      // Llama al nuevo endpoint PATCH /pacientes/:id/estado
+      await api.pacientes.toggleEstado(id, !estadoActual);
+      toast.success(estadoActual ? "Paciente desactivado" : "Paciente activado");
+      await loadData();
+    } catch (e: any) {
+      toast.error("No se pudo cambiar el estado del paciente");
     }
   };
 
@@ -133,6 +125,6 @@ export function usePacientes() {
     filtros,
     setFiltro,
     catalogos: { ocupaciones, estadosCiviles, parentescos, listaTutores },
-    acciones: { crearPaciente, actualizarPaciente, reload: loadData }
+    acciones: { crearPaciente, reload: loadData, toggleEstado }
   };
 }

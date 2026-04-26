@@ -3,13 +3,18 @@ import { api } from '../services/api';
 import { toast } from 'sonner';
 import type { Psicologo } from '../types';
 
-// Definiciones locales
-export interface Especialidad { ID_Especialidad: number; NombreEspecialidad: string; }
-export interface EstadoActividad { ID_EstadoDeActividad: number; NombreEstadoActividad: string; }
+// Tipos locales alineados con el Backend
+export interface Especialidad { 
+  ID_Especialidad: number; 
+  NombreEspecialidad: string; 
+}
 
+// Interfaz extendida para manejar la data que devuelve Prisma
 export interface PsicologoCompleto extends Psicologo {
-  Psicologo_EspecialidadPsicologo: { EspecialidadPsicologo: Especialidad }[];
-  DireccionPsicologo: { Departamento: string, Ciudad: string, Barrio: string, Calle: string };
+  // Sincronizado con la relación N:M de especialidades
+  Psicologo_Especialidad?: { 
+    Especialidad: Especialidad 
+  }[];
 }
 
 export function usePsicologos() {
@@ -22,7 +27,6 @@ export function usePsicologos() {
 
   // Catálogos
   const [especialidades, setEspecialidades] = useState<Especialidad[]>([]);
-  const [estadosActividad, setEstadosActividad] = useState<EstadoActividad[]>([]);
 
   useEffect(() => {
     loadData();
@@ -35,45 +39,68 @@ export function usePsicologos() {
         api.psicologos.getAll(),
         api.general.catalogos()
       ]);
-      // @ts-ignore
+      
       setPsicologos(dataPsicologos);
+      // Sincronizado con el nombre que devuelve api.general.catalogos()
       setEspecialidades(dataCatalogos.especialidades || []);
-      setEstadosActividad(dataCatalogos.estadosActividad || []);
     } catch (error) {
-      console.error(error);
+      console.error("Error cargando psicólogos:", error);
       toast.error("Error cargando datos de psicólogos");
     } finally {
       setLoading(false);
     }
   };
 
-  // Lógica de Filtrado
+  // --- LÓGICA DE FILTRADO (Sincronizada con PascalCase y Booleano Activo) ---
   const psicologosFiltrados = useMemo(() => {
     return psicologos.filter(p => {
       const busquedaLower = busqueda.toLowerCase().trim();
+      
+      // 1. Filtro de búsqueda (PascalCase: Nombre, Apellido, CodigoMinsa)
       let pasaBusqueda = true;
       if (busquedaLower) {
         const nombreCompleto = `${p.Nombre} ${p.Apellido}`.toLowerCase();
-        pasaBusqueda = nombreCompleto.includes(busquedaLower) || p.CodigoDeMinsa.toLowerCase().includes(busquedaLower);
+        // Usamos CodigoMinsa (sin el 'De') según el nuevo schema
+        const codigoMinsa = p.CodigoMinsa?.toLowerCase() || '';
+        pasaBusqueda = nombreCompleto.includes(busquedaLower) || codigoMinsa.includes(busquedaLower);
       }
+
+      // 2. Filtro de actividad (Usando el nuevo booleano Activo)
       let pasaActividad = true;
-      const estado = p.EstadoDeActividad?.NombreEstadoActividad?.toLowerCase();
-      if (filtroActividad === 'activos') pasaActividad = estado === 'activo';
-      else if (filtroActividad === 'inactivos') pasaActividad = estado === 'inactivo';
+      if (filtroActividad === 'activos') pasaActividad = p.Activo === true;
+      else if (filtroActividad === 'inactivos') pasaActividad = p.Activo === false;
+
       return pasaBusqueda && pasaActividad;
     });
   }, [psicologos, busqueda, filtroActividad]);
 
   // Acciones CRUD
-  const crearPsicologo = async (data: any) => { await api.psicologos.create(data); await loadData(); };
-  const actualizarPsicologo = async (id: number, data: any) => { await api.psicologos.update(id, data); await loadData(); };
+  const crearPsicologo = async (data: any) => { 
+    try {
+      await api.psicologos.create(data); 
+      toast.success("Psicólogo registrado");
+      await loadData(); 
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || "Error al crear psicólogo");
+    }
+  };
+
+  const actualizarPsicologo = async (id: number, data: any) => { 
+    try {
+      await api.psicologos.update(id, data); 
+      toast.success("Datos actualizados");
+      await loadData(); 
+    } catch (e: any) {
+      toast.error("Error al actualizar");
+    }
+  };
 
   return {
     psicologos: psicologosFiltrados,
     loading,
     busqueda, setBusqueda,
     filtroActividad, setFiltroActividad,
-    catalogos: { especialidades, estadosActividad },
-    acciones: { crearPsicologo, actualizarPsicologo }
+    catalogos: { especialidades },
+    acciones: { crearPsicologo, actualizarPsicologo, reload: loadData }
   };
 }

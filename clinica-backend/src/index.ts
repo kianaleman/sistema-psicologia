@@ -1,16 +1,16 @@
 import express from 'express';
 import cors from 'cors';
-import { iniciarCronJobs } from './cron/scheduler'; // <--- IMPORTAR AQUÍ
+import { iniciarCronJobs } from './cron/scheduler.js'; // <--- IMPORTAR AQUÍ
 
 // Importar Rutas Modulares
-import pacienteRoutes from './routes/paciente.routes';
-import citaRoutes from './routes/cita.routes';
-import sesionRoutes from './routes/sesion.routes';
-import psicologoRoutes from './routes/psicologo.routes';
-import tutorRoutes from './routes/tutor.routes';
-import generalRoutes from './routes/general.routes';
-import facturaRoutes from './routes/factura.routes';
-import configuracionRoutes from './routes/configuracion.routes';
+import pacienteRoutes from './routes/paciente.routes.js';
+import citaRoutes from './routes/cita.routes.js';
+import sesionRoutes from './routes/sesion.routes.js';
+import psicologoRoutes from './routes/psicologo.routes.js';
+import tutorRoutes from './routes/tutor.routes.js';
+import generalRoutes from './routes/general.routes.js';
+import reciboRoutes from './routes/recibo.routes.js';
+import configuracionRoutes from './routes/configuracion.routes.js';
 
 const app = express();
 const PORT = 3000;
@@ -27,7 +27,7 @@ app.use('/api/citas', citaRoutes);
 app.use('/api/sesiones', sesionRoutes);
 app.use('/api/psicologos', psicologoRoutes);
 app.use('/api/tutores', tutorRoutes);
-app.use('/api/facturas', facturaRoutes);
+app.use('/api/facturas', reciboRoutes);
 app.use('/api/config', configuracionRoutes);
 
 // 2. Rutas Generales (Dashboard, Catálogos, Historial)

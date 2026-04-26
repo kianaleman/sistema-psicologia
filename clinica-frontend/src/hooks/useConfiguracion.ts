@@ -2,18 +2,18 @@ import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { api } from '../services/api';
 
-// CONFIGURACIÓN MAESTRA DE CATÁLOGOS
-// Aquí definimos cómo se llaman los campos en la Base de Datos para cada tabla
+// CONFIGURACIÓN MAESTRA SINCRONIZADA CON PRISMA/SQL SERVER
 export const CATALOGOS_CONFIG = [
-  { label: 'Ocupaciones', key: 'ocupacion', idField: 'ID_Ocupacion', nameField: 'NombreDeOcupacion' },
-  { label: 'Estados Civiles', key: 'estadocivil', idField: 'ID_EstadoCivil', nameField: 'NombreEstadoCivil' },
-  { label: 'Parentescos', key: 'parentesco', idField: 'ID_Parentesco', nameField: 'NombreDeParentesco' },
+  { label: 'Ocupaciones', key: 'ocupacion', idField: 'ID_Ocupacion', nameField: 'Nombre_DeOcupacion' },
+  { label: 'Estados Civiles', key: 'estadocivil', idField: 'ID_EstadoCivil', nameField: 'Nombre_EstadoCivil' },
+  { label: 'Parentescos', key: 'parentesco', idField: 'ID_Parentesco', nameField: 'Nombre_De_Parentesco' },
   { label: 'Especialidades', key: 'especialidad', idField: 'ID_Especialidad', nameField: 'NombreEspecialidad' },
   { label: 'Exploraciones', key: 'exploracion', idField: 'ID_ExploracionPsicologica', nameField: 'NombreDeExploracionPsicologica' },
   { label: 'Tipos Terapia', key: 'terapia', idField: 'ID_TipoTerapia', nameField: 'NombreDeTerapia' },
   { label: 'Vías Admin.', key: 'via', idField: 'ID_ViaAdministracion', nameField: 'NombreDePresentacion' },
   { label: 'Métodos Pago', key: 'metodo', idField: 'ID_MetodoPago', nameField: 'NombreMetodo' },
-  { label: 'Motivos Cancelación', key: 'motivo', idField: 'ID_Motivo', nameField: 'Categoria' } // <--- NUEVO
+  // Corregido según la interfaz MotivoCancelacion del index.ts
+  { label: 'Motivos Cancelación', key: 'motivo', idField: 'ID_MotivoCancelacion', nameField: 'Motivo' } 
 ];
 
 export const useConfiguracion = () => {
@@ -21,7 +21,6 @@ export const useConfiguracion = () => {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   
-  // Estado del Modal
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<any | null>(null);
   const [inputValue, setInputValue] = useState('');
@@ -29,6 +28,7 @@ export const useConfiguracion = () => {
   const loadItems = async () => {
     setLoading(true);
     try {
+      // api.config.getAll debe recibir el 'key' y retornar el array de objetos
       const data = await api.config.getAll(activeTab.key);
       setItems(data);
     } catch (error) {
@@ -66,28 +66,31 @@ export const useConfiguracion = () => {
 
     try {
       if (editItem) {
-        await api.config.update(activeTab.key, editItem[activeTab.idField], inputValue);
-        toast.success('Actualizado correctamente');
+        // Usamos el idField dinámico para extraer el ID correcto
+        const id = editItem[activeTab.idField];
+        await api.config.update(activeTab.key, id, inputValue);
+        toast.success(`${activeTab.label} actualizado`);
       } else {
         await api.config.create(activeTab.key, inputValue);
-        toast.success('Creado correctamente');
+        toast.success(`${activeTab.label} creado`);
       }
       closeModal();
       loadItems();
-    } catch (error) {
-      toast.error('Error al guardar');
+    } catch (error: any) {
+      const msg = error.response?.data?.error || 'Error al guardar';
+      toast.error(msg);
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm('¿Estás seguro de eliminar este registro?')) return;
+    if (!window.confirm(`¿Estás seguro de eliminar este registro de ${activeTab.label}?`)) return;
     try {
       await api.config.delete(activeTab.key, id);
       toast.success('Eliminado correctamente');
       loadItems();
     } catch (error: any) {
-      // Aquí capturamos el error de validación del backend (FK constraint)
-      const msg = error.response?.data?.error || 'Error al eliminar';
+      // Manejo de restricciones de integridad (ej: no puedes borrar una ocupación en uso)
+      const msg = error.response?.data?.error || 'No se puede eliminar porque está en uso por otros registros';
       toast.error(msg);
     }
   };

@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { PsicologoService } from '../services/psicologo.service';
+import { PsicologoService } from '../services/psicologo.service.js';
 
 export const getPsicologos = async (_req: Request, res: Response) => {
   try {

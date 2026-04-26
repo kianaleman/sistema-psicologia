@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getPsicologos, createPsicologo, updatePsicologo } from '../controllers/psicologo.controller';
+import { getPsicologos, createPsicologo, updatePsicologo } from '../controllers/psicologo.controller.js';
 
 const router = Router();
 

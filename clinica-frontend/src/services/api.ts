@@ -4,17 +4,18 @@ import type {
   Tutor, 
   Psicologo, 
   Cita, 
-  Factura, 
+  Recibo, 
   Ocupacion, 
   EstadoCivil, 
   Parentesco, 
-  MotivoCancelacion
+  MotivoCancelacion, // Verifica que en types/index.ts se llame exactamente así
+  Especialidad, // <--- ASEGÚRATE DE AGREGAR ESTO AQUÍ
+  Stats
 } from '../types';
 
 const API_URL = 'http://localhost:3000/api';
 
 // --- CLASE DE ERROR PERSONALIZADA ---
-// Esto simula la estructura de error de Axios para compatibilidad con los hooks
 export class ApiError extends Error {
   response: { data: any; status: number };
 
@@ -25,7 +26,6 @@ export class ApiError extends Error {
   }
 }
 
-// Función genérica para hacer peticiones
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${endpoint}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -33,39 +33,33 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   });
   
   if (!response.ok) {
-    // Intentamos leer el JSON de error enviado por el backend
     const errorData = await response.json().catch(() => ({}));
-    
-    // Obtenemos el mensaje específico (ej: "La cédula ya existe...")
     const mensaje = errorData.error || errorData.message || 'Error en la petición al servidor';
-    
-    // Lanzamos nuestro error personalizado que contiene "response.data"
     throw new ApiError(mensaje, errorData, response.status);
   }
   
   return response.json();
 }
 
-// Tipado para la respuesta de catálogos generales
 interface CatalogosResponse {
   ocupaciones: Ocupacion[];
   estadosCiviles: EstadoCivil[];
   parentescos: Parentesco[];
-  tutores: Tutor[];
+  psicologos: Psicologo[];
+  tutores: Tutor[]; // <--- AGREGA ESTA LÍNEA
+  especialidades: Especialidad[];
 }
 
 export const api = {
-  // --- MÉTODOS GENÉRICOS (Para que funcionen los hooks como usePacientes) ---
   get: <T>(url: string) => request<T>(url),
   post: <T>(url: string, body: any) => request<T>(url, { method: 'POST', body: JSON.stringify(body) }),
   put: <T>(url: string, body: any) => request<T>(url, { method: 'PUT', body: JSON.stringify(body) }),
   patch: <T>(url: string, body: any) => request<T>(url, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: <T>(url: string) => request<T>(url, { method: 'DELETE' }),
 
-  // --- MÓDULOS ESPECÍFICOS (Legacy / Uso directo) ---
   pacientes: {
     getAll: () => request<Paciente[]>('/pacientes'),
-    getOne: (id: string) => request<any>(`/pacientes/${id}/expediente`),
+    getOne: (id: string | number) => request<any>(`/pacientes/${id}/expediente`),
     create: (data: CreatePacienteDTO) => request<Paciente>('/pacientes', { 
       method: 'POST', 
       body: JSON.stringify(data) 
@@ -74,11 +68,10 @@ export const api = {
       method: 'PUT', 
       body: JSON.stringify(data) 
     }),
-    toggleEstado: (id: number, idEstado: number) => request(`/pacientes/${id}/estado`, { 
+    toggleEstado: (id: number, activo: boolean) => request(`/pacientes/${id}/estado`, { 
       method: 'PATCH', 
-      body: JSON.stringify({ ID_EstadoDeActividad: idEstado }) 
+      body: JSON.stringify({ activo }) 
     }),
-    getHistorial: (id: number) => request<any[]>(`/pacientes/${id}/historial`),
   },
 
   tutores: {
@@ -89,45 +82,49 @@ export const api = {
   psicologos: {
     getAll: () => request<Psicologo[]>('/psicologos'),
     create: (data: any) => request('/psicologos', { method: 'POST', body: JSON.stringify(data) }),
+    // CORRECCIÓN AQUÍ (Línea 87): Se eliminó el "body:" duplicado y erróneo
     update: (id: number, data: any) => request(`/psicologos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   },
 
   citas: {
     getAll: () => request<Cita[]>('/citas'),
-    update: (id: number, data: any) => request(`/citas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    getCatalogos: () => request<any>('/citas/catalogos'),
     create: (data: any) => request('/citas', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: number, data: any) => request(`/citas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     cancel: (id: number, motivoId: number, notas: string) => 
       request(`/citas/${id}/cancelar`, { 
         method: 'PATCH',
         body: JSON.stringify({ motivoId, notas }) 
       }),
+    procesarInasistencias: () => request('/citas/inasistencias/procesar', { method: 'POST' }),
   },
 
   sesiones: {
     create: (data: any) => request('/sesiones', { method: 'POST', body: JSON.stringify(data) }),
+    getByExpediente: (idExpediente: number) => request<any[]>(`/sesiones/expediente/${idExpediente}`),
   },
 
-  facturas: {
-    getAll: () => request<Factura[]>('/facturas'),
+  recibos: { 
+    getAll: () => request<Recibo[]>('/facturas'), 
+    getOne: (id: number) => request<Recibo>(`/facturas/${id}`),
   },
 
   config: {
     getAll: (modelo: string) => request<any[]>(`/config/${modelo}`),
-    create: (modelo: string, nombre: string) => request(`/config/${modelo}`, { method: 'POST', body: JSON.stringify({ nombre }) }),
-    update: (modelo: string, id: number, nombre: string) => request(`/config/${modelo}/${id}`, { method: 'PUT', body: JSON.stringify({ nombre }) }),
+    create: (modelo: string, data: any) => request(`/config/${modelo}`, { method: 'POST', body: JSON.stringify(data) }),
+    update: (modelo: string, id: number, data: any) => request(`/config/${modelo}/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (modelo: string, id: number) => request(`/config/${modelo}/${id}`, { method: 'DELETE' }),
   },
 
   general: {
-    catalogos: () => request<CatalogosResponse>('/catalogos'),
-    catalogosCitas: () => request<any>('/citas/catalogos'),
-    stats: () => request<any>('/dashboard-stats'),
-    historialCompleto: () => request<any[]>('/historial'),
+    catalogos: () => request<CatalogosResponse>('/general/catalogos'), 
+    stats: () => request<Stats>('/general/stats'),
+    historialCompleto: () => request<any[]>('/general/historial'), // <--- AGREGÁ ESTA LÍNEA
     graficos: (inicio?: string, fin?: string) => {
       const params = new URLSearchParams();
       if (inicio) params.append('inicio', inicio);
       if (fin) params.append('fin', fin);
-      return request<any>(`/dashboard-graficos?${params.toString()}`);
+      return request<any>(`/general/graficos?${params.toString()}`);
     },
     motivosCancelacion: () => request<MotivoCancelacion[]>('/general/motivos-cancelacion'),
   }

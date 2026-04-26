@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getCatalogos, getDashboardStats, getHistorialGeneral, getGraficosData, getMotivosCancelacion } from '../controllers/general.controller';
+import { getCatalogos, getDashboardStats, getHistorialGeneral, getGraficosData, getMotivosCancelacion } from '../controllers/general.controller.js';
 
 const router = Router();
 

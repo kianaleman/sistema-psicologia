@@ -5,7 +5,7 @@ import {
   updatePaciente, 
   getExpediente,
   getHistorialPaciente 
-} from '../controllers/paciente.controller';
+} from '../controllers/paciente.controller.js';
 
 const router = Router();
 

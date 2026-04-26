@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getCatalogoItems, createCatalogoItem, updateCatalogoItem, deleteCatalogoItem } from '../controllers/configuracion.controller';
+import { getCatalogoItems, createCatalogoItem, updateCatalogoItem, deleteCatalogoItem } from '../controllers/configuracion.controller.js';
 
 const router = Router();
 

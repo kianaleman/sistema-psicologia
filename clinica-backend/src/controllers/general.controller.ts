@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { GeneralService } from '../services/general.service';
+import { GeneralService } from '../services/general.service.js';
 
 // GET: Catálogos Generales
 export const getCatalogos = async (req: Request, res: Response) => {
