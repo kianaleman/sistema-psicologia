@@ -1,6 +1,6 @@
 import { CATALOGOS_CONFIG, useConfiguracion } from '../hooks/useConfiguracion';
 
-// Iconos SVG Inline (se mantienen para diseño)
+// Iconos SVG Inline (se mantienen para coherencia visual)
 const Icons = {
   Settings: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6"><path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.945a.75.75 0 01.106 1.06l-1.597 1.598a.75.75 0 11-1.06-1.06l1.598-1.597a.75.75 0 011.06-.106zM6.945 18.894a.75.75 0 01-1.06.106l-1.598-1.597a.75.75 0 111.06-1.06l1.597 1.598a.75.75 0 01-.106 1.06zM15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /><path d="M4.5 12a.75.75 0 01.75-.75h2.25a.75.75 0 010 1.5H5.25A.75.75 0 014.5 12zM17.25 12a.75.75 0 01.75-.75h2.25a.75.75 0 010 1.5H18a.75.75 0 01-.75-.75zM12 15.75a.75.75 0 01.75-.75v2.25a.75.75 0 01-1.5 0V15a.75.75 0 01.75-.75zM12 5.25a.75.75 0 01.75-.75h2.25a.75.75 0 010 1.5H13.5a.75.75 0 01-.75-.75zM6.945 6.945a.75.75 0 011.06-.106l1.597 1.598a.75.75 0 01-1.06 1.06L6.945 6.945zM18.894 17.651a.75.75 0 01-.106 1.06l-1.597 1.598a.75.75 0 01-1.06-1.06l1.598-1.597a.75.75 0 011.06-.106z" /></svg>,
   Plus: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>,
@@ -30,8 +30,8 @@ export default function Configuracion() {
           <li className="menu-title text-slate-400 uppercase text-xs font-bold p-2 mb-1">Catálogos del Sistema</li>
           {CATALOGOS_CONFIG.map((cat) => (
             <li key={cat.key} className="p-0">
-              <a 
-                className={`flex items-center gap-2 px-4 py-2 text-sm rounded-lg transition-colors ${
+              <button 
+                className={`flex items-center gap-2 px-4 py-2 text-sm rounded-lg transition-colors w-full text-left ${
                     activeTab.key === cat.key 
                         ? 'bg-slate-800 text-white font-semibold shadow-md' 
                         : 'text-slate-600 hover:bg-slate-50'
@@ -39,7 +39,7 @@ export default function Configuracion() {
                 onClick={() => setActiveTab(cat)}
               >
                 {cat.label}
-              </a>
+              </button>
             </li>
           ))}
         </ul>
@@ -67,41 +67,47 @@ export default function Configuracion() {
             <table className="table w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="w-20 py-4 pl-6 text-xs font-bold text-slate-500 uppercase tracking-wider">ID</th>
-                  <th className="py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Nombre</th>
+                  <th className="w-24 py-4 pl-6 text-xs font-bold text-slate-500 uppercase tracking-wider">Código</th>
+                  <th className="py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Descripción / Nombre</th>
                   <th className="py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right pr-6">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {items.map((item) => (
-                  <tr key={item[activeTab.idField]} className="hover:bg-slate-50 transition-colors group">
-                    {/* CORRECCIÓN: Usamos el operador || para asegurar que la propiedad no es null antes de .toString() */}
-                    <td className="font-mono text-slate-400 text-sm pl-6">
-                        #{ (item[activeTab.idField] || 0).toString().padStart(3, '0') } 
-                    </td>
-                    <td className="font-bold text-slate-700 text-base">{item[activeTab.nameField]}</td>
-                    <td className="text-right pr-6 space-x-2">
-                      <div className="flex justify-end gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                          <button 
-                            className="btn btn-sm btn-ghost text-slate-500 hover:text-blue-600 hover:bg-blue-50 tooltip" 
-                            data-tip="Editar" 
-                            onClick={() => openModal(item)}
-                          >
-                             <Icons.Edit />
-                          </button>
-                          <button 
-                            className="btn btn-sm btn-ghost text-red-500 hover:bg-red-50 tooltip" 
-                            data-tip="Eliminar" 
-                            onClick={() => handleDelete(item[activeTab.idField])}
-                          >
-                             <Icons.Trash />
-                          </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {items.map((item) => {
+                  const idValue = item[activeTab.idField];
+                  const nameValue = item[activeTab.nameField];
+
+                  return (
+                    <tr key={idValue} className="hover:bg-slate-50 transition-colors group">
+                      <td className="font-mono text-slate-400 text-sm pl-6">
+                          #{ idValue?.toString().padStart(3, '0') || '---' } 
+                      </td>
+                      <td className="font-bold text-slate-700 text-base">
+                        {nameValue || <span className="text-rose-400 italic">Sin nombre</span>}
+                      </td>
+                      <td className="text-right pr-6">
+                        <div className="flex justify-end gap-2">
+                            <button 
+                              className="btn btn-sm btn-ghost text-slate-500 hover:text-blue-600 hover:bg-blue-50 tooltip" 
+                              data-tip="Editar" 
+                              onClick={() => openModal(item)}
+                            >
+                               <Icons.Edit />
+                            </button>
+                            <button 
+                              className="btn btn-sm btn-ghost text-red-500 hover:bg-red-50 tooltip" 
+                              data-tip="Eliminar" 
+                              onClick={() => handleDelete(idValue)}
+                            >
+                               <Icons.Trash />
+                            </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {items.length === 0 && (
-                  <tr><td colSpan={3} className="text-center py-20 text-slate-400 italic">No hay registros en este catálogo.</td></tr>
+                  <tr><td colSpan={3} className="text-center py-20 text-slate-400 italic">No hay registros cargados en este catálogo.</td></tr>
                 )}
               </tbody>
             </table>
@@ -115,7 +121,7 @@ export default function Configuracion() {
           <div className="modal-box bg-white text-slate-800 shadow-2xl p-0 rounded-2xl overflow-hidden">
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
                 <h3 className="font-bold text-lg text-slate-900">
-                    {editItem ? 'Editar Registro' : `Agregar a ${activeTab.label}`}
+                    {editItem ? '✏️ Editar Registro' : `➕ Nuevo: ${activeTab.label}`}
                 </h3>
                 <button type="button" className="btn btn-sm btn-circle btn-ghost" onClick={closeModal}>✕</button>
             </div>
@@ -123,12 +129,13 @@ export default function Configuracion() {
             <form onSubmit={handleSave}>
               <div className="p-6">
                 <div className="form-control w-full">
-                  <label className="label font-bold text-slate-500 text-xs uppercase">Nombre</label>
+                  <label className="label font-bold text-slate-500 text-xs uppercase">Nombre / Descripción</label>
                   <input 
                     type="text" 
                     className="input input-bordered w-full bg-slate-50 focus:bg-white focus:border-blue-500 transition-colors" 
                     autoFocus
-                    placeholder={`Escriba el nombre de ${activeTab.label.toLowerCase()}...`}
+                    required
+                    placeholder={`Escriba aquí...`}
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                   />
@@ -137,7 +144,9 @@ export default function Configuracion() {
               
               <div className="modal-action px-6 py-4 bg-slate-50 border-t border-slate-100">
                 <button type="button" className="btn btn-ghost hover:bg-slate-100" onClick={closeModal}>Cancelar</button>
-                <button type="submit" className="btn btn-primary text-white shadow-md">Guardar</button>
+                <button type="submit" className="btn btn-primary text-white shadow-md">
+                    {editItem ? 'Actualizar' : 'Crear Registro'}
+                </button>
               </div>
             </form>
           </div>

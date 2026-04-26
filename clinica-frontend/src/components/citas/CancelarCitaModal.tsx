@@ -9,7 +9,6 @@ interface Props {
   onConfirm: (motivoId: number, notas: string) => void;
 }
 
-// Icono de Advertencia para contexto visual
 const Icons = {
     Warning: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
 };
@@ -23,11 +22,11 @@ export default function CancelarCitaModal({ isOpen, onClose, onConfirm }: Props)
   // Cargar catálogo al abrir
   useEffect(() => {
     if (isOpen) {
+      // Usamos la ruta sincronizada en el api.ts corregido
       api.general.motivosCancelacion()
         .then(data => setMotivos(data))
         .catch(() => toast.error("Error cargando motivos"));
       
-      // Resetear campos
       setMotivoSeleccionado('');
       setNotas('');
     }
@@ -39,6 +38,8 @@ export default function CancelarCitaModal({ isOpen, onClose, onConfirm }: Props)
     
     setLoading(true);
     onConfirm(Number(motivoSeleccionado), notas);
+    // Nota: El setLoading(false) y onClose() los maneja usualmente el componente padre tras el onConfirm exitoso
+    // pero mantenemos tu flujo funcional actual.
     onClose(); 
     setLoading(false);
   };
@@ -78,7 +79,10 @@ export default function CancelarCitaModal({ isOpen, onClose, onConfirm }: Props)
                     >
                         <option value="">Seleccione una opción...</option>
                         {motivos.map(m => (
-                            <option key={m.ID_Motivo} value={m.ID_Motivo}>{m.Categoria}</option>
+                            // CORRECCIÓN: Usamos ID_MotivoCancelacion y Motivo (PascalCase del Backend)
+                            <option key={m.ID_MotivoCancelacion} value={m.ID_MotivoCancelacion}>
+                                {m.Motivo}
+                            </option>
                         ))}
                     </select>
                 </div>

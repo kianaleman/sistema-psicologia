@@ -25,6 +25,8 @@ const initialForm = {
     tipoCitaId: '', 
     precio: '', 
     metodoPagoId: '',
+    idDivisa: '1', // 1: NIO por defecto
+    tasaCambio: '1',
     direccion: { departamento: '', ciudad: '', barrio: '', calle: '' }
 };
 
@@ -59,7 +61,6 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
       setFormData(prev => ({ ...prev, hora: time24 }));
   };
 
-  // --- NUEVOS HANDLERS PARA MINUTOS MANUALES ---
   const handleMinuteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value.replace(/\D/g, '').slice(0, 2);
       setTimePart(prev => ({ ...prev, minute: val }));
@@ -78,14 +79,15 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
   useEffect(() => {
     if (!citaEditar && formData.pacienteId && usarDireccionPaciente) {
         const paciente = catalogos.pacientes?.find((p:any) => p.ID_Paciente.toString() === formData.pacienteId);
-        if (paciente && paciente.DireccionPaciente) {
+        // Ajuste PascalCase: Direccion
+        if (paciente && paciente.Direccion) {
             setFormData(prev => ({
                 ...prev,
                 direccion: {
-                    departamento: paciente.DireccionPaciente.Departamento,
-                    ciudad: paciente.DireccionPaciente.Ciudad,
-                    barrio: paciente.DireccionPaciente.Barrio,
-                    calle: paciente.DireccionPaciente.Calle
+                    departamento: paciente.Direccion.Departamento,
+                    ciudad: paciente.Direccion.Ciudad,
+                    barrio: paciente.Direccion.Barrio,
+                    calle: paciente.Direccion.Calle
                 }
             }));
         }
@@ -94,39 +96,33 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
     }
   }, [formData.pacienteId, usarDireccionPaciente, catalogos.pacientes, citaEditar]);
 
-  // Cargar datos al editar
   useEffect(() => {
     if (citaEditar) {
-      const fechaISO = citaEditar.FechaCita ? new Date(citaEditar.FechaCita).toISOString().split('T')[0] : '';
+      const fechaISO = citaEditar.FechaCita ? citaEditar.FechaCita.toString().split('T')[0] : '';
       
-      let horaStr = '';
-      if (citaEditar.HoraCita) {
-          const fechaHora = new Date(citaEditar.HoraCita);
-          // Forzamos UTC para leer la hora guardada correctamente
-          const hours = fechaHora.getUTCHours().toString().padStart(2, '0');
-          const mins = fechaHora.getUTCMinutes().toString().padStart(2, '0');
-          horaStr = `${hours}:${mins}`;
+      let horaStr = citaEditar.HoraCita || '08:00';
+      // Si viene con formato ISO completo
+      if (horaStr.includes('T')) {
+          const d = new Date(horaStr);
+          horaStr = `${d.getUTCHours().toString().padStart(2,'0')}:${d.getUTCMinutes().toString().padStart(2,'0')}`;
       }
 
-      // Inicializar el picker visual con la hora convertida
       setTimePart(parse24to12(horaStr));
       
-      // Manejo seguro de factura
-      const facturasArray = Array.isArray(citaEditar.Factura) ? citaEditar.Factura : [];
-      const facturaPrincipal = facturasArray[0];
-      const precio = facturaPrincipal?.MontoTotal || '0';
-      const metodoPago = facturaPrincipal?.DetalleFactura?.[0]?.ID_MetodoPago || '1';
+      // Mapeo PascalCase de Recibo y Bimoneda
+      const recibo = citaEditar.Recibo;
+      const precio = recibo?.MontoTotal || '0';
+      const metodoPago = recibo?.ID_MetodoPago || '1';
+      const idDivisa = recibo?.ID_Divisa?.toString() || '1';
+      const tasa = recibo?.Tasa_Cambio?.toString() || '1';
 
-      // --- CORRECCIÓN DE DIRECCIÓN ---
-      // Prisma devuelve PascalCase (Departamento), el form espera camelCase (departamento)
-      const dirDB = (citaEditar as any).DireccionCita;
+      const dirDB = citaEditar.Direccion;
       const direccionMapeada = dirDB ? {
           departamento: dirDB.Departamento,
           ciudad: dirDB.Ciudad,
           barrio: dirDB.Barrio,
           calle: dirDB.Calle
       } : initialForm.direccion;
-      // -------------------------------
 
       setFormData({
         fecha: fechaISO, 
@@ -137,8 +133,10 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
         tipoCitaId: citaEditar.ID_TipoCita?.toString() || '',
         precio: precio.toString(), 
         metodoPagoId: metodoPago.toString(),
-        direccion: direccionMapeada // Usamos la dirección mapeada
-      } as any);
+        idDivisa,
+        tasaCambio: tasa,
+        direccion: direccionMapeada 
+      });
       
       setUsarDireccionPaciente(false); 
     } else {
@@ -155,6 +153,7 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
     e.preventDefault();
     if (!formData.pacienteId || !formData.psicologoId || !formData.fecha || !formData.hora) return;
 
+    // Adaptado al CreateCitaDTO del index.ts
     const payload: CreateCitaDTO = {
         fecha: formData.fecha,
         hora: formData.hora,
@@ -164,7 +163,9 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
         tipoCitaId: parseInt(formData.tipoCitaId),
         precio: parseFloat(formData.precio),
         metodoPagoId: parseInt(formData.metodoPagoId || '1'),
-        direccion: { pais: 'Nicaragua', ...formData.direccion }
+        idDivisa: parseInt(formData.idDivisa),
+        tasaCambio: parseFloat(formData.tasaCambio),
+        idDireccion: 0 // El backend manejará la creación/uso si enviamos el objeto dirección
     };
 
     setGuardando(true);
@@ -182,7 +183,8 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
 
   const pacientesFiltrados = catalogos.pacientes ? catalogos.pacientes.filter((p:any) => {
     const term = busquedaPaciente.toLowerCase();
-    return `${p.Nombre} ${p.Apellido}`.toLowerCase().includes(term) || (p.PacienteAdulto?.No_Cedula || '').toLowerCase().includes(term);
+    const identificado = p.PacienteAdulto?.No_Cedula || p.Paciente_Menor?.PartidaDeNacimiento || '';
+    return `${p.Nombre} ${p.Apellido}`.toLowerCase().includes(term) || identificado.toLowerCase().includes(term);
   }) : [];
 
   const psicologosFiltrados = catalogos.psicologos ? catalogos.psicologos.filter((p:any) => {
@@ -215,10 +217,11 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                        </div>
                        <select required className="select select-bordered w-full bg-white text-sm" value={formData.pacienteId} onChange={e => setFormData({...formData, pacienteId: e.target.value})}>
                          <option value="">Seleccionar Paciente...</option>
-                         {pacientesFiltrados.map((p:any) => {
-                             const esInactivo = p.ID_EstadoDeActividad !== 1;
-                             return <option key={p.ID_Paciente} value={p.ID_Paciente} disabled={esInactivo} className={esInactivo ? 'text-slate-400 bg-slate-100 italic' : ''}>{esInactivo ? '🔴 ' : ''} {p.Nombre} {p.Apellido}</option>;
-                         })}
+                         {pacientesFiltrados.map((p:any) => (
+                             <option key={p.ID_Paciente} value={p.ID_Paciente} disabled={!p.Activo} className={!p.Activo ? 'text-slate-400 bg-slate-100 italic' : ''}>
+                                {!p.Activo ? '🔴 ' : ''} {p.Nombre} {p.Apellido}
+                             </option>
+                         ))}
                        </select>
                     </div>
                     <div className="form-control w-full">
@@ -229,10 +232,11 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                        </div>
                        <select required className="select select-bordered w-full bg-white text-sm" value={formData.psicologoId} onChange={e => setFormData({...formData, psicologoId: e.target.value})}>
                          <option value="">Seleccionar Profesional...</option>
-                         {psicologosFiltrados.map((p:any)=> {
-                            const esInactivo = p.ID_EstadoDeActividad !== 1;
-                            return <option key={p.ID_Psicologo} value={p.ID_Psicologo} disabled={esInactivo} className={esInactivo ? 'text-slate-400 bg-slate-100 italic' : ''}>{esInactivo ? '🔴 ' : ''} Dr. {p.Nombre} {p.Apellido}</option>;
-                         })}
+                         {psicologosFiltrados.map((p:any)=> (
+                            <option key={p.ID_Psicologo} value={p.ID_Psicologo} disabled={!p.Activo} className={!p.Activo ? 'text-slate-400 bg-slate-100 italic' : ''}>
+                                {!p.Activo ? '🔴 ' : ''} Dr. {p.Nombre} {p.Apellido}
+                            </option>
+                         ))}
                        </select>
                     </div>
                   </div>
@@ -255,8 +259,6 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                                   {Array.from({length: 12}, (_, i) => i + 1).map(h => <option key={h} value={h.toString().padStart(2,'0')}>{h}</option>)}
                               </select>
                               <span className="self-center font-bold text-slate-400">:</span>
-                              
-                              {/* INPUT MANUAL DE MINUTOS */}
                               <input 
                                 type="text" 
                                 className="input input-bordered bg-white w-20 text-center font-medium focus:border-blue-500" 
@@ -264,9 +266,7 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                                 value={timePart.minute}
                                 onChange={handleMinuteChange}
                                 onBlur={handleMinuteBlur}
-                                onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
                               />
-
                               <div className="join border border-slate-300 rounded-lg ml-2">
                                   <button type="button" className={`join-item btn btn-sm px-3 border-none ${timePart.period === 'AM' ? 'bg-blue-600 text-white' : 'bg-white text-slate-500'}`} onClick={() => updateTime24(timePart.hour, timePart.minute, 'AM')}>AM</button>
                                   <button type="button" className={`join-item btn btn-sm px-3 border-none ${timePart.period === 'PM' ? 'bg-blue-600 text-white' : 'bg-white text-slate-500'}`} onClick={() => updateTime24(timePart.hour, timePart.minute, 'PM')}>PM</button>
@@ -303,18 +303,34 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                         <label className="label-text text-xs font-bold text-slate-400 mb-1">Tipo de Cita</label>
                         <select required className="select select-bordered select-sm w-full bg-white" value={formData.tipoCitaId} onChange={e => setFormData({...formData, tipoCitaId: e.target.value})}>
                           <option value="">Seleccionar...</option>
-                          {catalogos.tiposCita?.map((t:any)=> <option key={t.ID_TipoCita} value={t.ID_TipoCita}>{t.NombreDeCita}</option>)}
+                          {catalogos.tiposCita?.map((t:any)=> <option key={t.ID_TipoCita} value={t.ID_TipoCita}>{t.Nombre_DeCita}</option>)}
                         </select>
                     </div>
-                    <div className="form-control">
-                        <label className="label-text text-xs font-bold text-slate-400 mb-1">Costo (C$)</label>
-                        <input required type="number" step="0.01" placeholder="0.00" className="input input-bordered input-sm bg-white w-full font-mono font-bold text-emerald-600" value={formData.precio} onChange={e => setFormData({...formData, precio: e.target.value})} />
+
+                    {/* NUEVO: SELECTOR DE DIVISA */}
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="form-control">
+                            <label className="label-text text-xs font-bold text-slate-400 mb-1">Moneda</label>
+                            <select className="select select-bordered select-sm bg-white" value={formData.idDivisa} onChange={e => setFormData({...formData, idDivisa: e.target.value})}>
+                                {catalogos.divisas?.map((d:any) => <option key={d.ID_Divisa} value={d.ID_Divisa}>{d.Codigo_ISO}</option>)}
+                            </select>
+                        </div>
+                        <div className="form-control">
+                            <label className="label-text text-xs font-bold text-slate-400 mb-1">T. Cambio</label>
+                            <input type="number" step="0.0001" className="input input-bordered input-sm bg-white" value={formData.tasaCambio} onChange={e => setFormData({...formData, tasaCambio: e.target.value})} readOnly={formData.idDivisa === '1'} />
+                        </div>
                     </div>
+
+                    <div className="form-control">
+                        <label className="label-text text-xs font-bold text-slate-400 mb-1">Monto Total</label>
+                        <input required type="number" step="0.01" className="input input-bordered input-sm bg-white w-full font-mono font-bold text-emerald-600" value={formData.precio} onChange={e => setFormData({...formData, precio: e.target.value})} />
+                    </div>
+                    
                     {!citaEditar && (
                         <div className="form-control">
                            <label className="label-text text-xs font-bold text-slate-400 mb-1">Método de Pago</label>
                            <select required className="select select-bordered select-sm w-full bg-white" value={formData.metodoPagoId} onChange={e => setFormData({...formData, metodoPagoId: e.target.value})}>
-                             <option value="">Seleccione forma de pago...</option>
+                             <option value="">Seleccionar...</option>
                              {catalogos.metodosPago?.map((m:any)=> <option key={m.ID_MetodoPago} value={m.ID_MetodoPago}>{m.NombreMetodo}</option>)}
                            </select>
                         </div>

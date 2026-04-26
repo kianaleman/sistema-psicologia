@@ -60,6 +60,7 @@ export const api = {
   pacientes: {
     getAll: () => request<Paciente[]>('/pacientes'),
     getOne: (id: string | number) => request<any>(`/pacientes/${id}/expediente`),
+    getHistorial: (id: number) => request<any[]>(`/pacientes/${id}/historial`),
     create: (data: CreatePacienteDTO) => request<Paciente>('/pacientes', { 
       method: 'POST', 
       body: JSON.stringify(data) 

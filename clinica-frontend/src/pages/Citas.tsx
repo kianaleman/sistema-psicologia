@@ -8,7 +8,6 @@ import SesionModal from "../components/citas/SesionModal";
 import HistorialModal from "../components/citas/HistorialModal";
 import CancelarCitaModal from "../components/citas/CancelarCitaModal";
 
-// Iconos SVG Inline
 const Icons = {
   Search: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" /></svg>,
   Calendar: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M5.75 2a.75.75 0 01.75.75V4h7V2.75a.75.75 0 011.5 0V4h.25A2.75 2.75 0 0118 6.75v8.5A2.75 2.75 0 0115.25 18H4.75A2.75 2.75 0 012 15.25v-8.5A2.75 2.75 0 014.75 4H5V2.75A.75.75 0 015.75 2zm-1 5.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25v-6.5c0-.69-.56-1.25-1.25-1.25H4.75z" clipRule="evenodd" /></svg>,
@@ -21,7 +20,6 @@ const Icons = {
 export default function Citas() {
   const { citas, loading, filtros, setFiltro, catalogos, acciones } = useCitas();
 
-  // Estados UI locales
   const [modalOpen, setModalOpen] = useState<"create" | "session" | "view" | null>(null);
   const [selectedCita, setSelectedCita] = useState<Cita | null>(null);
   const [idCancelar, setIdCancelar] = useState<number | null>(null);
@@ -38,9 +36,7 @@ export default function Citas() {
     } else {
       success = await acciones.crearCita(data);
     }
-    if (success) {
-      setModalOpen(null);
-    }
+    if (success) setModalOpen(null);
     return success;
   };
 
@@ -53,18 +49,18 @@ export default function Citas() {
 
   const handleFinalizarSesion = async (data: any) => {
     toast.promise(acciones.guardarSesion(data), {
-      loading: "Finalizando...",
-      success: "Sesión guardada",
-      error: "Error",
+      loading: "Finalizando sesión clínica...",
+      success: "Sesión guardada exitosamente",
+      error: "No se pudo guardar la sesión",
     });
     setModalOpen(null);
   };
 
-  // --- HELPERS VISUALES ---
+  // --- HELPERS VISUALES CORREGIDOS PARA SQL SERVER ---
   const formatearHora = (h: string) => {
     if (!h) return "--:--";
+    // Si la hora viene de SQL Server como "2026-04-26T14:30:00Z"
     const fecha = new Date(h);
-    // Forzamos UTC para que lea "20:30" tal cual está en la BD
     return fecha.toLocaleTimeString('en-US', { 
         hour: 'numeric', 
         minute: '2-digit', 
@@ -75,26 +71,20 @@ export default function Citas() {
 
   const formatearFechaCompleta = (f: string) => {
     if (!f) return "Fecha no válida";
-    
     const fechaObj = new Date(f);
     const opciones: Intl.DateTimeFormatOptions = { 
-        weekday: "long", 
-        day: "numeric", 
-        month: "long", 
-        year: "numeric",
-        timeZone: "UTC"
+        weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC"
     };
-
     const fechaStr = fechaObj.toLocaleDateString("es-ES", opciones);
     return fechaStr.charAt(0).toUpperCase() + fechaStr.slice(1);
   };
 
   const getEstadoColor = (st: string) => {
     const s = st.toLowerCase();
-    if (s.includes("programada")) return "badge-primary";
-    if (s.includes("completada")) return "badge-success text-white";
-    if (s.includes("cancelada")) return "badge-error text-white";
-    return "badge-ghost";
+    if (s.includes("programada")) return "bg-blue-100 text-blue-700";
+    if (s.includes("completada")) return "bg-emerald-100 text-emerald-700";
+    if (s.includes("cancelada")) return "bg-rose-100 text-rose-700";
+    return "bg-slate-100 text-slate-700";
   };
 
   const renderDireccion = (dir: any) => {
@@ -102,7 +92,7 @@ export default function Citas() {
     const textoCorto = `${dir.Ciudad}, ${dir.Calle}`;
     const textoCompleto = `${dir.Departamento}, ${dir.Ciudad}. B° ${dir.Barrio}, ${dir.Calle}`;
     return (
-      <div className="flex items-start gap-1.5 text-xs text-slate-500 mt-2 bg-slate-50 p-2 rounded-md border border-slate-100 cursor-help transition-colors hover:bg-blue-50 hover:border-blue-100" title={textoCompleto}>
+      <div className="flex items-start gap-1.5 text-xs text-slate-500 mt-2 bg-slate-50 p-2 rounded-md border border-slate-100 cursor-help" title={textoCompleto}>
         <span className="text-sm shrink-0">📍</span>
         <span className="truncate w-full font-medium">{textoCorto}</span>
       </div>
@@ -111,93 +101,56 @@ export default function Citas() {
 
   return (
     <div className="p-8 animate-fade-in-up max-w-7xl mx-auto">
-      {/* --- ENCABEZADO --- */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight font-serif">
-            Agenda Clínica
-          </h1>
-          <p className="text-slate-500 mt-1 text-sm">
-            Gestión y seguimiento de citas ({citas.length} visualizadas)
-          </p>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight font-serif">Agenda Clínica</h1>
+          <p className="text-slate-500 mt-1 text-sm">Gestión de citas ({citas.length} visualizadas)</p>
         </div>
-        <button
-          className="btn btn-primary shadow-lg text-white gap-2 rounded-xl px-6"
-          onClick={() => openModal("create")}
-        >
-          <Icons.Plus />
-          Agendar Cita
+        <button className="btn btn-primary shadow-lg text-white gap-2 rounded-xl px-6" onClick={() => openModal("create")}>
+          <Icons.Plus /> Agendar Cita
         </button>
       </div>
 
-      {/* --- PANEL DE FILTROS --- */}
+      {/* PANEL DE FILTROS */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-8">
         <div className="flex flex-col lg:flex-row gap-6 justify-between">
-          
-          {/* Lado Izquierdo: Selectores de Tiempo */}
           <div className="flex flex-col gap-3">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <Icons.Calendar /> Período
-            </span>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Icons.Calendar /> Período</span>
             <div className="flex flex-wrap items-center gap-3">
               <div className="join bg-slate-100 p-1 rounded-lg border border-slate-200">
                 {[{ id: "hoy", label: "Hoy" }, { id: "semana", label: "Semana" }, { id: "mes", label: "Mes" }, { id: "todos", label: "Todas" }, { id: "rango", label: "Rango" }].map((btn) => (
-                  <button
-                    key={btn.id}
-                    className={`join-item btn btn-sm border-none transition-all capitalize font-medium ${
-                      filtros.periodo === btn.id ? "bg-white text-slate-900 shadow-sm" : "bg-transparent text-slate-500 hover:text-slate-700"
-                    }`}
-                    onClick={() => setFiltro("periodo", btn.id)}
-                  >
-                    {btn.label}
-                  </button>
+                  <button key={btn.id} className={`join-item btn btn-sm border-none transition-all ${filtros.periodo === btn.id ? "bg-white text-slate-900 shadow-sm" : "bg-transparent text-slate-500"}`} onClick={() => setFiltro("periodo", btn.id)}>{btn.label}</button>
                 ))}
               </div>
-
-              {/* Selector de Rango Condicional */}
               {filtros.periodo === "rango" && (
                 <div className="flex items-center gap-2 animate-fade-in bg-white p-1 rounded-lg border border-slate-200">
-                  <input type="date" className="input input-xs bg-transparent focus:outline-none font-medium text-slate-600" value={filtros.fechaInicio} onChange={(e) => setFiltro("fechaInicio", e.target.value)} />
+                  <input type="date" className="input input-xs bg-transparent" value={filtros.fechaInicio} onChange={(e) => setFiltro("fechaInicio", e.target.value)} />
                   <span className="text-slate-300">➔</span>
-                  <input type="date" className="input input-xs bg-transparent focus:outline-none font-medium text-slate-600" value={filtros.fechaFin} onChange={(e) => setFiltro("fechaFin", e.target.value)} />
+                  <input type="date" className="input input-xs bg-transparent" value={filtros.fechaFin} onChange={(e) => setFiltro("fechaFin", e.target.value)} />
                 </div>
               )}
             </div>
           </div>
 
-          {/* Lado Derecho: Filtros Específicos */}
           <div className="flex flex-col gap-3 flex-1">
             <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                <Icons.Filter /> Criterios
-                </span>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Icons.Filter /> Criterios</span>
                 {(filtros.estado || filtros.paciente || filtros.psicologo || filtros.periodo !== "todos") && (
-                    <button 
-                        onClick={() => { setFiltro("estado", ""); setFiltro("paciente", ""); setFiltro("psicologo", ""); setFiltro("periodo", "todos"); }}
-                        className="text-xs font-medium text-blue-500 hover:text-blue-700 transition-colors hover:underline"
-                    >
-                        Limpiar filtros
-                    </button>
+                    <button onClick={() => { setFiltro("estado", ""); setFiltro("paciente", ""); setFiltro("psicologo", ""); setFiltro("periodo", "todos"); }} className="text-xs font-medium text-blue-500 hover:underline">Limpiar filtros</button>
                 )}
             </div>
-            
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {/* Doctor */}
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400"><Icons.User /></div>
-                <input type="text" list="lista-doctores" placeholder="Doctor..." className="input input-bordered input-sm w-full pl-9 bg-slate-50 focus:bg-white transition-colors" value={filtros.psicologo} onChange={(e) => setFiltro("psicologo", e.target.value)} />
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400"><Icons.User /></div>
+                <input list="lista-doctores" placeholder="Doctor..." className="input input-bordered input-sm w-full pl-9 bg-slate-50" value={filtros.psicologo} onChange={(e) => setFiltro("psicologo", e.target.value)} />
                 <datalist id="lista-doctores">{catalogos.psicologos.map((p: any) => (<option key={p.ID_Psicologo} value={`${p.Nombre} ${p.Apellido}`} />))}</datalist>
               </div>
-
-              {/* Paciente */}
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400"><Icons.Search /></div>
-                <input type="text" list="lista-pacientes" placeholder="Paciente..." className="input input-bordered input-sm w-full pl-9 bg-slate-50 focus:bg-white transition-colors" value={filtros.paciente} onChange={(e) => setFiltro("paciente", e.target.value)} />
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400"><Icons.Search /></div>
+                <input list="lista-pacientes" placeholder="Paciente..." className="input input-bordered input-sm w-full pl-9 bg-slate-50" value={filtros.paciente} onChange={(e) => setFiltro("paciente", e.target.value)} />
                 <datalist id="lista-pacientes">{catalogos.pacientes.map((p: any) => (<option key={p.ID_Paciente} value={`${p.Nombre} ${p.Apellido}`} />))}</datalist>
               </div>
-
-              {/* Estado */}
-              <select className="select select-bordered select-sm bg-slate-50 focus:bg-white w-full text-slate-600" value={filtros.estado} onChange={(e) => setFiltro("estado", e.target.value)}>
+              <select className="select select-bordered select-sm bg-slate-50 w-full" value={filtros.estado} onChange={(e) => setFiltro("estado", e.target.value)}>
                 <option value="">Todos los estados</option>
                 {catalogos.estadosCita.map((e: any) => (<option key={e.ID_EstadoCita} value={e.ID_EstadoCita}>{e.NombreEstado}</option>))}
               </select>
@@ -206,12 +159,9 @@ export default function Citas() {
         </div>
       </div>
 
-      {/* --- GRID DE CITAS --- */}
+      {/* GRID DE CITAS */}
       {loading ? (
-        <div className="text-center py-32">
-          <span className="loading loading-spinner loading-lg text-primary"></span>
-          <p className="text-slate-400 mt-4 text-sm animate-pulse">Cargando agenda...</p>
-        </div>
+        <div className="text-center py-32"><span className="loading loading-spinner loading-lg text-primary"></span></div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {citas.map((cita) => {
@@ -219,179 +169,66 @@ export default function Citas() {
             const esCancelada = cita.EstadoCita?.NombreEstado === "Cancelada" || cita.EstadoCita?.NombreEstado === "No Asistió";
 
             return (
-              <div
-                key={cita.ID_Cita}
-                className={`card bg-white border border-slate-200 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col ${
-                  esCancelada ? "opacity-60 grayscale" : ""
-                }`}
-              >
-                {/* --- ENCABEZADO DE LA TARJETA --- */}
+              <div key={cita.ID_Cita} className={`card bg-white border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col ${esCancelada ? "opacity-60 grayscale" : ""}`}>
                 <div className="px-6 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                    📅 {formatearFechaCompleta(cita.FechaCita)}
-                  </span>
-                  <div
-                    // Se agregan clases para que el badge se adapte al contenido: h-auto, py-1, text-center, leading-tight
-                    className={`badge ${getEstadoColor(
-                      cita.EstadoCita?.NombreEstado || ""
-                    )} font-bold border-none h-auto py-1 text-center leading-tight`}
-                  >
-                    {cita.EstadoCita?.NombreEstado}
+                  <span className="text-xs font-bold text-slate-500 uppercase">📅 {formatearFechaCompleta(cita.FechaCita)}</span>
+                  <div className={`badge ${getEstadoColor(cita.EstadoCita?.NombreEstado || "")} font-bold border-none h-auto py-1 px-3 rounded-md text-[10px]`}>
+                    {cita.EstadoCita?.NombreEstado.toUpperCase()}
                   </div>
                 </div>
 
-                {/* --- CUERPO DE LA TARJETA --- */}
                 <div className="p-6 flex gap-4">
-                  {/* Columna Hora */}
                   <div className="flex flex-col items-center justify-center bg-blue-50 text-blue-700 rounded-lg p-3 min-w-[90px] h-fit text-center">
-                    <span className="text-lg font-black tracking-tighter leading-none">
-                      {formatearHora(cita.HoraCita)}
-                    </span>
-                    <span className="text-[9px] font-bold uppercase mt-1 opacity-60">
-                      Hora
-                    </span>
+                    <span className="text-lg font-black tracking-tighter leading-none">{formatearHora(cita.HoraCita)}</span>
+                    <span className="text-[9px] font-bold uppercase mt-1 opacity-60">Hora</span>
                   </div>
 
-                  {/* Columna Info */}
                   <div className="flex-1 min-w-0 space-y-1">
-                    <h3
-                      className="font-bold text-slate-800 text-lg leading-tight truncate"
-                      title={`${cita.Paciente?.Nombre} ${cita.Paciente?.Apellido}`}
-                    >
-                      {cita.Paciente?.Nombre} {cita.Paciente?.Apellido}
-                    </h3>
-
+                    <h3 className="font-bold text-slate-800 text-lg leading-tight truncate">{cita.Paciente?.Nombre} {cita.Paciente?.Apellido}</h3>
                     <div className="flex flex-wrap gap-2 items-center text-sm text-slate-500">
-                      <span className="badge badge-sm badge-outline text-slate-500">
-                        {cita.TipoDeCita?.NombreDeCita}
-                      </span>
-                      {cita.NumeroSesion && (
-                        <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-200 shadow-sm uppercase tracking-wider">
-                          Sesión #{cita.NumeroSesion}
-                        </span>
-                      )}
+                      <span className="badge badge-sm badge-outline text-slate-500">{cita.TipoDeCita?.Nombre_DeCita}</span>
+                      {cita.NumeroSesion && <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-200">Sesión #{cita.NumeroSesion}</span>}
                     </div>
+                    <div className="text-xs text-slate-400 pt-1">Dr. {cita.Psicologo?.Apellido}</div>
 
-                    <div className="flex items-center gap-1 text-xs text-slate-400 pt-1">
-                      <span>Dr. {cita.Psicologo?.Apellido}</span>
-                    </div>
-
-                    {/* Direccion o Motivo Cancelación */}
                     {esCancelada ? (
                         <div className="mt-2 p-2 bg-rose-50 border border-rose-100 rounded-lg">
                             <div className="flex items-center gap-1.5 text-rose-700 font-bold text-xs mb-1">
-                                <Icons.Ban />
-                                <span>{cita.MotivoCancelacion?.Categoria || 'Cancelada'}</span>
+                                <Icons.Ban /> <span>{cita.MotivoCancelacion?.Motivo || 'Cancelada'}</span>
                             </div>
-                            {cita.NotasCancelacion && (
-                                <p className="text-xs text-rose-600/80 italic leading-snug">
-                                    "{cita.NotasCancelacion}"
-                                </p>
-                            )}
+                            {cita.NotasCancelacion && <p className="text-xs text-rose-600/80 italic">"{cita.NotasCancelacion}"</p>}
                         </div>
                     ) : (
-                        cita.DireccionCita && renderDireccion(cita.DireccionCita)
+                        cita.Direccion && renderDireccion(cita.Direccion)
                     )}
                   </div>
                 </div>
 
-                {/* --- PIE DE PÁGINA (ACCIONES) --- */}
                 <div className="px-6 py-3 bg-white border-t border-slate-100 flex justify-between items-center mt-auto">
-                  <div
-                    className="flex-1 text-xs text-slate-400 italic truncate mr-4"
-                    title={cita.MotivoConsulta}
-                  >
-                    "{cita.MotivoConsulta}"
-                  </div>
-
+                  <div className="flex-1 text-xs text-slate-400 italic truncate mr-4">"{cita.MotivoConsulta}"</div>
                   <div className="flex gap-2">
                     {esProgramada ? (
                       <>
-                        <button
-                          className="btn btn-ghost btn-xs text-slate-400 hover:text-red-500 tooltip tooltip-left"
-                          data-tip="Cancelar"
-                          onClick={() => setIdCancelar(cita.ID_Cita)}
-                        >
-                          ✕
-                        </button>
-
-                        <button
-                          className="btn btn-outline btn-xs"
-                          onClick={() => openModal("create", cita)}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          className="btn btn-primary btn-sm text-white shadow-sm px-4"
-                          onClick={() => openModal("session", cita)}
-                        >
-                          Iniciar
-                        </button>
+                        <button className="btn btn-ghost btn-xs text-slate-400 hover:text-red-500" onClick={() => setIdCancelar(cita.ID_Cita)}>✕</button>
+                        <button className="btn btn-outline btn-xs" onClick={() => openModal("create", cita)}>Editar</button>
+                        <button className="btn btn-primary btn-sm text-white shadow-sm px-4" onClick={() => openModal("session", cita)}>Iniciar</button>
                       </>
                     ) : (
-                      <button
-                        className="btn btn-outline btn-info btn-sm w-full"
-                        onClick={() => openModal("view", cita)}
-                      >
-                        📄 Ver Expediente
-                      </button>
+                      <button className="btn btn-outline btn-info btn-sm w-full" onClick={() => openModal("view", cita)}>📄 Ver Expediente</button>
                     )}
                   </div>
                 </div>
               </div>
             );
           })}
-
-          {/* --- EMPTY STATE --- */}
-          {citas.length === 0 && (
-            <div className="col-span-full flex flex-col items-center justify-center py-24 bg-white rounded-3xl border border-dashed border-slate-300">
-              <div className="bg-slate-50 p-6 rounded-full mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 text-slate-300">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-slate-600">No hay citas encontradas</h3>
-              <p className="text-slate-400 font-medium mb-6">Prueba cambiando los filtros de búsqueda</p>
-              <button
-                className="btn btn-outline btn-sm text-blue-600 border-blue-200 hover:border-blue-600 hover:bg-blue-50"
-                onClick={() => setFiltro("periodo", "todos")}
-              >
-                Ver todo el historial
-              </button>
-            </div>
-          )}
         </div>
       )}
 
       {/* MODALES REUTILIZABLES */}
-      <CitaFormModal
-        isOpen={modalOpen === "create"}
-        onClose={() => setModalOpen(null)}
-        onSubmit={handleCreateOrUpdate}
-        citaEditar={selectedCita}
-        catalogos={catalogos}
-      />
-
-      <SesionModal
-        isOpen={modalOpen === "session"}
-        onClose={() => setModalOpen(null)}
-        onSubmit={handleFinalizarSesion}
-        cita={selectedCita}
-        catalogos={catalogos}
-      />
-
-      <HistorialModal
-        isOpen={modalOpen === "view"}
-        onClose={() => setModalOpen(null)}
-        cita={selectedCita}
-      />
-
-      {/* --- MODAL DE CANCELACIÓN --- */}
-      <CancelarCitaModal 
-        isOpen={!!idCancelar}
-        onClose={() => setIdCancelar(null)}
-        onConfirm={confirmarCancelacion}
-      />
+      <CitaFormModal isOpen={modalOpen === "create"} onClose={() => setModalOpen(null)} onSubmit={handleCreateOrUpdate} citaEditar={selectedCita} catalogos={catalogos} />
+      <SesionModal isOpen={modalOpen === "session"} onClose={() => setModalOpen(null)} onSubmit={handleFinalizarSesion} cita={selectedCita} catalogos={catalogos} />
+      <HistorialModal isOpen={modalOpen === "view"} onClose={() => setModalOpen(null)} cita={selectedCita} />
+      <CancelarCitaModal isOpen={!!idCancelar} onClose={() => setIdCancelar(null)} onConfirm={confirmarCancelacion} />
     </div>
   );
 }

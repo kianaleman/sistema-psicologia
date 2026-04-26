@@ -1,39 +1,92 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 @plugin "daisyui";
 
-/* Configuración del tema visual */
+/* Nota: Si VS Code marca '@theme' como desconocido, es un falso positivo 
+   del motor CSS del IDE. Tailwind v4 lo procesará correctamente al compilar.
+*/
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  
+  --animate-fade-in: fade-in 0.5s ease-out;
+  --animate-fade-in-up: fade-in-up 0.4s ease-out;
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes fade-in-up {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 }
 
-/* src/index.css */
+/* --- RESET & PREVENCIÓN --- */
 html, body {
-    /* Esto previene el rebote del navegador */
-    overscroll-behavior-y: none;
-    overscroll-behavior-x: none; 
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Esto fuerza el modo claro/profesional por defecto */
 :root {
   color-scheme: light;
+  --primary: #0f172a;
+  --secondary: #64748b;
+  --accent: #10b981;
+  --info: #3b82f6;
 }
 
 body {
   font-family: 'Inter', sans-serif;
-  background-color: #F8FAFC; /* Un gris/azul muy muy pálido, más elegante que el blanco puro */
-  color: #334155; /* Gris oscuro suave, no negro total */
+  background-color: #F8FAFC;
+  color: #1e293b;
 }
 
-/* Suavizar todos los botones y cards */
+/* --- COMPONENTES --- */
 .btn {
-  font-weight: 500;
-  text-transform: none; /* Quitar mayúsculas forzadas */
-  border-radius: 8px;   /* Bordes menos redondos, más modernos */
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: -0.01em;
+  border-radius: 8px;
 }
 
 .card {
-  border-radius: 12px;
-  border: 1px solid #F1F5F9; /* Borde casi invisible */
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05); /* Sombra de "alta gama" */
+  border-radius: 16px;
+  background-color: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05);
 }
+
+/* --- TABLAS --- */
+.table th {
+  background-color: #f8fafc;
+  color: #64748b;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.65rem;
+}
+
+/* --- UTILIDADES --- */
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out forwards;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.4s ease-out forwards;
+}
+
+/* 🟢 CORRECCIÓN ERROR vendorPrefix:
+   Añadimos la propiedad estándar 'line-clamp' junto a la de Webkit 
+   para las notas del historial clínico.
+*/
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2; /* Propiedad estándar */
+  overflow: hidden;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }

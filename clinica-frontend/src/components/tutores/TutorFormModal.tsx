@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import type { TutorCompleto } from '../../hooks/useTutores';
+//import type { TutorCompleto } from '../../hooks/useTutores';
 
 interface Props {
   isOpen: boolean;
@@ -58,19 +58,32 @@ export default function TutorFormModal({ isOpen, onClose, onSubmit, formData, se
             <div>
               <label className="label-text font-bold text-slate-500 uppercase text-xs">Información Adicional</label>
               <div className="grid grid-cols-2 gap-4 mt-2">
-                <div className="form-control"><label className="label pt-0"><span className="label-text-alt">Parentesco</span></label><select className="select select-bordered bg-white" value={formData.ID_Parentesco} onChange={e => setFormData({...formData, ID_Parentesco: e.target.value})}><option value="">Seleccionar...</option>{catalogos.parentescos.map((p:any) => <option key={p.ID_Parentesco} value={p.ID_Parentesco}>{p.NombreDeParentesco}</option>)}</select></div>
-                <div className="form-control"><label className="label pt-0"><span className="label-text-alt">Ocupación</span></label><select className="select select-bordered bg-white" value={formData.ID_Ocupacion} onChange={e => setFormData({...formData, ID_Ocupacion: e.target.value})}><option value="">Seleccionar...</option>{catalogos.ocupaciones.map((o:any) => <option key={o.ID_Ocupacion} value={o.ID_Ocupacion}>{o.NombreDeOcupacion}</option>)}</select></div>
-                <div className="form-control col-span-2"><label className="label pt-0"><span className="label-text-alt">Estado Civil</span></label><select className="select select-bordered bg-white w-full" value={formData.ID_EstadoCivil} onChange={e => setFormData({...formData, ID_EstadoCivil: e.target.value})}><option value="">Seleccionar...</option>{catalogos.estadosCiviles.map((ec:any) => <option key={ec.ID_EstadoCivil} value={ec.ID_EstadoCivil}>{ec.NombreEstadoCivil}</option>)}</select></div>
+                {/* 🟢 CORRECCIÓN: Nombres de campos de catálogos sincronizados con index.ts */}
+                <div className="form-control">
+                    <label className="label pt-0"><span className="label-text-alt">Ocupación</span></label>
+                    <select className="select select-bordered bg-white" value={formData.ID_Ocupacion} onChange={e => setFormData({...formData, ID_Ocupacion: parseInt(e.target.value)})}>
+                        <option value="">Seleccionar...</option>
+                        {catalogos.ocupaciones?.map((o:any) => <option key={o.ID_Ocupacion} value={o.ID_Ocupacion}>{o.Nombre_DeOcupacion}</option>)}
+                    </select>
+                </div>
+                <div className="form-control">
+                    <label className="label pt-0"><span className="label-text-alt">Estado Civil</span></label>
+                    <select className="select select-bordered bg-white" value={formData.ID_EstadoCivil} onChange={e => setFormData({...formData, ID_EstadoCivil: parseInt(e.target.value)})}>
+                        <option value="">Seleccionar...</option>
+                        {catalogos.estadosCiviles?.map((ec:any) => <option key={ec.ID_EstadoCivil} value={ec.ID_EstadoCivil}>{ec.Nombre_EstadoCivil}</option>)}
+                    </select>
+                </div>
               </div>
             </div>
 
+            {/* 🟢 CORRECCIÓN: Estructura de dirección simplificada o alineada según la respuesta de la API */}
             <div>
               <label className="label-text font-bold text-slate-500 uppercase text-xs">Dirección del Tutor</label>
               <div className="grid grid-cols-2 gap-4 mt-2">
-                <input type="text" placeholder="Departamento" className="input input-bordered bg-white" value={formData.DireccionTutor.Departamento} onChange={e => setFormData({...formData, DireccionTutor: {...formData.DireccionTutor, Departamento: e.target.value}})} />
-                <input type="text" placeholder="Ciudad" className="input input-bordered bg-white" value={formData.DireccionTutor.Ciudad} onChange={e => setFormData({...formData, DireccionTutor: {...formData.DireccionTutor, Ciudad: e.target.value}})} />
-                <input type="text" placeholder="Barrio" className="input input-bordered bg-white" value={formData.DireccionTutor.Barrio} onChange={e => setFormData({...formData, DireccionTutor: {...formData.DireccionTutor, Barrio: e.target.value}})} />
-                <input type="text" placeholder="Calle" className="input input-bordered bg-white" value={formData.DireccionTutor.Calle} onChange={e => setFormData({...formData, DireccionTutor: {...formData.DireccionTutor, Calle: e.target.value}})} />
+                <input type="text" placeholder="Departamento" className="input input-bordered bg-white" value={formData.DireccionTutor?.Departamento || ''} onChange={e => setFormData({...formData, DireccionTutor: {...formData.DireccionTutor, Departamento: e.target.value}})} />
+                <input type="text" placeholder="Ciudad" className="input input-bordered bg-white" value={formData.DireccionTutor?.Ciudad || ''} onChange={e => setFormData({...formData, DireccionTutor: {...formData.DireccionTutor, Ciudad: e.target.value}})} />
+                <input type="text" placeholder="Barrio" className="input input-bordered bg-white" value={formData.DireccionTutor?.Barrio || ''} onChange={e => setFormData({...formData, DireccionTutor: {...formData.DireccionTutor, Barrio: e.target.value}})} />
+                <input type="text" placeholder="Calle" className="input input-bordered bg-white" value={formData.DireccionTutor?.Calle || ''} onChange={e => setFormData({...formData, DireccionTutor: {...formData.DireccionTutor, Calle: e.target.value}})} />
               </div>
             </div>
           </div>

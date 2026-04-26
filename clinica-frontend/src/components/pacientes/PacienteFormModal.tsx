@@ -18,7 +18,6 @@ const Icons = {
 
 const initialState = {
   nombre: '', apellido: '', fechaNac: '', genero: 'Masculino', nacionalidad: 'Nicaragüense',
-  ID_EstadoDeActividad: 1, 
   direccion: { departamento: '', ciudad: '', barrio: '', calle: '' }, 
   datosAdulto: { cedula: '', telefono: '', ocupacionId: '', estadoCivilId: '' },
   datosMenor: { 
@@ -31,34 +30,17 @@ const initialState = {
   }
 };
 
-// --- HELPERS GLOBALES ---
 const formatearCedula = (valor: string) => {
   let v = valor.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
   if (v.length > 14) v = v.slice(0, 14);
-  if (v.length > 9) {
-    return `${v.slice(0, 3)}-${v.slice(3, 9)}-${v.slice(9)}`;
-  } else if (v.length > 3) {
-    return `${v.slice(0, 3)}-${v.slice(3)}`;
-  }
+  if (v.length > 9) return `${v.slice(0, 3)}-${v.slice(3, 9)}-${v.slice(9)}`;
+  if (v.length > 3) return `${v.slice(0, 3)}-${v.slice(3)}`;
   return v;
 };
 
-const esCedulaValida = (cedula: string) => {
-  const regex = /^\d{3}-\d{6}-\d{4}[A-Z]$/;
-  return regex.test(cedula);
-};
-
-const esTelefonoValido = (tel: string) => {
-  const limpio = tel.replace(/[\s-]/g, '');
-  return /^[2578]\d{7}$/.test(limpio);
-};
-
-// --- NUEVO HELPER: Validar solo texto (letras y espacios) ---
-const esTextoValido = (texto: string) => {
-  // Permite letras (incluyendo tildes y ñ) y espacios.
-  const regex = /^[a-zA-Z\u00C0-\u017F\s]+$/;
-  return regex.test(texto);
-};
+// Validaciones de formato
+const esCedulaValida = (cedula: string) => /^\d{3}-\d{6}-\d{4}[A-Z]$/.test(cedula);
+const esTelefonoValido = (tel: string) => /^[2578]\d{7}$/.test(tel.replace(/[\s-]/g, ''));
 
 export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteEditar, catalogos }: Props) {
   const [formData, setFormData] = useState(initialState);
@@ -67,352 +49,216 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
   const [busquedaTutor, setBusquedaTutor] = useState('');
   const [guardando, setGuardando] = useState(false);
 
-  // --- CARGAR DATOS AL EDITAR ---
   useEffect(() => {
     if (pacienteEditar) {
-      const esPacienteAdulto = !!pacienteEditar.PacienteAdulto;
-      setEsAdulto(esPacienteAdulto);
-      setModoTutor('existente');
-
+      setEsAdulto(!!pacienteEditar.PacienteAdulto);
       setFormData({
+        ...initialState,
         nombre: pacienteEditar.Nombre,
         apellido: pacienteEditar.Apellido,
-        fechaNac: pacienteEditar.Fecha_Nac ? new Date(pacienteEditar.Fecha_Nac).toISOString().split('T')[0] : '',
+        fechaNac: pacienteEditar.Fecha_Nacimiento ? pacienteEditar.Fecha_Nacimiento.split('T')[0] : '',
         genero: pacienteEditar.Genero,
         nacionalidad: pacienteEditar.Nacionalidad,
-        ID_EstadoDeActividad: pacienteEditar.EstadoDeActividad?.ID_EstadoDeActividad || 1,
-        
-        direccion: pacienteEditar.DireccionPaciente ? {
-          departamento: pacienteEditar.DireccionPaciente.Departamento,
-          ciudad: pacienteEditar.DireccionPaciente.Ciudad,
-          barrio: pacienteEditar.DireccionPaciente.Barrio,
-          calle: pacienteEditar.DireccionPaciente.Calle
+        direccion: pacienteEditar.Direccion ? {
+          departamento: pacienteEditar.Direccion.Departamento,
+          ciudad: pacienteEditar.Direccion.Ciudad,
+          barrio: pacienteEditar.Direccion.Barrio,
+          calle: pacienteEditar.Direccion.Calle
         } : initialState.direccion,
-        
         datosAdulto: pacienteEditar.PacienteAdulto ? {
           cedula: pacienteEditar.PacienteAdulto.No_Cedula,
           telefono: pacienteEditar.PacienteAdulto.No_Telefono,
           ocupacionId: pacienteEditar.PacienteAdulto.ID_Ocupacion.toString(),
           estadoCivilId: pacienteEditar.PacienteAdulto.ID_EstadoCivil.toString()
         } : initialState.datosAdulto,
-        
         datosMenor: {
           ...initialState.datosMenor,
-          partNacimiento: pacienteEditar.PacienteMenor?.PartNacimiento || '',
-          grado: pacienteEditar.PacienteMenor?.GradoEscolar || '',
-          tutorId: pacienteEditar.PacienteMenor?.ID_Tutor.toString() || '' 
+          partNacimiento: pacienteEditar.Paciente_Menor?.PartidaDeNacimiento || '',
+          grado: pacienteEditar.Paciente_Menor?.Grado_Escolar || '',
+          tutorId: pacienteEditar.Paciente_Menor?.Tutor_PacienteMenor?.[0]?.ID_Tutor.toString() || '' 
         }
       });
     } else {
       setFormData(initialState);
-      setEsAdulto(true);
-      setModoTutor('existente');
     }
   }, [pacienteEditar, isOpen]);
 
-  // --- HELPERS DE ACTUALIZACIÓN ---
-  
-  // Validar Nombre/Apellido en tiempo real
-  const handleTextoChange = (field: string, value: string) => {
-    if (value === '' || esTextoValido(value)) {
-      setFormData({ ...formData, [field]: value });
-    }
-  };
-
-  const updateDatosAdulto = (field: string, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      datosAdulto: { ...prev.datosAdulto, [field]: value }
-    }));
-  };
-
-  const updateDatosMenor = (field: string, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      datosMenor: { ...prev.datosMenor, [field]: value }
-    }));
-  };
-
-  const updateNuevoTutor = (field: string, value: any) => {
-    // Validar nombre/apellido del tutor también
-    if ((field === 'nombre' || field === 'apellido') && value !== '' && !esTextoValido(value)) return;
-    
-    setFormData(prev => ({
-      ...prev,
-      datosMenor: {
-        ...prev.datosMenor,
-        nuevoTutor: { ...prev.datosMenor.nuevoTutor, [field]: value }
-      }
-    }));
-  };
-
-  const updateDireccionTutor = (field: string, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      datosMenor: {
-        ...prev.datosMenor,
-        nuevoTutor: {
-          ...prev.datosMenor.nuevoTutor,
-          direccion: { ...prev.datosMenor.nuevoTutor.direccion, [field]: value }
-        }
-      }
-    }));
-  };
-
-  const handleFechaNacChange = (fecha: string) => {
-    setFormData({ ...formData, fechaNac: fecha });
-    if (fecha) {
-      const hoy = new Date();
-      const nacimiento = new Date(fecha);
-      let edad = hoy.getFullYear() - nacimiento.getFullYear();
-      const mes = hoy.getMonth() - nacimiento.getMonth();
-      if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate())) edad--;
-      setEsAdulto(edad >= 18);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // VALIDACIÓN: Nombres sin números
-    if (!esTextoValido(formData.nombre) || !esTextoValido(formData.apellido)) {
-        return toast.error("El nombre y apellido no pueden contener números ni símbolos.");
+
+    // 🟢 USO DE TOAST PARA VALIDACIÓN PRE-ENVÍO (Quita el error 6133)
+    if (!formData.nombre.trim() || !formData.apellido.trim()) {
+        return toast.error("El nombre y apellido son obligatorios.");
     }
 
     if (esAdulto) {
-       if (!esCedulaValida(formData.datosAdulto.cedula)) {
-          return toast.error("La cédula del paciente es inválida (XXX-XXXXXX-XXXXL)");
-       }
-       if (!esTelefonoValido(formData.datosAdulto.telefono)) {
-          return toast.error("Teléfono inválido. Debe ser 8 dígitos (Inicia 2,5,7,8)");
-       }
-    } else if (modoTutor === 'nuevo') {
-       if (!esCedulaValida(formData.datosMenor.nuevoTutor.cedula)) {
-          return toast.error("La cédula del tutor es inválida");
-       }
-       if (!esTelefonoValido(formData.datosMenor.nuevoTutor.telefono)) {
-          return toast.error("Teléfono del tutor inválido.");
-       }
-       
-       const nuevoT = formData.datosMenor.nuevoTutor;
-       // Validar nombre tutor
-       if (!esTextoValido(nuevoT.nombre) || !esTextoValido(nuevoT.apellido)) {
-            return toast.error("El nombre del tutor no debe tener números.");
-       }
-
-       if (!nuevoT.ocupacionId || !nuevoT.estadoCivilId || !nuevoT.parentescoId) {
-          return toast.error("Debe completar Ocupación, Estado Civil y Parentesco del Tutor.");
-       }
+        if (!esCedulaValida(formData.datosAdulto.cedula)) {
+            return toast.error("Formato de cédula inválido (000-000000-0000X).");
+        }
+        // 🟢 AGREGAMOS ESTA LÍNEA PARA USAR LA FUNCIÓN:
+        if (formData.datosAdulto.telefono && !esTelefonoValido(formData.datosAdulto.telefono)) {
+            return toast.error("El teléfono debe tener 8 dígitos y empezar con 2, 5, 7 u 8.");
+        }
+        if (!formData.datosAdulto.ocupacionId) {
+            return toast.error("Seleccione la ocupación del paciente.");
+        }
+    } else {
+        if (!formData.datosMenor.partNacimiento.trim()) {
+            return toast.error("La partida de nacimiento es obligatoria para menores.");
+        }
+        if (modoTutor === 'existente' && !formData.datosMenor.tutorId) {
+            return toast.error("Debe seleccionar un tutor existente.");
+        }
+        if (modoTutor === 'nuevo' && !formData.datosMenor.nuevoTutor.nombre) {
+            return toast.error("Complete los datos del nuevo tutor.");
+        }
     }
-
+    
     const payload: CreatePacienteDTO = {
       nombre: formData.nombre,
       apellido: formData.apellido,
       fechaNac: formData.fechaNac,
       genero: formData.genero,
       nacionalidad: formData.nacionalidad,
-      // @ts-ignore
-      ID_EstadoDeActividad: formData.ID_EstadoDeActividad,
-      direccion: {
-          pais: 'Nicaragua',
-          ...formData.direccion
-      },
+      direccion: { pais: 'Nicaragua', ...formData.direccion },
       esAdulto: esAdulto,
       datosAdulto: esAdulto ? {
           cedula: formData.datosAdulto.cedula,
           telefono: formData.datosAdulto.telefono,
-          ocupacionId: formData.datosAdulto.ocupacionId,
-          estadoCivilId: formData.datosAdulto.estadoCivilId
+          ocupacionId: parseInt(formData.datosAdulto.ocupacionId) || 0,
+          estadoCivilId: parseInt(formData.datosAdulto.estadoCivilId) || 0
       } : undefined,
       datosMenor: !esAdulto ? {
           partNacimiento: formData.datosMenor.partNacimiento,
           grado: formData.datosMenor.grado,
           modoTutor: modoTutor,
-          tutorId: formData.datosMenor.tutorId,
-          nuevoTutor: modoTutor === 'nuevo' ? formData.datosMenor.nuevoTutor : undefined
+          tutorId: formData.datosMenor.tutorId ? parseInt(formData.datosMenor.tutorId) : undefined,
+          parentescoId: modoTutor === 'nuevo' ? (parseInt(formData.datosMenor.nuevoTutor.parentescoId) || 0) : 0, 
+          nuevoTutor: modoTutor === 'nuevo' ? {
+              ...formData.datosMenor.nuevoTutor,
+              parentescoId: parseInt(formData.datosMenor.nuevoTutor.parentescoId) || 0,
+              ocupacionId: parseInt(formData.datosMenor.nuevoTutor.ocupacionId) || 0,
+              estadoCivilId: parseInt(formData.datosMenor.nuevoTutor.estadoCivilId) || 0
+          } : undefined
       } : undefined
     };
 
-    try {
-        setGuardando(true);
-        const success = await onSubmit(payload, !!pacienteEditar);
-        if (success) {
-            onClose();
-        } 
-    } catch (error) {
-        console.error("Error", error);
-    } finally {
-        setGuardando(false);
-    }
+    setGuardando(true);
+    const success = await onSubmit(payload, !!pacienteEditar);
+    if (success) onClose();
+    setGuardando(false);
   };
 
   if (!isOpen) return null;
 
-  const tutoresFiltrados = catalogos.listaTutores ? catalogos.listaTutores.filter((t: any) => {
+  const tutoresFiltrados = catalogos.listaTutores?.filter((t: any) => {
     const term = busquedaTutor.toLowerCase();
-    const nombre = `${t.Nombre} ${t.Apellido}`.toLowerCase();
-    return nombre.includes(term) || t.No_Cedula.includes(term);
-  }) : [];
-
-  const isTypeSelectionDisabled = !!pacienteEditar || formData.fechaNac !== '';
+    return `${t.Nombre} ${t.Apellido}`.toLowerCase().includes(term) || t.No_Cedula.includes(term);
+  }) || [];
 
   return (
-    <dialog className="modal modal-open bg-black/50 backdrop-blur-sm">
-      <div className="modal-box w-11/12 max-w-5xl bg-white p-0 rounded-2xl shadow-2xl">
-        
-        <div className="bg-slate-800 text-white px-8 py-4 border-b border-slate-200 flex justify-between items-center flex-shrink-0">
-          <h3 className="font-bold text-xl font-serif">
-            {pacienteEditar ? 'Editar Expediente' : 'Registrar Nuevo Paciente'}
-          </h3>
-          <button type="button" className="btn btn-sm btn-circle btn-ghost text-slate-200 hover:text-white" onClick={onClose} disabled={guardando}>✕</button>
+    <dialog className="modal modal-open bg-black/50 backdrop-blur-sm transition-all duration-200">
+      <div className="modal-box w-11/12 max-w-5xl bg-white p-0 rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="bg-slate-800 text-white px-8 py-4 flex justify-between items-center">
+          <h3 className="font-bold text-xl font-serif">{pacienteEditar ? '✏️ Editar Expediente' : '👤 Registrar Nuevo Paciente'}</h3>
+          <button type="button" className="btn btn-sm btn-circle btn-ghost" onClick={onClose} disabled={guardando}>✕</button>
         </div>
-        
-        <div className="px-8 py-6 max-h-[75vh] overflow-y-auto bg-slate-50">
+        <div className="px-8 py-6 overflow-y-auto bg-slate-50 flex-1">
           <form onSubmit={handleSubmit} className="space-y-8"> 
-            
             <div className="flex justify-center">
-              <div className="bg-white p-1 rounded-xl inline-flex relative shadow-lg border border-slate-200">
-                <button type="button" 
-                  className={`px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${esAdulto ? 'bg-blue-600 text-white shadow-md hover:bg-blue-700' : 'text-slate-500 hover:bg-slate-100'} ${isTypeSelectionDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
-                  onClick={()=> !isTypeSelectionDisabled && setEsAdulto(true)} 
-                  disabled={isTypeSelectionDisabled}>
-                  <Icons.User /> PACIENTE ADULTO
-                </button>
-                <button type="button" 
-                  className={`px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${!esAdulto ? 'bg-amber-600 text-white shadow-md hover:bg-amber-700' : 'text-slate-500 hover:bg-slate-100'} ${isTypeSelectionDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
-                  onClick={()=> !isTypeSelectionDisabled && setEsAdulto(false)} 
-                  disabled={isTypeSelectionDisabled}>
-                  <Icons.User /> PACIENTE MENOR
-                </button>
+              <div className="bg-white p-1 rounded-xl inline-flex shadow-lg border border-slate-200">
+                <button type="button" className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${esAdulto ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500'}`} onClick={()=> !pacienteEditar && setEsAdulto(true)}>ADULTO</button>
+                <button type="button" className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${!esAdulto ? 'bg-amber-600 text-white shadow-md' : 'text-slate-500'}`} onClick={()=> !pacienteEditar && setEsAdulto(false)}>MENOR</button>
               </div>
             </div>
-
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-              
-              {/* COLUMNA IZQUIERDA: BÁSICOS Y DIRECCIÓN */}
               <div className="lg:col-span-5 space-y-6 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                <div className="font-bold text-slate-800 uppercase text-sm tracking-wide border-b border-blue-500/30 pb-2 flex items-center gap-2"><Icons.User /> Información General</div>
-                
-                {/* Nombre y Apellido (Con validación de texto) */}
+                <div className="font-bold text-slate-800 uppercase text-xs tracking-wide flex items-center gap-2 mb-2"><Icons.User /> Básicos</div>
                 <div className="grid grid-cols-2 gap-3">
-                  <input required type="text" placeholder="Nombre" className="input input-bordered bg-slate-50 w-full" value={formData.nombre} onChange={e => handleTextoChange('nombre', e.target.value)} />
-                  <input required type="text" placeholder="Apellido" className="input input-bordered bg-slate-50 w-full" value={formData.apellido} onChange={e => handleTextoChange('apellido', e.target.value)} />
+                  <input required placeholder="Nombre" className="input input-bordered bg-slate-50" value={formData.nombre} onChange={e => setFormData({...formData, nombre: e.target.value})} />
+                  <input required placeholder="Apellido" className="input input-bordered bg-slate-50" value={formData.apellido} onChange={e => setFormData({...formData, apellido: e.target.value})} />
                 </div>
-                
                 <div className="grid grid-cols-2 gap-3">
                   <div className="form-control">
-                    <label className="label pt-0 pb-1 text-xs"><span className="label-text-alt text-slate-500">Fecha de Nacimiento</span></label>
-                    <input required type="date" className="input input-bordered bg-slate-50 w-full" value={formData.fechaNac} onChange={e => handleFechaNacChange(e.target.value)} />
+                    <label className="label-text text-[10px] uppercase font-bold text-slate-400">Nacimiento</label>
+                    <input required type="date" className="input input-bordered bg-slate-50" value={formData.fechaNac} onChange={e => setFormData({...formData, fechaNac: e.target.value})} />
                   </div>
                   <div className="form-control">
-                    <label className="label pt-0 pb-1 text-xs"><span className="label-text-alt text-slate-500">Género</span></label>
-                    <select className="select select-bordered bg-slate-50 w-full" value={formData.genero} onChange={e => setFormData({...formData, genero: e.target.value})}><option value="Masculino">Masculino</option><option value="Femenino">Femenino</option></select>
+                    <label className="label-text text-[10px] uppercase font-bold text-slate-400">Género</label>
+                    <select className="select select-bordered bg-slate-50" value={formData.genero} onChange={e => setFormData({...formData, genero: e.target.value})}><option value="Masculino">Masculino</option><option value="Femenino">Femenino</option></select>
                   </div>
                 </div>
-                
-                {pacienteEditar && (
-                  <div className="form-control">
-                    <label className="label pt-0 pb-1 text-xs"><span className="label-text font-bold text-slate-500">Estado de Actividad</span></label>
-                    <select className="select select-bordered bg-slate-50 w-full" value={formData.ID_EstadoDeActividad} onChange={e => setFormData({...formData, ID_EstadoDeActividad: parseInt(e.target.value)})}>
-                      <option value={1}>Activo</option><option value={2}>Inactivo</option>
-                    </select>
+                <div className="pt-4 border-t border-slate-100 space-y-3">
+                  <div className="font-bold text-slate-800 uppercase text-xs tracking-wide flex items-center gap-2"><Icons.MapPin /> Dirección</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input placeholder="Departamento" className="input input-bordered input-sm" value={formData.direccion.departamento} onChange={e => setFormData({...formData, direccion: {...formData.direccion, departamento: e.target.value}})} />
+                    <input placeholder="Ciudad" className="input input-bordered input-sm" value={formData.direccion.ciudad} onChange={e => setFormData({...formData, direccion: {...formData.direccion, ciudad: e.target.value}})} />
                   </div>
-                )}
-
-                <div className="pt-4 border-t border-slate-100">
-                    <div className="font-bold text-slate-800 uppercase text-sm tracking-wide mb-3 flex items-center gap-2"><Icons.MapPin /> Dirección Principal</div>
-                    <div className="space-y-3">
-                      <input type="text" placeholder="Departamento" className="input input-bordered bg-slate-50 w-full" value={formData.direccion.departamento} onChange={e => setFormData({...formData, direccion: {...formData.direccion, departamento: e.target.value}})} />
-                      <input type="text" placeholder="Ciudad" className="input input-bordered bg-slate-50 w-full" value={formData.direccion.ciudad} onChange={e => setFormData({...formData, direccion: {...formData.direccion, ciudad: e.target.value}})} />
-                      <input type="text" placeholder="Barrio" className="input input-bordered bg-slate-50 w-full" value={formData.direccion.barrio} onChange={e => setFormData({...formData, direccion: {...formData.direccion, barrio: e.target.value}})} />
-                      <input type="text" placeholder="Calle/Detalle" className="input input-bordered bg-slate-50 w-full" value={formData.direccion.calle} onChange={e => setFormData({...formData, direccion: {...formData.direccion, calle: e.target.value}})} />
-                    </div>
+                  <input placeholder="Barrio" className="input input-bordered input-sm w-full" value={formData.direccion.barrio} onChange={e => setFormData({...formData, direccion: {...formData.direccion, barrio: e.target.value}})} />
+                  <textarea placeholder="Calle/Punto de referencia" className="textarea textarea-bordered textarea-sm w-full h-20" value={formData.direccion.calle} onChange={e => setFormData({...formData, direccion: {...formData.direccion, calle: e.target.value}})} />
                 </div>
               </div>
-
-              {/* COLUMNA DERECHA: DATOS ESPECÍFICOS / TUTOR */}
-              <div className={`lg:col-span-7 pl-0 lg:pl-8 border-t lg:border-t-0 lg:border-l-4 p-6 rounded-xl shadow-sm ${esAdulto ? 'border-blue-200 bg-white' : 'border-amber-200 bg-white'}`}>
-                
+              <div className={`lg:col-span-7 p-6 rounded-xl border-2 bg-white ${esAdulto ? 'border-blue-100' : 'border-amber-100'}`}>
                 {esAdulto ? (
-                  <div className="space-y-6 animate-fade-in">
-                    <div className="font-bold text-blue-600 uppercase text-sm tracking-wide border-b border-blue-200 pb-2">Detalles del Adulto</div>
-                    
-                    <input required type="text" placeholder="No. Cédula (XXX-XXXXXX-XXXXL)" className="input input-bordered bg-slate-50 w-full font-mono" value={formData.datosAdulto.cedula} onChange={e => updateDatosAdulto('cedula', formatearCedula(e.target.value))} maxLength={16} />
-                    <input type="text" placeholder="Teléfono (8 dígitos)" className="input input-bordered bg-slate-50 w-full" value={formData.datosAdulto.telefono} onChange={e => updateDatosAdulto('telefono', e.target.value)} maxLength={8} />
+                  <div className="space-y-4">
+                    <div className="font-bold text-blue-600 uppercase text-xs mb-4">Detalles Adulto</div>
+                    <input required placeholder="Cédula (000-000000-0000X)" className="input input-bordered w-full font-mono" value={formData.datosAdulto.cedula} onChange={e => setFormData({...formData, datosAdulto: {...formData.datosAdulto, cedula: formatearCedula(e.target.value)}})} maxLength={16} />
+                    <input placeholder="Teléfono" className="input input-bordered w-full" value={formData.datosAdulto.telefono} onChange={e => setFormData({...formData, datosAdulto: {...formData.datosAdulto, telefono: e.target.value}})} maxLength={8} />
                     <div className="grid grid-cols-2 gap-3">
-                      <select required className="select select-bordered bg-slate-50 w-full" value={formData.datosAdulto.ocupacionId} onChange={e => updateDatosAdulto('ocupacionId', e.target.value)}>
+                      <select required className="select select-bordered" value={formData.datosAdulto.ocupacionId} onChange={e => setFormData({...formData, datosAdulto: {...formData.datosAdulto, ocupacionId: e.target.value}})}>
                           <option value="">Ocupación...</option>
-                          {catalogos.ocupaciones?.map((o: any) => <option key={o.ID_Ocupacion} value={o.ID_Ocupacion}>{o.NombreDeOcupacion}</option>)}
+                          {catalogos.ocupaciones?.map((o: any) => <option key={o.ID_Ocupacion} value={o.ID_Ocupacion}>{o.Nombre_DeOcupacion}</option>)}
                       </select>
-                      <select required className="select select-bordered bg-slate-50 w-full" value={formData.datosAdulto.estadoCivilId} onChange={e => updateDatosAdulto('estadoCivilId', e.target.value)}>
+                      <select required className="select select-bordered" value={formData.datosAdulto.estadoCivilId} onChange={e => setFormData({...formData, datosAdulto: {...formData.datosAdulto, estadoCivilId: e.target.value}})}>
                           <option value="">Estado Civil...</option>
-                          {catalogos.estadosCiviles?.map((ec: any) => <option key={ec.ID_EstadoCivil} value={ec.ID_EstadoCivil}>{ec.NombreEstadoCivil}</option>)}
+                          {catalogos.estadosCiviles?.map((ec: any) => <option key={ec.ID_EstadoCivil} value={ec.ID_EstadoCivil}>{ec.Nombre_EstadoCivil}</option>)}
                       </select>
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-6 animate-fade-in">
-                    <div className="font-bold text-amber-600 uppercase text-sm tracking-wide border-b border-amber-200 pb-2">Datos del Menor</div>
-                    
+                  <div className="space-y-4">
+                    <div className="font-bold text-amber-600 uppercase text-xs mb-4">Datos del Menor</div>
                     <div className="grid grid-cols-2 gap-3">
-                       <input required type="text" placeholder="Cód. Partida Nacimiento" className="input input-bordered bg-slate-50 w-full" value={formData.datosMenor.partNacimiento} onChange={e => updateDatosMenor('partNacimiento', e.target.value)} />
-                       <input type="text" placeholder="Grado Escolar" className="input input-bordered bg-slate-50 w-full" value={formData.datosMenor.grado} onChange={e => updateDatosMenor('grado', e.target.value)} />
+                       <input required placeholder="Partida Nacimiento" className="input input-bordered w-full" value={formData.datosMenor.partNacimiento} onChange={e => setFormData({...formData, datosMenor: {...formData.datosMenor, partNacimiento: e.target.value}})} />
+                       <input placeholder="Grado Escolar" className="input input-bordered w-full" value={formData.datosMenor.grado} onChange={e => setFormData({...formData, datosMenor: {...formData.datosMenor, grado: e.target.value}})} />
                     </div>
-
-                    <div className="bg-amber-50 p-5 rounded-xl border border-amber-200 mt-4">
-                      <div className="flex justify-between items-center mb-4 border-b border-amber-200 pb-2">
-                          <span className="text-sm font-bold text-slate-800 flex items-center gap-2"><Icons.Users /> TUTOR RESPONSABLE</span>
+                    <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                      <div className="flex justify-between items-center mb-3">
+                          <span className="text-xs font-bold text-slate-700">TUTOR</span>
                           {!pacienteEditar && (
-                           <div className="tabs tabs-boxed bg-white p-1 h-auto shadow-sm border border-slate-100">
-                              <a className={`tab tab-sm transition-colors ${modoTutor==='existente' ? 'tab-active !bg-slate-800 !text-white' : 'text-slate-500'}`} onClick={()=>setModoTutor('existente')}>Buscar</a>
-                              <a className={`tab tab-sm transition-colors ${modoTutor==='nuevo' ? 'tab-active !bg-slate-800 !text-white' : 'text-slate-500'}`} onClick={()=>setModoTutor('nuevo')}>Crear Nuevo</a>
+                           <div className="tabs tabs-boxed bg-white h-auto p-1">
+                              <button type="button" className={`tab tab-xs ${modoTutor==='existente' ? 'tab-active' : ''}`} onClick={()=>setModoTutor('existente')}>Existente</button>
+                              <button type="button" className={`tab tab-xs ${modoTutor==='nuevo' ? 'tab-active' : ''}`} onClick={()=>setModoTutor('nuevo')}>Nuevo</button>
                            </div>
                           )}
                       </div>
-                      
                       {modoTutor === 'existente' ? (
-                          <div className="space-y-3 animate-fade-in">
-                             <input type="text" placeholder="Buscar por nombre, apellido o cédula..." className="input input-bordered w-full bg-white" value={busquedaTutor} onChange={(e) => setBusquedaTutor(e.target.value)} />
-                             <select required={modoTutor === 'existente'} className="select select-bordered w-full bg-white" value={formData.datosMenor.tutorId} onChange={e => updateDatosMenor('tutorId', e.target.value)}>
-                               <option value="">Seleccione un Tutor ({tutoresFiltrados.length} encontrados)</option>
-                               {tutoresFiltrados.map((t: any) => (<option key={t.ID_Tutor} value={t.ID_Tutor}>{t.Nombre} {t.Apellido} - {t.No_Cedula}</option>))}
-                             </select>
-                          </div>
+                        <div className="space-y-2">
+                           <input placeholder="Buscar tutor..." className="input input-sm w-full" value={busquedaTutor} onChange={(e) => setBusquedaTutor(e.target.value)} />
+                           <select required className="select select-sm w-full" value={formData.datosMenor.tutorId} onChange={e => setFormData({...formData, datosMenor: {...formData.datosMenor, tutorId: e.target.value}})}>
+                             <option value="">Seleccione...</option>
+                             {tutoresFiltrados.map((t: any) => (<option key={t.ID_Tutor} value={t.ID_Tutor}>{t.Nombre} {t.Apellido}</option>))}
+                           </select>
+                        </div>
                       ) : (
-                          <div className="space-y-3 animate-fade-in">
-                             <div className="grid grid-cols-2 gap-2">
-                               <input required={modoTutor === 'nuevo'} type="text" placeholder="Nombre Tutor" className="input input-bordered input-sm w-full bg-white" value={formData.datosMenor.nuevoTutor.nombre} onChange={e => updateNuevoTutor('nombre', e.target.value)} />
-                               <input required={modoTutor === 'nuevo'} type="text" placeholder="Apellido Tutor" className="input input-bordered input-sm w-full bg-white" value={formData.datosMenor.nuevoTutor.apellido} onChange={e => updateNuevoTutor('apellido', e.target.value)} />
-                             </div>
-                             <div className="grid grid-cols-2 gap-2">
-                               <input required={modoTutor === 'nuevo'} type="text" placeholder="Cédula Tutor" className="input input-bordered input-sm w-full bg-white font-mono" value={formData.datosMenor.nuevoTutor.cedula} maxLength={16} onChange={e => updateNuevoTutor('cedula', formatearCedula(e.target.value))} />
-                               <input type="text" placeholder="Teléfono Tutor" className="input input-bordered input-sm w-full bg-white" value={formData.datosMenor.nuevoTutor.telefono} onChange={e => updateNuevoTutor('telefono', e.target.value)} maxLength={8} />
-                             </div>
-                             <div className="grid grid-cols-2 gap-2">
-                                <select required={modoTutor === 'nuevo'} className="select select-bordered select-sm bg-white" value={formData.datosMenor.nuevoTutor.parentescoId} onChange={e => updateNuevoTutor('parentescoId', e.target.value)}><option value="">Parentesco...</option>{catalogos.parentescos?.map((p:any) => <option key={p.ID_Parentesco} value={p.ID_Parentesco}>{p.NombreDeParentesco}</option>)}</select>
-                                <select required={modoTutor === 'nuevo'} className="select select-bordered select-sm bg-white" value={formData.datosMenor.nuevoTutor.ocupacionId} onChange={e => updateNuevoTutor('ocupacionId', e.target.value)}><option value="">Ocupación...</option>{catalogos.ocupaciones?.map((o:any) => <option key={o.ID_Ocupacion} value={o.ID_Ocupacion}>{o.NombreDeOcupacion}</option>)}</select>
-                             </div>
-                             <select required={modoTutor === 'nuevo'} className="select select-bordered select-sm w-full bg-white" value={formData.datosMenor.nuevoTutor.estadoCivilId} onChange={e => updateNuevoTutor('estadoCivilId', e.target.value)}><option value="">Estado Civil...</option>{catalogos.estadosCiviles?.map((ec:any) => <option key={ec.ID_EstadoCivil} value={ec.ID_EstadoCivil}>{ec.NombreEstadoCivil}</option>)}</select>
-                             <div className="grid grid-cols-2 gap-2 mt-2">
-                                <input type="text" placeholder="Departamento" className="input input-bordered input-sm w-full bg-white" value={formData.datosMenor.nuevoTutor.direccion.departamento} onChange={e => updateDireccionTutor('departamento', e.target.value)} />
-                                <input type="text" placeholder="Ciudad" className="input input-bordered input-sm w-full bg-white" value={formData.datosMenor.nuevoTutor.direccion.ciudad} onChange={e => updateDireccionTutor('ciudad', e.target.value)} />
-                             </div>
-                             <div className="grid grid-cols-2 gap-2">
-                                <input type="text" placeholder="Barrio" className="input input-bordered input-sm w-full bg-white" value={formData.datosMenor.nuevoTutor.direccion.barrio} onChange={e => updateDireccionTutor('barrio', e.target.value)} />
-                                <input type="text" placeholder="Calle" className="input input-bordered input-sm w-full bg-white" value={formData.datosMenor.nuevoTutor.direccion.calle} onChange={e => updateDireccionTutor('calle', e.target.value)} />
-                             </div>
-                          </div>
+                        <div className="grid grid-cols-2 gap-2">
+                           <input placeholder="Nombre" className="input input-xs" value={formData.datosMenor.nuevoTutor.nombre} onChange={e => setFormData({...formData, datosMenor: {...formData.datosMenor, nuevoTutor: {...formData.datosMenor.nuevoTutor, nombre: e.target.value}}})} />
+                           <input placeholder="Cédula" className="input input-xs font-mono" value={formData.datosMenor.nuevoTutor.cedula} onChange={e => setFormData({...formData, datosMenor: {...formData.datosMenor, nuevoTutor: {...formData.datosMenor.nuevoTutor, cedula: formatearCedula(e.target.value)}}})} maxLength={16} />
+                           <select className="select select-xs" value={formData.datosMenor.nuevoTutor.parentescoId} onChange={e => setFormData({...formData, datosMenor: {...formData.datosMenor, nuevoTutor: {...formData.datosMenor.nuevoTutor, parentescoId: e.target.value}}})}>
+                              <option value="">Parentesco...</option>
+                              {catalogos.parentescos?.map((p:any) => <option key={p.ID_Parentesco} value={p.ID_Parentesco}>{p.Nombre_De_Parentesco}</option>)}
+                           </select>
+                        </div>
                       )}
                     </div>
                   </div>
                 )}
               </div>
             </div>
-
-            <div className="modal-action bg-slate-50 px-8 py-4 border-t border-slate-200">
-              <button type="button" className="btn btn-ghost hover:bg-slate-100" onClick={onClose} disabled={guardando}>Cancelar</button>
-              <button type="submit" className="btn btn-primary text-white px-8 shadow-md" disabled={guardando}>
-                {guardando ? 'Guardando...' : (pacienteEditar ? 'Actualizar Cambios' : 'Guardar Paciente')}
+            <div className="modal-action p-4 border-t">
+              <button type="button" className="btn btn-ghost" onClick={onClose} disabled={guardando}>Cancelar</button>
+              <button type="submit" className="btn btn-primary px-10 text-white shadow-md" disabled={guardando}>
+                {guardando ? 'Guardando...' : (pacienteEditar ? 'Actualizar Expediente' : 'Guardar Paciente')}
               </button>
             </div>
           </form>

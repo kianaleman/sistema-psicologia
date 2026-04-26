@@ -14,93 +14,85 @@ import Configuracion from './pages/Configuracion';
 import PacienteDetalle from './pages/PacienteDetalle';
 import Presentacion from './pages/Presentacion';
 
-
 // ----------------------------------------------------
 // NavItem: Componente para el link de navegación
 function NavItem({ to, label, icon }: { to: string, label: string, icon: string }) {
   const location = useLocation();
-  // Lógica: Activo si es la ruta exacta O si empieza con ella (excepto root / para evitar activos falsos)
+  // Lógica: Activo si es la ruta exacta O si empieza con ella (excepto root /)
   const isActive = location.pathname === to || (to !== '/' && location.pathname.startsWith(to));
   
   return (
     <li>
       <Link 
         to={to} 
-        className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group
+        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group
         ${isActive 
-          ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20 font-medium' 
+          ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20 font-semibold' 
           : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
       >
-        <span className="text-lg">{icon}</span>
-        <span>{label}</span>
+        <span className={`text-lg transition-transform duration-200 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`}>{icon}</span>
+        <span className="text-sm">{label}</span>
       </Link>
     </li>
   );
 }
 
 // ----------------------------------------------------
-// Layout: Componente que renderiza el Sidebar y el Outlet para los hijos
+// Layout: Componente que renderiza el Sidebar y el Outlet
 function Layout() {
   return (
     <div className="flex min-h-screen bg-[#F8FAFC]">
       
       {/* --- SIDEBAR LATERAL --- */}
-      <aside className="w-64 bg-white border-r border-slate-200 fixed h-full z-20 hidden lg:block overflow-y-auto">
-        <div className="p-6">
-          <div className="flex items-center gap-3 mb-8">
+      <aside className="w-64 bg-white border-r border-slate-200 fixed h-full z-30 hidden lg:block overflow-y-auto">
+        <div className="p-6 flex flex-col h-full">
+          <div className="flex items-center gap-3 mb-10 px-2">
             <img 
                 src={logoClinica} 
                 alt="Logo" 
-                className="w-10 h-10 object-contain" 
+                className="w-10 h-10 object-contain drop-shadow-sm" 
             />
-            <span className="text-xl font-bold text-slate-800 tracking-tight">Clínica Resiliencia</span>
+            <span className="text-xl font-black text-slate-800 tracking-tight font-serif">Resiliencia</span>
           </div>
           
-          <ul className="menu space-y-1 p-0">
-            <span className="text-xs font-bold text-slate-400 uppercase px-4 mb-2 mt-2">Principal</span>
+          <ul className="menu space-y-1 p-0 flex-1">
+            <span className="text-[10px] font-black text-slate-400 uppercase px-4 mb-2 tracking-widest">Principal</span>
             <NavItem to="/dashboard" label="Dashboard" icon="📊" />
             <NavItem to="/citas" label="Agenda" icon="📅" />
             <NavItem to="/pacientes" label="Pacientes" icon="👥" />
             
-            <span className="text-xs font-bold text-slate-400 uppercase px-4 mb-2 mt-6">Clínica</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase px-4 mb-2 mt-6 tracking-widest">Clínica</span>
             <NavItem to="/historial" label="Historial" icon="📂" />
             <NavItem to="/facturacion" label="Finanzas" icon="💰" />
             
-            <span className="text-xs font-bold text-slate-400 uppercase px-4 mb-2 mt-6">Administración</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase px-4 mb-2 mt-6 tracking-widest">Administración</span>
             <NavItem to="/psicologos" label="Equipo" icon="🥼" />
             <NavItem to="/tutores" label="Tutores" icon="👨‍👩‍👦" />
             <NavItem to="/configuracion" label="Ajustes" icon="⚙️" />
-
-            {/* --- NUEVO BOTÓN AGREGADO --- */}
-            <div className="divider my-4"></div>
-            <NavItem to="/" label="Pantalla Inicio" icon="🏠" />
           </ul>
-        </div>
-        
-        {/* Usuario Abajo
-        <div className="absolute bottom-0 w-full p-4 border-t border-slate-100 bg-white">
-          <div className="flex items-center gap-3">
-            <div className="avatar placeholder">
-              <div className="bg-slate-900 text-white rounded-full w-8"><span>AD</span></div>
-            </div>
-            <div>
-              <p className="text-sm font-bold text-slate-700">Administrador</p>
-              <p className="text-xs text-slate-400">En línea</p>
-            </div>
+
+          {/* Botón de Retorno a Inicio en la parte inferior */}
+          <div className="pt-4 mt-4 border-t border-slate-100">
+            <NavItem to="/" label="Pantalla Inicio" icon="🏠" />
           </div>
-        </div> */}
+        </div>
       </aside>
 
       {/* --- ÁREA DE CONTENIDO --- */}
-      <main className="flex-1 lg:ml-64 p-8">
-        {/* Barra Superior Móvil (Solo visible en pantallas pequeñas) */}
-        <div className="lg:hidden flex justify-between items-center mb-6">
-           <span className="font-bold text-lg text-slate-800">Clínica Resiliencia</span>
-           <Link to="/" className="btn btn-sm btn-ghost">🏠</Link>
-        </div>
+      <main className="flex-1 lg:ml-64 min-h-screen flex flex-col">
+        {/* Barra Superior Móvil */}
+        <header className="lg:hidden flex justify-between items-center p-4 bg-white border-b border-slate-200 sticky top-0 z-20">
+            <div className="flex items-center gap-2">
+                <img src={logoClinica} className="w-8 h-8 object-contain" alt="Logo" />
+                <span className="font-bold text-slate-800">Resiliencia</span>
+            </div>
+            <Link to="/" className="btn btn-sm btn-ghost text-xl">🏠</Link>
+        </header>
         
-        {/* Punto de Inyección de Rutas Hijas */}
-        <Outlet /> 
+        {/* Contenedor de las páginas */}
+        <div className="p-4 md:p-8 flex-1 overflow-x-hidden">
+          <Outlet /> 
+        </div>
       </main>
 
       <Toaster position="top-right" richColors closeButton theme="light" />
@@ -109,15 +101,15 @@ function Layout() {
 }
 
 // ----------------------------------------------------
-// App: Componente principal que define las rutas
+// App: Componente principal
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* 1. RUTA DE PRESENTACIÓN (Pantalla completa, sin Layout) */}
+        {/* 1. PRESENTACIÓN (Full Screen) */}
         <Route path="/" element={<Presentacion />} />
         
-        {/* 2. RUTAS PROTEGIDAS / EN EL SISTEMA (Con Layout y Sidebar) */}
+        {/* 2. SISTEMA (With Sidebar) */}
         <Route element={<Layout />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/citas" element={<Citas />} />
@@ -129,6 +121,9 @@ export default function App() {
           <Route path="/facturacion" element={<Facturacion />} />
           <Route path="/configuracion" element={<Configuracion />} />
         </Route>
+
+        {/* Redirección por defecto si la ruta no existe */}
+        <Route path="*" element={<Presentacion />} />
       </Routes>
     </BrowserRouter>
   )
