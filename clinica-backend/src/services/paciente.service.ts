@@ -9,24 +9,40 @@ interface CreatePacienteDTO {
   fechaNac: string | Date;
   genero: string;
   nacionalidad: string;
-  direccion: { pais?: string; departamento: string; ciudad: string; barrio: string; calle: string; };
+  direccion: {
+    pais?: string;
+    departamento: string;
+    ciudad: string;
+    barrio: string;
+    calle: string;
+  };
   esAdulto: boolean;
-  datosAdulto?: { cedula: string; telefono: string; ocupacionId: number; estadoCivilId: number; };
-  datosMenor?: { 
-    partNacimiento: string; 
-    grado: string; 
-    modoTutor: 'existente' | 'nuevo'; 
-    tutorId?: number; 
-    parentescoId: number; 
-    nuevoTutor?: { 
-      nombre: string; 
-      apellido: string; 
-      noCedula: string; // 🟢 Agregado: Obligatorio para evitar duplicidad de NULLs
-      telefono: string; 
-      parentescoId: number; 
-      ocupacionId: number; 
-      estadoCivilId: number; 
-      direccion: { departamento: string; ciudad: string; barrio: string; calle: string; }; 
+  datosAdulto?: {
+    cedula: string;
+    telefono: string;
+    ocupacionId: number;
+    estadoCivilId: number;
+  };
+  datosMenor?: {
+    partNacimiento: string;
+    grado: string;
+    modoTutor: 'existente' | 'nuevo';
+    tutorId?: number;
+    parentescoId: number;
+    nuevoTutor?: {
+      nombre: string;
+      apellido: string;
+      noCedula: string;
+      telefono: string;
+      parentescoId: number;
+      ocupacionId: number;
+      estadoCivilId: number;
+      direccion: {
+        departamento: string;
+        ciudad: string;
+        barrio: string;
+        calle: string;
+      };
     };
   };
 }
@@ -35,46 +51,72 @@ interface CreatePacienteDTO {
 const validarFormatoCedula = (cedula: string, contexto: string) => {
   const regex = /^\d{3}-\d{6}-\d{4}[A-Z]$/;
   const valor = (cedula || '').trim();
-  if (!regex.test(valor)) throw new Error(`Cédula para ${contexto} inválida. Formato: 000-000000-0000X`);
+
+  if (!regex.test(valor)) {
+    throw new Error(`Cédula para ${contexto} inválida. Formato: 000-000000-0000X`);
+  }
 };
 
-// 🟢 Helper mejorado para validar cédula de Tutor
 const validarCedulaTutorUnica = async (cedula: string) => {
   const valor = (cedula || '').trim();
-  const existe = await prisma.tutor.findUnique({ where: { No_Cedula: valor } });
-  if (existe) throw new Error(`La cédula ${valor} ya pertenece a un tutor registrado.`);
+
+  const existe = await prisma.tutor.findUnique({
+    where: { No_Cedula: valor }
+  });
+
+  if (existe) {
+    throw new Error(`La cédula ${valor} ya pertenece a un tutor registrado.`);
+  }
 };
 
 const validarCedulaUnica = async (cedula: string, idExcluir?: number) => {
-    const valor = (cedula || '').trim();
-    const whereClause: any = { No_Cedula: valor };
-    if (idExcluir) whereClause.ID_PacienteAdulto = { not: idExcluir };
-    
-    const existe = await prisma.pacienteAdulto.findFirst({ where: whereClause });
-    if (existe) throw new Error(`La cédula ${valor} ya pertenece a otro registro.`);
+  const valor = (cedula || '').trim();
+
+  const whereClause: any = { No_Cedula: valor };
+
+  if (idExcluir) {
+    whereClause.ID_PacienteAdulto = { not: idExcluir };
+  }
+
+  const existe = await prisma.pacienteAdulto.findFirst({
+    where: whereClause
+  });
+
+  if (existe) {
+    throw new Error(`La cédula ${valor} ya pertenece a otro registro.`);
+  }
 };
 
 const validarTelefonoNica = (telefono: string, contexto: string) => {
   const limpio = String(telefono || '').replace(/[\s-]/g, '');
-  if (!/^[2578]\d{7}$/.test(limpio)) throw new Error(`Teléfono de ${contexto} inválido.`);
+
+  if (!/^[2578]\d{7}$/.test(limpio)) {
+    throw new Error(`Teléfono de ${contexto} inválido.`);
+  }
+
   return limpio;
 };
 
 export const PacienteService = {
-  
   create: async (data: CreatePacienteDTO) => {
     const fechaNacObj = new Date(data.fechaNac);
-    if (isNaN(fechaNacObj.getTime())) throw new Error("Fecha de nacimiento inválida.");
 
-    if (data.esAdulto && data.datosAdulto) {
-        validarFormatoCedula(data.datosAdulto.cedula, 'Paciente');
-        await validarCedulaUnica(data.datosAdulto.cedula);
+    if (isNaN(fechaNacObj.getTime())) {
+      throw new Error("Fecha de nacimiento inválida.");
     }
 
-    // 🟢 Validar datos del Tutor nuevo antes de la transacción
-    if (!data.esAdulto && data.datosMenor?.modoTutor === 'nuevo' && data.datosMenor.nuevoTutor) {
-        validarFormatoCedula(data.datosMenor.nuevoTutor.noCedula, 'Tutor');
-        await validarCedulaTutorUnica(data.datosMenor.nuevoTutor.noCedula);
+    if (data.esAdulto && data.datosAdulto) {
+      validarFormatoCedula(data.datosAdulto.cedula, 'Paciente');
+      await validarCedulaUnica(data.datosAdulto.cedula);
+    }
+
+    if (
+      !data.esAdulto &&
+      data.datosMenor?.modoTutor === 'nuevo' &&
+      data.datosMenor.nuevoTutor
+    ) {
+      validarFormatoCedula(data.datosMenor.nuevoTutor.noCedula, 'Tutor');
+      await validarCedulaTutorUnica(data.datosMenor.nuevoTutor.noCedula);
     }
 
     return await prisma.$transaction(async (tx) => {
@@ -84,100 +126,111 @@ export const PacienteService = {
       const calle = (data.direccion?.calle || '').trim();
 
       let dir = await tx.direccion.findFirst({
-        where: { Departamento: depto, Ciudad: ciudad, Barrio: barrio, Calle: calle }
+        where: {
+          Departamento: depto,
+          Ciudad: ciudad,
+          Barrio: barrio,
+          Calle: calle
+        }
       });
 
       if (!dir) {
-        dir = await tx.direccion.create({ 
-          data: { 
-            Pais: data.direccion?.pais || 'Nicaragua', 
-            Departamento: depto, Ciudad: ciudad, Barrio: barrio, Calle: calle 
-          } 
+        dir = await tx.direccion.create({
+          data: {
+            Pais: data.direccion?.pais || 'Nicaragua',
+            Departamento: depto,
+            Ciudad: ciudad,
+            Barrio: barrio,
+            Calle: calle
+          }
         });
       }
 
-      const pac = await tx.paciente.create({ 
-        data: { 
-          Nombre: (data.nombre || '').trim(), 
-          Apellido: (data.apellido || '').trim(), 
-          Fecha_Nacimiento: fechaNacObj, 
-          Genero: data.genero, 
-          Nacionalidad: data.nacionalidad, 
-          ID_Direccion: dir.ID_Direccion, 
-          Activo: true 
-        } 
+      const pac = await tx.paciente.create({
+        data: {
+          Nombre: (data.nombre || '').trim(),
+          Apellido: (data.apellido || '').trim(),
+          Fecha_Nacimiento: fechaNacObj,
+          Genero: data.genero,
+          Nacionalidad: data.nacionalidad,
+          ID_Direccion: dir.ID_Direccion,
+          Activo: true
+        }
       });
 
       await tx.expediente.create({
-        data: { 
-            ID_Paciente: pac.ID_Paciente,
-            No_Expediente: `EXP-${new Date().getFullYear()}-${pac.ID_Paciente}`,
-            FechaIngreso: new Date()
+        data: {
+          ID_Paciente: pac.ID_Paciente,
+          No_Expediente: `EXP-${new Date().getFullYear()}-${pac.ID_Paciente}`,
+          FechaIngreso: new Date()
         }
       });
 
       if (data.esAdulto && data.datosAdulto) {
         await tx.pacienteAdulto.create({
-          data: { 
-            ID_PacienteAdulto: pac.ID_Paciente, 
-            No_Cedula: (data.datosAdulto.cedula || '').trim(), 
-            No_Telefono: validarTelefonoNica(data.datosAdulto.telefono, 'Adulto'), 
-            ID_Ocupacion: Number(data.datosAdulto.ocupacionId), 
-            ID_EstadoCivil: Number(data.datosAdulto.estadoCivilId) 
+          data: {
+            ID_PacienteAdulto: pac.ID_Paciente,
+            No_Cedula: (data.datosAdulto.cedula || '').trim(),
+            No_Telefono: validarTelefonoNica(data.datosAdulto.telefono, 'Adulto'),
+            ID_Ocupacion: Number(data.datosAdulto.ocupacionId),
+            ID_EstadoCivil: Number(data.datosAdulto.estadoCivilId)
           }
         });
       } else if (!data.esAdulto && data.datosMenor) {
-        const pMenor = await tx.paciente_Menor.create({ 
-          data: { 
-            ID_Paciente_Menor: pac.ID_Paciente, 
-            PartidaDeNacimiento: (data.datosMenor.partNacimiento || '').trim(), 
-            Grado_Escolar: data.datosMenor.grado 
-          } 
+        const pMenor = await tx.paciente_Menor.create({
+          data: {
+            ID_Paciente_Menor: pac.ID_Paciente,
+            PartidaDeNacimiento: (data.datosMenor.partNacimiento || '').trim(),
+            Grado_Escolar: data.datosMenor.grado
+          }
         });
-        
+
         let idTutorFinal = data.datosMenor.tutorId;
 
         if (data.datosMenor.modoTutor === 'nuevo' && data.datosMenor.nuevoTutor) {
           const nt = data.datosMenor.nuevoTutor;
-          const tut = await tx.tutor.create({ 
-            data: { 
-              Nombre: (nt.nombre || '').trim(), 
-              Apellido: (nt.apellido || '').trim(), 
-              No_Cedula: nt.noCedula.trim(), // 🟢 MAPEADO CORRECTO: Ya no será NULL
-              No_Telefono: validarTelefonoNica(nt.telefono, 'Tutor'), 
-              Ocupacion: Number(nt.ocupacionId), 
-              EstadoCivil: Number(nt.estadoCivilId) 
-            } 
+
+          const tut = await tx.tutor.create({
+            data: {
+              Nombre: (nt.nombre || '').trim(),
+              Apellido: (nt.apellido || '').trim(),
+              No_Cedula: nt.noCedula.trim(),
+              No_Telefono: validarTelefonoNica(nt.telefono, 'Tutor'),
+              Ocupacion: Number(nt.ocupacionId),
+              EstadoCivil: Number(nt.estadoCivilId)
+            }
           });
+
           idTutorFinal = tut.ID_Tutor;
         }
 
-        await tx.tutor_PacienteMenor.create({ 
-          data: { 
-            ID_Tutor: Number(idTutorFinal!), 
-            ID_Paciente_Menor: pMenor.ID_Paciente_Menor, 
+        await tx.tutor_PacienteMenor.create({
+          data: {
+            ID_Tutor: Number(idTutorFinal!),
+            ID_Paciente_Menor: pMenor.ID_Paciente_Menor,
             ID_Parentesco: Number(data.datosMenor.parentescoId),
             Es_Contacto_Principal: true
-          } 
+          }
         });
       }
+
       return pac;
     });
   },
 
   getAll: async () => {
     return await prisma.paciente.findMany({
-      include: { 
-        Direccion: true, 
-        PacienteAdulto: true, 
+      include: {
+        Direccion: true,
+        PacienteAdulto: true,
         Expediente: true,
-        Paciente_Menor: { 
-            include: { 
-                Tutor_PacienteMenor: { 
-                    include: { Tutor: true, Parentesco: true } 
-                } 
-            } 
-        } 
+        Paciente_Menor: {
+          include: {
+            Tutor_PacienteMenor: {
+              include: { Tutor: true, Parentesco: true }
+            }
+          }
+        }
       },
       orderBy: { Nombre: 'asc' }
     });
@@ -191,7 +244,9 @@ export const PacienteService = {
         PacienteAdulto: { include: { Ocupacion: true, EstadoCivil: true } },
         Paciente_Menor: {
           include: {
-            Tutor_PacienteMenor: { include: { Tutor: true, Parentesco: true } }
+            Tutor_PacienteMenor: {
+              include: { Tutor: true, Parentesco: true }
+            }
           }
         },
         Expediente: true
@@ -223,7 +278,7 @@ export const PacienteService = {
         Nombre: (data.nombre || '').trim(),
         Apellido: (data.apellido || '').trim(),
         Genero: data.genero,
-        Nacionalidad: data.nacionalidad,
+        Nacionalidad: data.nacionalidad
       };
 
       if (data.fechaNac) {
@@ -261,12 +316,35 @@ export const PacienteService = {
     });
   },
 
+  // 🟢 CORRECCIÓN: Método robusto para cargar historial clínico completo
   getHistorialPaciente: async (id: number) => {
-    const exp = await prisma.expediente.findUnique({ where: { ID_Paciente: id } });
+    const exp = await prisma.expediente.findUnique({
+      where: { ID_Paciente: id }
+    });
+
     if (!exp) return [];
+
     return await prisma.sesion.findMany({
       where: { ID_Expediente: exp.ID_Expediente },
-      include: { Cita: { include: { Psicologo: true } } },
+      include: {
+        Expediente: true,
+        Cita: {
+          include: {
+            Psicologo: true,
+            TipoDeCita: true
+          }
+        },
+        Tratamiento: {
+          include: {
+            Tratamiento_Farmaceutico: true,
+            Tratamiento_Terapeutico: {
+              include: {
+                TipoDe_Terapia: true
+              }
+            }
+          }
+        }
+      },
       orderBy: { ID_Sesion: 'desc' }
     });
   }

@@ -28,7 +28,11 @@ export class ApiError extends Error {
 
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${endpoint}`, {
-    headers: { 'Content-Type': 'application/json' },
+    // 🟢 CORRECCIÓN CRÍTICA: Permitir el envío y recepción de cookies (JWT)
+    credentials: 'include', 
+    headers: { 
+      'Content-Type': 'application/json'
+    },
     ...options,
   });
   
@@ -55,7 +59,7 @@ export const api = {
   post: <T>(url: string, body: any) => request<T>(url, { method: 'POST', body: JSON.stringify(body) }),
   put: <T>(url: string, body: any) => request<T>(url, { method: 'PUT', body: JSON.stringify(body) }),
   patch: <T>(url: string, body: any) => request<T>(url, { method: 'PATCH', body: JSON.stringify(body) }),
-  delete: <T>(url: string) => request<T>(url) , // Nota: Fetch delete suele no llevar body
+  delete: <T>(url: string) => request<T>(url, { method: 'DELETE' }), 
 
   pacientes: {
     getAll: () => request<Paciente[]>('/pacientes'),
@@ -73,7 +77,6 @@ export const api = {
       method: 'PATCH', 
       body: JSON.stringify({ activo }) 
     }),
-    
   },
 
   tutores: {
@@ -112,15 +115,22 @@ export const api = {
 
   config: {
     getAll: (modelo: string) => request<any[]>(`/config/${modelo}`),
-    create: (modelo: string, data: any) => request(`/config/${modelo}`, { method: 'POST', body: JSON.stringify(data) }),
-    update: (modelo: string, id: number, data: any) => request(`/config/${modelo}/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-    delete: (modelo: string, id: number) => request(`/config/${modelo}/${id}`, { method: 'DELETE' }),
+    create: (modelo: string, data: any) => request(`/config/${modelo}`, { 
+      method: 'POST', 
+      body: JSON.stringify(data) 
+    }),
+    update: (modelo: string, id: number, data: any) => request(`/config/${modelo}/${id}`, { 
+      method: 'PUT', 
+      body: JSON.stringify(data) 
+    }),
+    delete: (modelo: string, id: number) => request(`/config/${modelo}/${id}`, { 
+      method: 'DELETE' 
+    }),
   },
 
   general: {
     catalogos: () => request<CatalogosResponse>('/general/catalogos'), 
     stats: () => request<Stats>('/general/stats'),
-    // 🟢 CORRECCIÓN: Agregada la función para la Agenda del Día
     agendaHoy: () => request<Cita[]>('/general/agenda-hoy'),
     historialCompleto: () => request<any[]>('/general/historial'), 
     graficos: (inicio?: string, fin?: string) => {

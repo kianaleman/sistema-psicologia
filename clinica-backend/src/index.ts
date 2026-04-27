@@ -1,8 +1,14 @@
 import express from 'express';
 import cors from 'cors';
-import { iniciarCronJobs } from './cron/scheduler.js'; // <--- IMPORTAR AQUÍ
+import cookieParser from 'cookie-parser';
+import { iniciarCronJobs } from './cron/scheduler.js';
+
+// Importar Middlewares de Seguridad
+import { verificarToken } from './middlewares/auth.middleware.js';
+import { permitirRoles } from './middlewares/role.middleware.js'; // 🟢 1. IMPORTAR EL NUEVO MIDDLEWARE
 
 // Importar Rutas Modulares
+import authRoutes from './routes/auth.routes.js';
 import pacienteRoutes from './routes/paciente.routes.js';
 import citaRoutes from './routes/cita.routes.js';
 import sesionRoutes from './routes/sesion.routes.js';
@@ -16,29 +22,38 @@ const app = express();
 const PORT = 3000;
 
 // Middlewares
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true 
+}));
+
+app.use(cookieParser());
 app.use(express.json());
 
 // --- CONEXIÓN DE RUTAS ---
 
-// 1. Módulos Principales
-app.use('/api/pacientes', pacienteRoutes);
-app.use('/api/citas', citaRoutes);
-app.use('/api/sesiones', sesionRoutes);
-app.use('/api/psicologos', psicologoRoutes);
-app.use('/api/tutores', tutorRoutes);
-app.use('/api/facturas', reciboRoutes);
-app.use('/api/config', configuracionRoutes);
+// 🟢 RUTA DE AUTENTICACIÓN (PÚBLICA)
+app.use('/api/auth', authRoutes);
 
-// 2. Rutas Generales (Dashboard, Catálogos, Historial)
-// Nota: Estas rutas no tienen un prefijo común fuerte, así que las montamos en /api
-app.use('/api', generalRoutes); 
+// 🔒 MÓDULOS CON ACCESO COMPARTIDO (Admin y Psicólogo)
+// Rol 1: Administrador, Rol 2: Psicólogo
+app.use('/api/pacientes', verificarToken, permitirRoles(1, 2), pacienteRoutes);
+app.use('/api/citas', verificarToken, permitirRoles(1, 2), citaRoutes);
+app.use('/api/sesiones', verificarToken, permitirRoles(1, 2), sesionRoutes);
+app.use('/api/tutores', verificarToken, permitirRoles(1, 2), tutorRoutes);
 
-app.use('/api/general', generalRoutes);
+// 🔒 MÓDULOS RESTRINGIDOS (Solo Administrador - Rol 1)
+// 🔴 El Psicólogo (Rol 2) recibirá un error 403 si intenta acceder aquí
+app.use('/api/psicologos', verificarToken, permitirRoles(1), psicologoRoutes);
+app.use('/api/facturas', verificarToken, permitirRoles(1), reciboRoutes);
+app.use('/api/config', verificarToken, permitirRoles(1), configuracionRoutes);
+
+// 🔓 Rutas Generales (Dashboard, Catálogos)
+app.use('/api/general', verificarToken, permitirRoles(1, 2), generalRoutes);
 
 // --- INICIO DEL SERVIDOR ---
 app.listen(PORT, () => {
   console.log(`🚀 Servidor ONLINE en http://localhost:${PORT}`);
-  console.log(`📂 Arquitectura MVC cargada correctamente.`);
+  console.log(`🔐 Seguridad por Roles (RBAC) activada correctamente.`);
   iniciarCronJobs();
 });

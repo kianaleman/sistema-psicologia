@@ -2,18 +2,62 @@ import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { api } from '../services/api';
 
-// CONFIGURACIÓN MAESTRA SINCRONIZADA CON PRISMA/SQL SERVER
+// 🟢 CONFIGURACIÓN CORREGIDA SEGÚN SU SCHEMA.PRISMA
 export const CATALOGOS_CONFIG = [
-  { label: 'Ocupaciones', key: 'ocupacion', idField: 'ID_Ocupacion', nameField: 'Nombre_DeOcupacion' },
-  { label: 'Estados Civiles', key: 'estadocivil', idField: 'ID_EstadoCivil', nameField: 'Nombre_EstadoCivil' },
-  { label: 'Parentescos', key: 'parentesco', idField: 'ID_Parentesco', nameField: 'Nombre_De_Parentesco' },
-  { label: 'Especialidades', key: 'especialidad', idField: 'ID_Especialidad', nameField: 'NombreEspecialidad' },
-  { label: 'Exploraciones', key: 'exploracion', idField: 'ID_ExploracionPsicologica', nameField: 'NombreDeExploracionPsicologica' },
-  { label: 'Tipos Terapia', key: 'terapia', idField: 'ID_TipoTerapia', nameField: 'NombreDeTerapia' },
-  { label: 'Vías Admin.', key: 'via', idField: 'ID_ViaAdministracion', nameField: 'NombreDePresentacion' },
-  { label: 'Métodos Pago', key: 'metodo', idField: 'ID_MetodoPago', nameField: 'NombreMetodo' },
-  // Corregido según la interfaz MotivoCancelacion del index.ts
-  { label: 'Motivos Cancelación', key: 'motivo', idField: 'ID_MotivoCancelacion', nameField: 'Motivo' } 
+  { 
+    label: 'Ocupaciones', 
+    key: 'ocupacion', 
+    idField: 'ID_Ocupacion', 
+    nameField: 'Nombre_DeOcupacion' 
+  },
+  { 
+    label: 'Estados Civiles', 
+    key: 'estadocivil', 
+    idField: 'ID_EstadoCivil', 
+    nameField: 'Nombre_EstadoCivil' 
+  },
+  { 
+    label: 'Parentescos', 
+    key: 'parentesco', 
+    idField: 'ID_Parentesco', 
+    nameField: 'Nombre_De_Parentesco' 
+  },
+  { 
+    label: 'Especialidades', 
+    key: 'especialidad', 
+    idField: 'ID_Especialidad', 
+    nameField: 'Nombre_Especialidad' // 🟢 Corregido (antes NombreEspecialidad)
+  },
+  { 
+    label: 'Exploraciones', 
+    key: 'exploracion', 
+    idField: 'ID_ExploracionPsicologica', 
+    nameField: 'Nombre_De_ExploracionPsicologica' // 🟢 Corregido
+  },
+  { 
+    label: 'Tipos Terapia', 
+    key: 'terapia', 
+    idField: 'ID_Tipo_Terapia', // 🟢 Corregido (agregado guion bajo)
+    nameField: 'Nombre_De_Terapia' // 🟢 Corregido
+  },
+  { 
+    label: 'Vías Admin.', 
+    key: 'via', 
+    idField: 'ID_ViaAdministracion', 
+    nameField: 'Nombre_De_Presentacion' // 🟢 Corregido
+  },
+  { 
+    label: 'Métodos Pago', 
+    key: 'metodo', 
+    idField: 'ID_Metodo_Pago', // 🟢 Corregido
+    nameField: 'Nombre_Metodo' // 🟢 Corregido
+  },
+  { 
+    label: 'Motivos Cancelación', 
+    key: 'motivo', 
+    idField: 'ID_MotivoCancelacion', 
+    nameField: 'Motivo' 
+  } 
 ];
 
 export const useConfiguracion = () => {
@@ -28,7 +72,6 @@ export const useConfiguracion = () => {
   const loadItems = async () => {
     setLoading(true);
     try {
-      // api.config.getAll debe recibir el 'key' y retornar el array de objetos
       const data = await api.config.getAll(activeTab.key);
       setItems(data);
     } catch (error) {
@@ -66,12 +109,14 @@ export const useConfiguracion = () => {
 
     try {
       if (editItem) {
-        // Usamos el idField dinámico para extraer el ID correcto
         const id = editItem[activeTab.idField];
-        await api.config.update(activeTab.key, id, inputValue);
+        // 🟢 IMPORTANTE: Enviamos el objeto con la llave dinámica que espera el Backend
+        const payload = { [activeTab.nameField]: inputValue };
+        await api.config.update(activeTab.key, id, payload);
         toast.success(`${activeTab.label} actualizado`);
       } else {
-        await api.config.create(activeTab.key, inputValue);
+        const payload = { [activeTab.nameField]: inputValue };
+        await api.config.create(activeTab.key, payload);
         toast.success(`${activeTab.label} creado`);
       }
       closeModal();
@@ -89,8 +134,7 @@ export const useConfiguracion = () => {
       toast.success('Eliminado correctamente');
       loadItems();
     } catch (error: any) {
-      // Manejo de restricciones de integridad (ej: no puedes borrar una ocupación en uso)
-      const msg = error.response?.data?.error || 'No se puede eliminar porque está en uso por otros registros';
+      const msg = error.response?.data?.error || 'No se puede eliminar porque está en uso';
       toast.error(msg);
     }
   };

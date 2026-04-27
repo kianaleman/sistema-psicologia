@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcrypt'; // 🟢 IMPORTACIÓN NECESARIA
 
 const prisma = new PrismaClient();
 
@@ -63,6 +64,11 @@ export const PsicologoService = {
     const barrio = data.direccion?.barrio?.trim();
     const calle = data.direccion?.calle?.trim();
 
+    // 🟢 ENCRIPTACIÓN DE CONTRASEÑA (MAESTRA O PROPORCIONADA)
+    const saltRounds = 10;
+    const passwordOriginal = data.password || 'Resiliencia2026*';
+    const hashedPassword = await bcrypt.hash(passwordOriginal, saltRounds);
+
     return await prisma.$transaction(async (tx) => {
       
       let direccion;
@@ -97,11 +103,11 @@ export const PsicologoService = {
         }
       }
 
-      // 🟢 PASO: Crear el Usuario para el login
+      // 🟢 PASO CORREGIDO: Crear el Usuario con el Hash generado
       const usuario = await tx.usuario.create({
         data: {
           Email: data.email.trim(),
-          PasswordHash: data.password || 'Resiliencia2026*', // Password temporal
+          PasswordHash: hashedPassword, 
           Activo: true
         }
       });
@@ -163,7 +169,6 @@ export const PsicologoService = {
       const psicologo = await tx.psicologo.update({
         where: { ID_Psicologo: id },
         data: updateData,
-        // CORRECCIÓN: Devolver el objeto Usuario tras actualizar por si se requiere en el front
         include: { Usuario: true } 
       });
 

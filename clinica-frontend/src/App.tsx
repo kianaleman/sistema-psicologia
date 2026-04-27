@@ -1,6 +1,7 @@
-import { BrowserRouter, Routes, Route, Link, useLocation, Outlet } from 'react-router-dom';
-import { Toaster } from 'sonner';
+import { BrowserRouter, Routes, Route, Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
+import { Toaster, toast } from 'sonner';
 import logoClinica from './assets/logo-clinica.png';
+import { api } from './services/api';
 
 // Páginas
 import Dashboard from './pages/Dashboard';
@@ -18,7 +19,6 @@ import Presentacion from './pages/Presentacion';
 // NavItem: Componente para el link de navegación
 function NavItem({ to, label, icon }: { to: string, label: string, icon: string }) {
   const location = useLocation();
-  // Lógica: Activo si es la ruta exacta O si empieza con ella (excepto root /)
   const isActive = location.pathname === to || (to !== '/' && location.pathname.startsWith(to));
   
   return (
@@ -40,6 +40,24 @@ function NavItem({ to, label, icon }: { to: string, label: string, icon: string 
 // ----------------------------------------------------
 // Layout: Componente que renderiza el Sidebar y el Outlet
 function Layout() {
+  const navigate = useNavigate();
+
+  // 🟢 EXTRAER ROL DEL USUARIO (Asumiendo que lo guardas en localStorage al hacer Login)
+  // Si no lo tienes guardado, este es el momento de agregarlo en la función de login
+  const userRole = Number(localStorage.getItem('user_role')) || 2; 
+
+  const handleLogout = async () => {
+    try {
+      await api.post('/auth/logout', {});
+      localStorage.removeItem('user_role'); // Limpiar rol al salir
+      toast.success('Sesión cerrada correctamente');
+      navigate('/', { replace: true });
+    } catch (error) {
+      localStorage.removeItem('user_role');
+      navigate('/', { replace: true });
+    }
+  };
+
   return (
     <div className="flex min-h-screen bg-[#F8FAFC]">
       
@@ -63,33 +81,44 @@ function Layout() {
             
             <span className="text-[10px] font-black text-slate-400 uppercase px-4 mb-2 mt-6 tracking-widest">Clínica</span>
             <NavItem to="/historial" label="Historial" icon="📂" />
-            <NavItem to="/facturacion" label="Finanzas" icon="💰" />
             
-            <span className="text-[10px] font-black text-slate-400 uppercase px-4 mb-2 mt-6 tracking-widest">Administración</span>
-            <NavItem to="/psicologos" label="Equipo" icon="🥼" />
-            <NavItem to="/tutores" label="Tutores" icon="👨‍👩‍👦" />
-            <NavItem to="/configuracion" label="Ajustes" icon="⚙️" />
+            {/* 🔒 SOLO ADMINISTRADORES (ID: 1) PUEDEN VER FINANZAS */}
+            {userRole === 1 && (
+              <NavItem to="/facturacion" label="Finanzas" icon="💰" />
+            )}
+            
+            {/* 🔒 SECCIÓN DE ADMINISTRACIÓN: SOLO PARA ROL 1 */}
+            {userRole === 1 && (
+              <>
+                <span className="text-[10px] font-black text-slate-400 uppercase px-4 mb-2 mt-6 tracking-widest">Administración</span>
+                <NavItem to="/psicologos" label="Equipo" icon="🥼" />
+                <NavItem to="/tutores" label="Tutores" icon="👨‍👩‍👦" />
+                <NavItem to="/configuracion" label="Ajustes" icon="⚙️" />
+              </>
+            )}
           </ul>
 
-          {/* Botón de Retorno a Inicio en la parte inferior */}
           <div className="pt-4 mt-4 border-t border-slate-100">
-            <NavItem to="/" label="Pantalla Inicio" icon="🏠" />
+            <button 
+              onClick={handleLogout}
+              className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group text-slate-500 hover:bg-red-50 hover:text-red-600 w-full"
+            >
+              <span className="text-lg transition-transform duration-200 group-hover:scale-110">🏠</span>
+              <span className="text-sm">Cerrar Sesión</span>
+            </button>
           </div>
         </div>
       </aside>
 
-      {/* --- ÁREA DE CONTENIDO --- */}
       <main className="flex-1 lg:ml-64 min-h-screen flex flex-col">
-        {/* Barra Superior Móvil */}
         <header className="lg:hidden flex justify-between items-center p-4 bg-white border-b border-slate-200 sticky top-0 z-20">
             <div className="flex items-center gap-2">
                 <img src={logoClinica} className="w-8 h-8 object-contain" alt="Logo" />
                 <span className="font-bold text-slate-800">Resiliencia</span>
             </div>
-            <Link to="/" className="btn btn-sm btn-ghost text-xl">🏠</Link>
+            <button onClick={handleLogout} className="btn btn-sm btn-ghost text-xl">🏠</button>
         </header>
         
-        {/* Contenedor de las páginas */}
         <div className="p-4 md:p-8 flex-1 overflow-x-hidden">
           <Outlet /> 
         </div>
@@ -100,16 +129,12 @@ function Layout() {
   );
 }
 
-// ----------------------------------------------------
-// App: Componente principal
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* 1. PRESENTACIÓN (Full Screen) */}
         <Route path="/" element={<Presentacion />} />
         
-        {/* 2. SISTEMA (With Sidebar) */}
         <Route element={<Layout />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/citas" element={<Citas />} />
@@ -122,7 +147,6 @@ export default function App() {
           <Route path="/configuracion" element={<Configuracion />} />
         </Route>
 
-        {/* Redirección por defecto si la ruta no existe */}
         <Route path="*" element={<Presentacion />} />
       </Routes>
     </BrowserRouter>

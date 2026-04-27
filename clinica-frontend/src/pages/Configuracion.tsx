@@ -1,6 +1,7 @@
+import { createPortal } from 'react-dom';
 import { CATALOGOS_CONFIG, useConfiguracion } from '../hooks/useConfiguracion';
 
-// Iconos SVG Inline (se mantienen para coherencia visual)
+// Iconos SVG Inline
 const Icons = {
   Settings: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6"><path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.945a.75.75 0 01.106 1.06l-1.597 1.598a.75.75 0 11-1.06-1.06l1.598-1.597a.75.75 0 011.06-.106zM6.945 18.894a.75.75 0 01-1.06.106l-1.598-1.597a.75.75 0 111.06-1.06l1.597 1.598a.75.75 0 01-.106 1.06zM15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /><path d="M4.5 12a.75.75 0 01.75-.75h2.25a.75.75 0 010 1.5H5.25A.75.75 0 014.5 12zM17.25 12a.75.75 0 01.75-.75h2.25a.75.75 0 010 1.5H18a.75.75 0 01-.75-.75zM12 15.75a.75.75 0 01.75-.75v2.25a.75.75 0 01-1.5 0V15a.75.75 0 01.75-.75zM12 5.25a.75.75 0 01.75-.75h2.25a.75.75 0 010 1.5H13.5a.75.75 0 01-.75-.75zM6.945 6.945a.75.75 0 011.06-.106l1.597 1.598a.75.75 0 01-1.06 1.06L6.945 6.945zM18.894 17.651a.75.75 0 01-.106 1.06l-1.597 1.598a.75.75 0 01-1.06-1.06l1.598-1.597a.75.75 0 011.06-.106z" /></svg>,
   Plus: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>,
@@ -16,6 +17,50 @@ export default function Configuracion() {
     inputValue, setInputValue, editItem,
     openModal, handleSave, handleDelete
   } = useConfiguracion();
+
+  // 🟢 Definición del contenido del Modal para enviarlo al Portal
+  const modalUI = modalOpen ? (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl flex flex-col max-h-[90vh] border border-slate-200 overflow-hidden animate-fade-in-up">
+        
+        {/* Header */}
+        <div className="bg-slate-50 px-8 py-5 border-b border-slate-100 flex justify-between items-center shrink-0">
+          <h3 className="font-bold text-xl text-slate-900 font-serif">
+            {editItem ? '✏️ Editar Registro' : `➕ Nuevo: ${activeTab.label}`}
+          </h3>
+          <button type="button" className="btn btn-sm btn-circle btn-ghost" onClick={closeModal}>✕</button>
+        </div>
+        
+        {/* Formulario */}
+        <form onSubmit={handleSave} className="flex flex-col flex-1 overflow-hidden">
+          <div className="p-8 overflow-y-auto bg-white flex-1">
+            <div className="form-control w-full">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">
+                Nombre / Descripción del Registro
+              </label>
+              <input 
+                type="text" 
+                className="input input-bordered w-full bg-slate-50 focus:bg-white focus:border-blue-500 transition-colors font-bold text-slate-700" 
+                autoFocus
+                required
+                placeholder={`Escriba la descripción aquí...`}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+              />
+            </div>
+          </div>
+          
+          {/* Footer */}
+          <div className="px-8 py-5 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 shrink-0">
+            <button type="button" className="btn btn-ghost px-6 font-bold text-slate-400" onClick={closeModal}>Cancelar</button>
+            <button type="submit" className="btn btn-primary px-8 text-white shadow-xl shadow-blue-200 font-bold">
+              {editItem ? 'Guardar Cambios' : 'Crear Registro'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="p-8 animate-fade-in-up flex flex-col lg:flex-row gap-8 max-w-7xl mx-auto min-h-[80vh]">
@@ -47,8 +92,6 @@ export default function Configuracion() {
 
       {/* ÁREA DE CONTENIDO PRINCIPAL */}
       <div className="flex-1 bg-white rounded-2xl shadow-md border border-slate-200 p-6 flex flex-col">
-        
-        {/* HEADER DE CONTENIDO */}
         <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-6">
           <div>
             <h3 className="text-2xl font-bold text-slate-900">{activeTab.label}</h3>
@@ -59,7 +102,6 @@ export default function Configuracion() {
           </button>
         </div>
 
-        {/* TABLA DE REGISTROS */}
         <div className="flex-1 overflow-x-auto">
           {loading ? (
             <div className="text-center py-20"><span className="loading loading-spinner loading-lg text-primary"></span></div>
@@ -115,43 +157,8 @@ export default function Configuracion() {
         </div>
       </div>
 
-      {/* MODAL REUTILIZABLE */}
-      {modalOpen && (
-        <dialog className="modal modal-open backdrop-blur-sm">
-          <div className="modal-box bg-white text-slate-800 shadow-2xl p-0 rounded-2xl overflow-hidden">
-            <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-                <h3 className="font-bold text-lg text-slate-900">
-                    {editItem ? '✏️ Editar Registro' : `➕ Nuevo: ${activeTab.label}`}
-                </h3>
-                <button type="button" className="btn btn-sm btn-circle btn-ghost" onClick={closeModal}>✕</button>
-            </div>
-            
-            <form onSubmit={handleSave}>
-              <div className="p-6">
-                <div className="form-control w-full">
-                  <label className="label font-bold text-slate-500 text-xs uppercase">Nombre / Descripción</label>
-                  <input 
-                    type="text" 
-                    className="input input-bordered w-full bg-slate-50 focus:bg-white focus:border-blue-500 transition-colors" 
-                    autoFocus
-                    required
-                    placeholder={`Escriba aquí...`}
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                  />
-                </div>
-              </div>
-              
-              <div className="modal-action px-6 py-4 bg-slate-50 border-t border-slate-100">
-                <button type="button" className="btn btn-ghost hover:bg-slate-100" onClick={closeModal}>Cancelar</button>
-                <button type="submit" className="btn btn-primary text-white shadow-md">
-                    {editItem ? 'Actualizar' : 'Crear Registro'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </dialog>
-      )}
+      {/* 🟢 Renderizado mediante PORTAL al final del componente */}
+      {modalUI && createPortal(modalUI, document.getElementById('modal-root')!)}
 
     </div>
   );

@@ -30,24 +30,34 @@ export default function HistorialModal({ isOpen, onClose, cita }: Props) {
     if (!isOpen) setHistorial([]);
   }, [isOpen, cita]);
 
-  const formatearFecha = (f: string) => {
-    if (!f) return 'N/A';
+  // 🟢 CORRECCIÓN: Función blindada para usar FechaCita sin desfases ni errores de 1970
+  const formatearFecha = (f: any) => {
+    if (!f) return 'FECHA NO DISPONIBLE';
     try {
-      const p = f.toString().split('T')[0].split('-');
-      return new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]))
-        .toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
-    } catch (e) { return f; }
+      const d = new Date(f);
+      // Validamos que no sea la fecha nula de JS (1970) o inválida
+      if (isNaN(d.getTime()) || d.getUTCFullYear() <= 1970) {
+        return 'FECHA NO DISPONIBLE';
+      }
+
+      return d.toLocaleDateString('es-ES', { 
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric',
+        timeZone: 'UTC' // 🟢 Crucial para que coincida con la fecha de la base de datos
+      });
+    } catch (e) { 
+      return 'FECHA NO DISPONIBLE'; 
+    }
   };
 
-  // 🟢 LÓGICA DE EXPEDIENTE BLINDADA (Busca en múltiples niveles)
+  // 🟢 LÓGICA DE EXPEDIENTE BLINDADA
   const noExpediente = useMemo(() => {
-    // 1. Intentar desde el objeto cita pasado por prop
     if (cita?.Paciente?.Expediente?.No_Expediente) return cita.Paciente.Expediente.No_Expediente;
-    
-    // 2. Intentar desde los registros cargados del historial (relación Sesion -> Expediente)
     if (historial.length > 0 && historial[0]?.Expediente?.No_Expediente) return historial[0].Expediente.No_Expediente;
+    const registroConExp = historial.find(h => h.Expediente?.No_Expediente);
+    if (registroConExp) return registroConExp.Expediente.No_Expediente;
     
-    // 3. Fallback mientras carga o si no se encuentra
     return loading ? "CARGANDO..." : "SIN EXPEDIENTE";
   }, [cita, historial, loading]);
 
@@ -55,10 +65,8 @@ export default function HistorialModal({ isOpen, onClose, cita }: Props) {
 
   const modalContent = (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-      {/* Contenedor con max-h-[95vh] para evitar recortes visuales */}
       <div className="bg-white w-full max-w-5xl rounded-[2rem] shadow-2xl flex flex-col max-h-[95vh] border border-slate-200 overflow-hidden animate-fade-in-up">
         
-        {/* HEADER FIJO */}
         <div className="bg-[#1e293b] text-white px-8 py-5 flex justify-between items-center shrink-0">
           <div>
             <h3 className="font-bold text-2xl mb-1 font-serif text-white">Historial Clínico</h3>
@@ -74,7 +82,6 @@ export default function HistorialModal({ isOpen, onClose, cita }: Props) {
           </div>
         </div>
 
-        {/* CUERPO CON SCROLL INDEPENDIENTE */}
         <div className="p-8 overflow-y-auto bg-slate-50/50 flex-1 text-slate-800 custom-scrollbar">
           {loading ? (
             <div className="text-center py-20">
@@ -94,7 +101,8 @@ export default function HistorialModal({ isOpen, onClose, cita }: Props) {
                       <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-4">
                         <span className="text-lg font-bold text-slate-800">Sesión Clínica</span>
                         <span className="text-xs font-normal text-slate-500 uppercase tracking-widest">
-                           {formatearFecha(sesion.HoraDeInicio || sesion.Cita?.FechaCita)}
+                           {/* 🟢 CORRECCIÓN: Prioridad a FechaCita para evitar 1970 */}
+                           {formatearFecha(sesion.Cita?.FechaCita || sesion.Fecha_Sesion || cita?.FechaCita)}
                         </span>
                       </div>
                     </div>
@@ -134,13 +142,12 @@ export default function HistorialModal({ isOpen, onClose, cita }: Props) {
                         </div>
                       </div>
 
-                      {/* Sección de Tratamientos (Relación N:M) */}
                       {sesion.Tratamiento?.length > 0 && (
                         <div className="pt-4 border-t border-slate-100">
-                           <h4 className="font-black text-slate-800 text-[10px] mb-4 uppercase tracking-widest flex items-center gap-2">
+                            <h4 className="font-black text-slate-800 text-[10px] mb-4 uppercase tracking-widest flex items-center gap-2">
                               💊 Plan de Tratamiento y Seguimiento
-                           </h4>
-                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               {sesion.Tratamiento.map((t: any, tid: number) => (
                                 <div key={tid} className="p-4 bg-white border border-slate-200 rounded-xl flex flex-col shadow-sm">
                                   <div className="flex justify-between items-start mb-2">
@@ -154,7 +161,7 @@ export default function HistorialModal({ isOpen, onClose, cita }: Props) {
                                   </span>
                                 </div>
                               ))}
-                           </div>
+                            </div>
                         </div>
                       )}
                     </div>
@@ -170,7 +177,6 @@ export default function HistorialModal({ isOpen, onClose, cita }: Props) {
           )}
         </div>
 
-        {/* FOOTER FIJO */}
         <div className="px-8 py-5 bg-white border-t border-slate-100 flex justify-end shrink-0">
           <button className="btn btn-ghost px-12 font-bold text-slate-400 uppercase tracking-widest text-xs hover:bg-slate-50" onClick={onClose}>
             Cerrar Expediente

@@ -20,12 +20,17 @@ export const createCatalogoItem = async (req: Request, res: Response) => {
   try {
     const { modelo } = req.params;
     
-    // CAMBIO CLAVE: Si es divisa, pasamos todo el body. 
-    // Si es otro modelo, intentamos pasar 'nombre' para mantener la compatibilidad.
-    const dataToSend = modelo === 'divisa' ? req.body : req.body.nombre;
+    // 🟢 CORRECCIÓN CRÍTICA: 
+    // Ahora tomamos TODO el body. Ya no buscamos ".nombre" porque las llaves
+    // son dinámicas (Nombre_DeOcupacion, Motivo, etc.)
+    const dataToSend = req.body; 
     
     if (!modelo) return res.status(400).json({ error: 'El modelo es requerido' });
-    if (!dataToSend) return res.status(400).json({ error: 'Los datos o el nombre son requeridos' });
+    
+    // Validamos que el objeto no esté vacío
+    if (!dataToSend || Object.keys(dataToSend).length === 0) {
+        return res.status(400).json({ error: 'Los datos o el nombre son requeridos' });
+    }
 
     const newItem = await ConfiguracionService.create(modelo as string, dataToSend);
     res.json(newItem);
@@ -39,12 +44,16 @@ export const createCatalogoItem = async (req: Request, res: Response) => {
 export const updateCatalogoItem = async (req: Request, res: Response) => {
   try {
     const { modelo, id } = req.params;
-    const { nombre } = req.body;
+    
+    // 🟢 CORRECCIÓN: Al igual que en create, tomamos el objeto completo
+    const dataToSend = req.body;
 
     if (!modelo || !id) return res.status(400).json({ error: 'Faltan parámetros requeridos' });
+    if (!dataToSend || Object.keys(dataToSend).length === 0) {
+        return res.status(400).json({ error: 'Los datos son requeridos para actualizar' });
+    }
 
-    // Aquí mantenemos 'nombre' asumiendo que para editar catálogos simples basta con el nombre
-    const updatedItem = await ConfiguracionService.update(modelo as string, parseInt(id), nombre);
+    const updatedItem = await ConfiguracionService.update(modelo as string, parseInt(id), dataToSend);
     res.json(updatedItem);
   } catch (error: any) {
     const status = error.message === 'Catálogo no válido' ? 400 : 500;

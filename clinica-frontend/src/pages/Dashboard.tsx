@@ -3,6 +3,10 @@ import { Link } from 'react-router-dom';
 import { api } from '../services/api';
 import { toast } from 'sonner'; 
 import type { Stats, Cita } from '../types';
+
+// 🟢 IMPORTAMOS EL MODAL QUE USA CITA.TSX
+import HistorialModal from '../components/citas/HistorialModal'; 
+
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, Legend 
@@ -17,13 +21,16 @@ const Icons = {
 };
 
 export default function Dashboard() {
-  // 🟢 CORRECCIÓN: Se aplica el tipo Stats para eliminar el warning 6196
   const [stats, setStats] = useState<Stats | null>(null);
   const [agendaHoy, setAgendaHoy] = useState<Cita[]>([]);
   const [loading, setLoading] = useState(true);
   const [dataGraficos, setDataGraficos] = useState<any>({ ingresos: [], generos: [], edades: [] });
   const [filtroGrafico, setFiltroGrafico] = useState<'semana' | 'mes' | 'rango'>('mes');
   const [fechasRango, setFechasRango] = useState({ inicio: '', fin: '' });
+
+  // 🟢 ESTADOS PARA EL MODAL DE EXPEDIENTE (Replica de Citas.tsx)
+  const [selectedCita, setSelectedCita] = useState<Cita | null>(null);
+  const [isHistorialOpen, setIsHistorialOpen] = useState(false);
 
   useEffect(() => {
     cargarKPIs();
@@ -83,8 +90,20 @@ export default function Dashboard() {
 
   const formatearHora = (h: string) => {
     if (!h) return "--:--";
-    const fecha = new Date(h);
-    return fecha.toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const partes = h.match(/(\d{2}):(\d{2})/);
+    if (!partes) return "--:--";
+    let [_, horas, minutos] = partes;
+    let hInt = parseInt(horas);
+    const ampm = hInt >= 12 ? 'PM' : 'AM';
+    hInt = hInt % 12;
+    hInt = hInt ? hInt : 12;
+    return `${hInt}:${minutos} ${ampm}`;
+  };
+
+  // 🟢 FUNCIÓN PARA ABRIR EL EXPEDIENTE
+  const handleVerExpediente = (cita: Cita) => {
+    setSelectedCita(cita);
+    setIsHistorialOpen(true);
   };
 
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -145,6 +164,7 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         <div className="xl:col-span-2 space-y-8">
+          {/* Gráfico */}
           <div className="card bg-white border border-slate-100 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-slate-50 flex justify-between items-center">
               <h3 className="font-bold text-slate-800 flex items-center gap-2"><Icons.TrendingUp /> Ingresos Financieros</h3>
@@ -226,7 +246,7 @@ export default function Dashboard() {
         <div className="card bg-white border border-slate-100 shadow-sm overflow-hidden h-fit">
             <div className="p-6 border-b border-slate-50 flex justify-between items-center">
                 <h2 className="font-bold text-slate-800 flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span> Agenda del Día</h2>
-                <Link to="/agenda" className="text-[10px] font-bold text-blue-600 hover:underline uppercase">Ver Todo</Link>
+                <Link to="/citas" className="text-[10px] font-bold text-blue-600 hover:underline uppercase">Ver Todo</Link>
             </div>
             <div className="max-h-[750px] overflow-y-auto custom-scrollbar">
                {loading ? (
@@ -245,7 +265,13 @@ export default function Dashboard() {
                                        </div>
                                        <p className="text-[11px] text-slate-500 font-medium">Dr. {cita.Psicologo?.Apellido}</p>
                                        <div className="mt-3">
-                                           <Link to={`/pacientes/${cita.ID_Paciente}`} className="btn btn-xs btn-ghost border-slate-200 text-slate-500 w-full text-[9px] font-bold">VER EXPEDIENTE</Link>
+                                           {/* 🟢 CAMBIO: Ahora llama a handleVerExpediente pasando el objeto cita */}
+                                           <button 
+                                              onClick={() => handleVerExpediente(cita)}
+                                              className="btn btn-xs btn-ghost border-slate-200 text-slate-500 w-full text-[9px] font-bold"
+                                           >
+                                              VER EXPEDIENTE
+                                           </button>
                                        </div>
                                    </div>
                                </div>
@@ -264,6 +290,16 @@ export default function Dashboard() {
             </div>
         </div>
       </div>
+
+      {/* 🟢 MODAL DE HISTORIAL REUTILIZADO DE CITAS.TSX */}
+      <HistorialModal 
+        isOpen={isHistorialOpen} 
+        onClose={() => {
+            setIsHistorialOpen(false);
+            setSelectedCita(null);
+        }} 
+        cita={selectedCita} 
+      />
     </div>
   );
 }

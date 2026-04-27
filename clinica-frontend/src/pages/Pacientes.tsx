@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { usePacientes } from '../hooks/usePacientes';
-import type { Paciente, CreatePacienteDTO } from '../types';
+import type { Paciente, CreatePacienteDTO, Cita } from '../types';
 import PacienteFormModal from '../components/pacientes/PacienteFormModal';
+// 🟢 IMPORTACIÓN AGREGADA
+import HistorialModal from '../components/citas/HistorialModal';
 
 const Icons = {
   Plus: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>,
@@ -16,6 +17,10 @@ export default function Pacientes() {
   const [selectedPaciente, setSelectedPaciente] = useState<Paciente | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // 🟢 ESTADOS PARA EL HISTORIAL AGREGADOS
+  const [selectedCitaForHistorial, setSelectedCitaForHistorial] = useState<Cita | null>(null);
+  const [isHistorialOpen, setIsHistorialOpen] = useState(false);
+
   const openCreate = () => {
     setSelectedPaciente(null);
     setIsModalOpen(true);
@@ -24,6 +29,21 @@ export default function Pacientes() {
   const openEdit = (p: Paciente) => {
     setSelectedPaciente(p);
     setIsModalOpen(true);
+  };
+
+  // 🟢 FUNCIÓN PARA ABRIR EL EXPEDIENTE DESDE LA LISTA
+  const handleVerExpediente = (p: Paciente) => {
+    // El modal espera un objeto Cita, así que creamos uno virtual
+    const citaVirtual = {
+      ID_Paciente: p.ID_Paciente,
+      Paciente: {
+        Nombre: p.Nombre,
+        Apellido: p.Apellido,
+        Expediente: p.Expediente // Esto contiene el No_Expediente
+      }
+    };
+    setSelectedCitaForHistorial(citaVirtual as any);
+    setIsHistorialOpen(true);
   };
 
   const handleSubmit = async (data: CreatePacienteDTO, isEdit: boolean) => {
@@ -50,7 +70,7 @@ export default function Pacientes() {
         </button>
       </div>
 
-      {/* BARRA DE HERRAMIENTAS */}
+      {/* BARRA DE HERRAMIENTAS (Filtros) */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-8">
         <div className="flex flex-col lg:flex-row gap-6">
             <div className="flex-1 relative">
@@ -102,7 +122,6 @@ export default function Pacientes() {
                     <tr><td colSpan={4} className="text-center py-20"><span className="loading loading-spinner loading-lg text-primary"></span></td></tr>
                 ) : pacientes.length > 0 ? (
                     pacientes.map(p => {
-                      // 🟢 Lógica para obtener el tutor principal (Relación N:M)
                       const tutorPrincipal = p.Paciente_Menor?.Tutor_PacienteMenor?.find(rel => rel.Es_Contacto_Principal)?.Tutor;
                       const ident = p.PacienteAdulto ? p.PacienteAdulto.No_Cedula : (p.Paciente_Menor?.PartidaDeNacimiento || 'N/A');
 
@@ -137,9 +156,14 @@ export default function Pacientes() {
                             </td>
                             <td className="pr-6 py-4 text-right">
                                 <div className="flex justify-end gap-2">
-                                    <Link to={`/pacientes/${p.ID_Paciente}`} className="btn btn-sm btn-ghost text-blue-600 tooltip" data-tip="Ver Expediente">
+                                    {/* 🟢 CORREGIDO: Botón de carpeta azul para abrir modal */}
+                                    <button 
+                                      onClick={() => handleVerExpediente(p)}
+                                      className="btn btn-sm btn-ghost text-blue-600 tooltip" 
+                                      data-tip="Ver Expediente"
+                                    >
                                         <Icons.Folder />
-                                    </Link>
+                                    </button>
                                     <button className="btn btn-sm btn-ghost text-slate-500 tooltip" data-tip="Editar" onClick={() => openEdit(p)}>
                                         <Icons.Edit />
                                     </button>
@@ -166,6 +190,13 @@ export default function Pacientes() {
         onSubmit={handleSubmit} 
         pacienteEditar={selectedPaciente} 
         catalogos={catalogos} 
+      />
+
+      {/* 🟢 MODAL DE HISTORIAL INTEGRADO */}
+      <HistorialModal 
+        isOpen={isHistorialOpen}
+        onClose={() => setIsHistorialOpen(false)}
+        cita={selectedCitaForHistorial}
       />
     </div>
   );

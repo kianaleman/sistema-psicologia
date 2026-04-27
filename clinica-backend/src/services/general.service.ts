@@ -2,6 +2,21 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// Helper para obtener el rango de hoy ajustado a Nicaragua (UTC-6)
+const getRangoHoyNica = () => {
+  const hoy = new Date();
+  // Ajustamos restando 6 horas al tiempo UTC para obtener la fecha real en Nicaragua
+  const nicaTime = new Date(hoy.getTime() - (6 * 60 * 60 * 1000));
+  
+  const inicioDia = new Date(nicaTime);
+  inicioDia.setUTCHours(0, 0, 0, 0);
+
+  const finDia = new Date(nicaTime);
+  finDia.setUTCHours(23, 59, 59, 999);
+
+  return { inicioDia, finDia };
+};
+
 export const GeneralService = {
 
   // 1. Catálogos Generales (Para llenar Selects y Modales)
@@ -64,16 +79,13 @@ export const GeneralService = {
     };
   },
 
-  // 2. Dashboard Stats (KPIs con fix para undefined)
+  // 2. Dashboard Stats (KPIs con fix para undefined y zona horaria)
   getDashboardStats: async () => {
-    const hoy = new Date();
-    const inicioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 0, 0, 0, 0);
-    const finDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 23, 59, 59, 999);
+    const { inicioDia, finDia } = getRangoHoyNica();
 
     const [totalPacientes, psicologosActivos, citasHoy, ingresosTotales] = await Promise.all([
-      prisma.paciente.count({ where: { Activo: true } }), 
-      prisma.psicologo.count({ where: { Activo: true } }), 
-      // 🟢 Ajuste: Contar citas pendientes (ID 1) programadas para el día de hoy
+      prisma.paciente.count({ where: { OR: [{ Activo: true }, { Activo: null }] } }), 
+      prisma.psicologo.count({ where: { OR: [{ Activo: true }, { Activo: null }] } }), 
       prisma.cita.count({ where: { ID_EstadoCita: 1, FechaCita: { gte: inicioDia, lte: finDia } } }),
       prisma.recibo.aggregate({ _sum: { MontoTotal: true } })
     ]);
@@ -82,15 +94,13 @@ export const GeneralService = {
       totalPacientes, 
       psicologosActivos, 
       citasHoy, 
-      ingresosTotales: Number(ingresosTotales._sum?.MontoTotal) || 0 
+      ingresosTotalesNIO: Number(ingresosTotales._sum?.MontoTotal) || 0 
     };
   },
 
-  // 🟢 NUEVA FUNCIÓN: Para "Agenda del Día" (Lista de citas de hoy)
+  // 🟢 FUNCIÓN CORREGIDA: Incluye Expediente y Sesión para evitar errores de UI
   getAgendaHoy: async () => {
-    const hoy = new Date();
-    const inicioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 0, 0, 0, 0);
-    const finDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 23, 59, 59, 999);
+    const { inicioDia, finDia } = getRangoHoyNica();
 
     return await prisma.cita.findMany({
       where: {
@@ -98,9 +108,14 @@ export const GeneralService = {
         ID_EstadoCita: 1 // Solo pendientes
       },
       include: {
-        Paciente: { select: { Nombre: true, Apellido: true } },
+        Paciente: { 
+          include: { 
+            Expediente: true // 🟢 CORRECCIÓN: Para que aparezca el No_Expediente
+          } 
+        },
         Psicologo: { select: { Nombre: true, Apellido: true } },
-        TipoDeCita: true
+        TipoDeCita: true,
+        Sesion: true // 🟢 CORRECCIÓN: Para obtener la fecha real de sesión si existe
       },
       orderBy: { HoraCita: 'asc' }
     });
@@ -110,7 +125,9 @@ export const GeneralService = {
   getHistorialGeneral: async () => {
     const sesiones = await prisma.sesion.findMany({
       include: { 
+        // 🟢 CORRECCIÓN: Aseguramos que el expediente venga con su número
         Expediente: { include: { Paciente: true } }, 
+        // 🟢 CORRECCIÓN: Aseguramos que la cita venga con su fecha para evitar el 1970
         Cita: { include: { Psicologo: true, TipoDeCita: true } } 
       },
       orderBy: { ID_Sesion: 'desc' }
@@ -135,13 +152,12 @@ export const GeneralService = {
     let fechaInicio = inicioStr ? new Date(inicioStr) : new Date();
     
     if (!inicioStr) {
-        fechaInicio.setMonth(hoy.getMonth() - 1); // Por defecto último mes
+        fechaInicio.setMonth(hoy.getMonth() - 1); 
     }
     
     fechaInicio.setHours(0,0,0,0);
     fechaFin.setHours(23,59,59,999);
 
-    // Validación lógica de rango en el servidor
     if (fechaInicio > fechaFin) {
         throw new Error("La fecha inicial no puede ser mayor a la fecha final.");
     }
