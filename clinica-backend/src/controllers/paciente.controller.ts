@@ -4,10 +4,21 @@ import { PacienteService } from '../services/paciente.service.js';
 // GET: Obtener todos los pacientes
 export const getPacientes = async (req: Request, res: Response) => {
   try {
-    const pacientes = await PacienteService.getAll();
+    const user = (req as any).user;
+
+    let pacientes;
+    
+    // 🟢 Si es Admin (Rol 1), ve todos. 
+    // 🟢 Si es Psicólogo (Rol 2), solo ve los vinculados a sus citas.
+    if (user && user.idRol === 1) {
+      pacientes = await PacienteService.getAll();
+    } else {
+      pacientes = await PacienteService.getPacientesByPsicologo(user.id);
+    }
+
     res.json(pacientes);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener la lista de pacientes' });
   }
 };
 

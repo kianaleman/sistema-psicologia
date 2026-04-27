@@ -236,6 +236,33 @@ export const PacienteService = {
     });
   },
 
+  // 🟢 NUEVO: Filtrar pacientes vinculados al psicólogo a través de sus citas
+  getPacientesByPsicologo: async (psicologoId: number) => {
+    return await prisma.paciente.findMany({
+      where: {
+        Cita: {
+          some: {
+            ID_Psicologo: psicologoId
+          }
+        },
+        Activo: true
+      },
+      include: {
+        Direccion: true,
+        PacienteAdulto: true,
+        Expediente: true,
+        Paciente_Menor: {
+          include: {
+            Tutor_PacienteMenor: {
+              include: { Tutor: true, Parentesco: true }
+            }
+          }
+        }
+      },
+      orderBy: { Nombre: 'asc' }
+    });
+  },
+
   getExpediente: async (id: number) => {
     return await prisma.paciente.findUnique({
       where: { ID_Paciente: id },
@@ -316,7 +343,6 @@ export const PacienteService = {
     });
   },
 
-  // 🟢 CORRECCIÓN: Método robusto para cargar historial clínico completo
   getHistorialPaciente: async (id: number) => {
     const exp = await prisma.expediente.findUnique({
       where: { ID_Paciente: id }

@@ -12,9 +12,15 @@ interface Props {
 }
 
 export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, catalogos }: Props) {
+    // 🟢 DETECTAR ROL Y USUARIO PARA RESTRICCIONES
+    const userRole = Number(localStorage.getItem('user_role'));
+    const userId = localStorage.getItem('user_id');
+    const esPsicologo = userRole === 2;
+
     const [formData, setFormData] = useState<any>({
-        fecha: '', hora: '', motivo: '', pacienteId: '', psicologoId: '', tipoCitaId: '',
-        precio: '', metodoPagoId: '', idDivisa: '1', tasaCambio: '1',
+        fecha: '', hora: '', motivo: '', pacienteId: '', 
+        psicologoId: esPsicologo ? userId : '', // Pre-asignar si es psicólogo
+        tipoCitaId: '', precio: '', metodoPagoId: '1', idDivisa: '1', tasaCambio: '1',
         direccion: { departamento: '', ciudad: '', barrio: '', calle: '' }
     });
 
@@ -80,15 +86,16 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
             });
         } else if (isOpen) {
             setFormData({
-                fecha: '', hora: '', motivo: '', pacienteId: '', psicologoId: '', tipoCitaId: '',
-                precio: '', metodoPagoId: '1', idDivisa: '1', tasaCambio: '1',
+                fecha: '', hora: '', motivo: '', pacienteId: '', 
+                psicologoId: esPsicologo ? userId : '', // Resetear a su propio ID si es psicólogo
+                tipoCitaId: '', precio: '', metodoPagoId: '1', idDivisa: '1', tasaCambio: '1',
                 direccion: { departamento: '', ciudad: '', barrio: '', calle: '' }
             });
             setBusquedaPaciente('');
             setBusquedaPsicologo('');
             setUsarDireccionPaciente(false);
         }
-    }, [citaEditar, isOpen]);
+    }, [citaEditar, isOpen, esPsicologo, userId]);
 
     const handleLocalSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -97,7 +104,6 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
             return toast.error("Por favor complete los campos obligatorios");
         }
 
-        // 🟢 VALIDACIÓN DE HORARIO LABORAL (8:00 AM - 7:00 PM)
         const [horas] = formData.hora.split(':').map(Number);
         if (horas < 8 || horas >= 19) {
             return toast.warning("Horario no disponible", {
@@ -144,7 +150,9 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                 <div className="bg-[#1e293b] text-white px-8 py-6 flex justify-between items-center shrink-0">
                     <div>
                         <h3 className="text-xl font-bold font-serif">📅 {citaEditar ? 'Editar Cita Clínica' : 'Agendar Nueva Cita'}</h3>
-                        <p className="text-slate-400 text-xs mt-1">Asegúrese de verificar la disponibilidad del especialista</p>
+                        <p className="text-slate-400 text-xs mt-1">
+                            {esPsicologo ? 'Usted está registrando una cita bajo su propia agenda profesional.' : 'Asegúrese de verificar la disponibilidad del especialista'}
+                        </p>
                     </div>
                     <button onClick={onClose} className="btn btn-sm btn-circle btn-ghost text-white">✕</button>
                 </div>
@@ -166,8 +174,21 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
 
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Psicólogo Especialista</label>
-                                <input type="text" placeholder="🔍 Buscar doctor..." className="input input-sm input-bordered w-full bg-slate-50" value={busquedaPsicologo} onChange={e => setBusquedaPsicologo(e.target.value)} />
-                                <select required className="select select-bordered select-sm w-full bg-white text-slate-900 font-medium" value={formData.psicologoId} onChange={e => setFormData({ ...formData, psicologoId: e.target.value })}>
+                                <input 
+                                    type="text" 
+                                    placeholder="🔍 Buscar doctor..." 
+                                    className="input input-sm input-bordered w-full bg-slate-50 disabled:opacity-50" 
+                                    value={busquedaPsicologo} 
+                                    disabled={esPsicologo}
+                                    onChange={e => setBusquedaPsicologo(e.target.value)} 
+                                />
+                                <select 
+                                    required 
+                                    className="select select-bordered select-sm w-full bg-white text-slate-900 font-medium disabled:bg-slate-100" 
+                                    value={formData.psicologoId} 
+                                    disabled={esPsicologo}
+                                    onChange={e => setFormData({ ...formData, psicologoId: e.target.value })}
+                                >
                                     <option value="">-- Seleccionar Especialista --</option>
                                     {psicologosFiltrados.map((p: any) => (
                                         <option key={p.ID_Psicologo} value={p.ID_Psicologo}>Dr. {p.Nombre} {p.Apellido}</option>
