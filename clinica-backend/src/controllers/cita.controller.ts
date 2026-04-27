@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { CitaService } from '../services/cita.service.js';
+import { SesionService } from '../services/sesion.service.js'; // 🟢 Importación agregada
 
 export const getCitas = async (req: Request, res: Response) => {
   try {
@@ -12,8 +13,16 @@ export const getCitas = async (req: Request, res: Response) => {
 
 export const getCatalogosCitas = async (req: Request, res: Response) => {
   try {
-    const catalogos = await CitaService.getFilters();
-    res.json(catalogos);
+    // 🟢 Unificamos catálogos de Citas y Sesión en una sola respuesta
+    const [catalogosCitas, catalogosSesion] = await Promise.all([
+      CitaService.getFilters(),
+      SesionService.getCatalogosSesion()
+    ]);
+
+    res.json({
+      ...catalogosCitas,
+      ...catalogosSesion
+    });
   } catch (error) {
     res.status(500).json({ error: 'Error cargando catálogos' });
   }

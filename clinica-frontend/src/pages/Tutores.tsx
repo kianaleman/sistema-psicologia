@@ -38,13 +38,16 @@ export default function Tutores() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const promise = saveTutor().then(() => setModalOpen(null));
-
-    toast.promise(promise, {
-      loading: 'Sincronizando cambios...',
-      success: 'Datos del responsable actualizados',
-      error: (err) => `Fallo: ${err.message || err}`
-    });
+    
+    // 🟢 CORRECCIÓN: Manejo directo de la promesa para evitar toast doble
+    try {
+      await saveTutor();
+      setModalOpen(null);
+      // Nota: Si el hook useTutores ya lanza un toast, no necesitas añadir nada aquí.
+    } catch (err: any) {
+      // Solo lanzamos error si el hook no lo maneja internamente
+      if (!err.handled) toast.error(`Error: ${err.message || err}`);
+    }
   };
 
   return (
@@ -93,7 +96,6 @@ export default function Tutores() {
               {loading ? (
                 <tr><td colSpan={5} className="text-center py-24"><span className="loading loading-spinner loading-lg text-slate-800"></span></td></tr>
               ) : tutores.map((tutor: any) => {
-                // 🟢 Sincronización con Relación N:M
                 const pacientesAsociados = tutor.Tutor_PacienteMenor || [];
                 
                 return (
@@ -107,11 +109,17 @@ export default function Tutores() {
                       </div>
                     </td>
                     <td>
-                      <div className="text-xs text-slate-700 font-bold">{tutor.No_Telefono || 'Sin Teléfono'}</div>
-                      <div className="text-[10px] text-slate-400 uppercase font-medium">{tutor.EstadoCivil_Tutor?.Nombre_EstadoCivil}</div>
+                      <div className="text-sm text-slate-700 font-medium">{tutor.No_Telefono || 'Sin Teléfono'}</div>
                     </td>
                     <td>
-                      <div className="text-xs text-slate-600">{tutor.Ocupacion_Tutor?.Nombre_DeOcupacion || '---'}</div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm text-slate-700 font-medium">
+                          {tutor.Ocupacion_Tutor_OcupacionToOcupacion?.Nombre_DeOcupacion || '---'}
+                        </span>
+                        <span className="text-[11px] text-slate-400 uppercase font-bold tracking-tight">
+                          {tutor.EstadoCivil_Tutor_EstadoCivilToEstadoCivil?.Nombre_EstadoCivil || 'N/A'}
+                        </span>
+                      </div>
                     </td>
                     <td className="text-center">
                       {pacientesAsociados.length > 0 ? (
@@ -137,9 +145,6 @@ export default function Tutores() {
                   </tr>
                 );
               })}
-              {!loading && tutores.length === 0 && (
-                <tr><td colSpan={5} className="text-center py-20 text-slate-400 italic font-medium">No se encontraron tutores con los criterios de búsqueda.</td></tr>
-              )}
             </tbody>
           </table>
         </div>

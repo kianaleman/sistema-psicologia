@@ -19,7 +19,7 @@ export const GeneralService = {
       estadosCita, 
       metodosPago, 
       divisas,
-      roles // <--- Esta es la variable 13 (índice 12)
+      roles 
     ] = await Promise.all([
       prisma.ocupacion.findMany(),
       prisma.estadoCivil.findMany(),
@@ -38,7 +38,7 @@ export const GeneralService = {
       prisma.estadoCita.findMany(),
       prisma.metodoPago.findMany(),
       prisma.divisa.findMany(),
-      prisma.rol.findMany() // <--- ¡AQUÍ FALTABA ESTA PROMESA! (La número 13)
+      prisma.rol.findMany() 
     ]);
 
     const [pacientes, psicologos] = await Promise.all([
@@ -66,13 +66,14 @@ export const GeneralService = {
 
   // 2. Dashboard Stats (KPIs con fix para undefined)
   getDashboardStats: async () => {
-    const hoyNica = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Managua"}));
-    const inicioDia = new Date(hoyNica); inicioDia.setHours(0, 0, 0, 0);
-    const finDia = new Date(hoyNica); finDia.setHours(23, 59, 59, 999);
+    const hoy = new Date();
+    const inicioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 0, 0, 0, 0);
+    const finDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 23, 59, 59, 999);
 
     const [totalPacientes, psicologosActivos, citasHoy, ingresosTotales] = await Promise.all([
       prisma.paciente.count({ where: { Activo: true } }), 
       prisma.psicologo.count({ where: { Activo: true } }), 
+      // 🟢 Ajuste: Contar citas pendientes (ID 1) programadas para el día de hoy
       prisma.cita.count({ where: { ID_EstadoCita: 1, FechaCita: { gte: inicioDia, lte: finDia } } }),
       prisma.recibo.aggregate({ _sum: { MontoTotal: true } })
     ]);
@@ -81,9 +82,28 @@ export const GeneralService = {
       totalPacientes, 
       psicologosActivos, 
       citasHoy, 
-      // CORRECCIÓN: Encadenamiento opcional para evitar el error de undefined
       ingresosTotales: Number(ingresosTotales._sum?.MontoTotal) || 0 
     };
+  },
+
+  // 🟢 NUEVA FUNCIÓN: Para "Agenda del Día" (Lista de citas de hoy)
+  getAgendaHoy: async () => {
+    const hoy = new Date();
+    const inicioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 0, 0, 0, 0);
+    const finDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 23, 59, 59, 999);
+
+    return await prisma.cita.findMany({
+      where: {
+        FechaCita: { gte: inicioDia, lte: finDia },
+        ID_EstadoCita: 1 // Solo pendientes
+      },
+      include: {
+        Paciente: { select: { Nombre: true, Apellido: true } },
+        Psicologo: { select: { Nombre: true, Apellido: true } },
+        TipoDeCita: true
+      },
+      orderBy: { HoraCita: 'asc' }
+    });
   },
 
   // 3. Historial General
@@ -108,15 +128,23 @@ export const GeneralService = {
     }));
   },
 
-  // 4. Datos para Gráficos (Fix de Tipado de Índice y Undefined)
+  // 4. Datos para Gráficos (Ajustado para filtros por rango)
   getGraficosData: async (inicioStr?: string, finStr?: string) => {
     const hoy = new Date();
-    const fechaFin = finStr ? new Date(finStr) : hoy;
+    let fechaFin = finStr ? new Date(finStr) : hoy;
     let fechaInicio = inicioStr ? new Date(inicioStr) : new Date();
-    if (!inicioStr) fechaInicio.setMonth(fechaInicio.getMonth() - 1);
+    
+    if (!inicioStr) {
+        fechaInicio.setMonth(hoy.getMonth() - 1); // Por defecto último mes
+    }
     
     fechaInicio.setHours(0,0,0,0);
     fechaFin.setHours(23,59,59,999);
+
+    // Validación lógica de rango en el servidor
+    if (fechaInicio > fechaFin) {
+        throw new Error("La fecha inicial no puede ser mayor a la fecha final.");
+    }
 
     const recibos = await prisma.recibo.groupBy({
       by: ['FechaRecibo'],
@@ -130,7 +158,6 @@ export const GeneralService = {
 
     const dataIngresos = recibos.map(r => ({
       fecha: r.FechaRecibo ? r.FechaRecibo.toISOString().split('T')[0] : 'S/F', 
-      // CORRECCIÓN: Encadenamiento opcional
       monto: Number(r._sum?.MontoTotal) || 0
     }));
 
@@ -143,10 +170,7 @@ export const GeneralService = {
     const edades = { Ninos: 0, Adolescentes: 0, Adultos: 0, Mayores: 0 };
 
     pacientes.forEach(p => {
-      // Normalizamos el género
       const g = p.Genero.charAt(0).toUpperCase() + p.Genero.slice(1).toLowerCase();
-      
-      // CORRECCIÓN: Type Guard para acceso dinámico seguro
       if (g in generos) {
         generos[g as keyof typeof generos]++;
       }
@@ -173,7 +197,6 @@ export const GeneralService = {
     };
   },
 
-  // AGREGA ESTA FUNCIÓN AL FINAL DEL OBJETO EN EL SERVICE:
   getMotivosCancelacion: async () => {
     return await prisma.motivoCancelacion.findMany();
   }

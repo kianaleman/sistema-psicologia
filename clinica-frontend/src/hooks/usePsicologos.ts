@@ -11,9 +11,13 @@ export interface Especialidad {
 
 // Interfaz extendida para manejar la data que devuelve Prisma
 export interface PsicologoCompleto extends Psicologo {
-  // Sincronizado con la relación N:M de especialidades
-  Psicologo_Especialidad?: { 
-    Especialidad: Especialidad 
+  Usuario?: {
+    Email: string;
+  };
+  // 🟢 CORRECCIÓN: Nombre de relación sincronizado exactamente con el Schema y el error 2551
+  Psicologo_EspecialidadPsicologo?: { 
+    ID_Especialidad: number;
+    EspecialidadPsicologo: Especialidad 
   }[];
 }
 
@@ -41,7 +45,6 @@ export function usePsicologos() {
       ]);
       
       setPsicologos(dataPsicologos);
-      // Sincronizado con el nombre que devuelve api.general.catalogos()
       setEspecialidades(dataCatalogos.especialidades || []);
     } catch (error) {
       console.error("Error cargando psicólogos:", error);
@@ -51,21 +54,18 @@ export function usePsicologos() {
     }
   };
 
-  // --- LÓGICA DE FILTRADO (Sincronizada con PascalCase y Booleano Activo) ---
+  // --- LÓGICA DE FILTRADO ---
   const psicologosFiltrados = useMemo(() => {
     return psicologos.filter(p => {
       const busquedaLower = busqueda.toLowerCase().trim();
       
-      // 1. Filtro de búsqueda (PascalCase: Nombre, Apellido, CodigoMinsa)
       let pasaBusqueda = true;
       if (busquedaLower) {
         const nombreCompleto = `${p.Nombre} ${p.Apellido}`.toLowerCase();
-        // Usamos CodigoMinsa (sin el 'De') según el nuevo schema
         const codigoMinsa = p.CodigoMinsa?.toLowerCase() || '';
         pasaBusqueda = nombreCompleto.includes(busquedaLower) || codigoMinsa.includes(busquedaLower);
       }
 
-      // 2. Filtro de actividad (Usando el nuevo booleano Activo)
       let pasaActividad = true;
       if (filtroActividad === 'activos') pasaActividad = p.Activo === true;
       else if (filtroActividad === 'inactivos') pasaActividad = p.Activo === false;
@@ -78,20 +78,20 @@ export function usePsicologos() {
   const crearPsicologo = async (data: any) => { 
     try {
       await api.psicologos.create(data); 
-      toast.success("Psicólogo registrado");
       await loadData(); 
     } catch (e: any) {
       toast.error(e.response?.data?.error || "Error al crear psicólogo");
+      throw e; 
     }
   };
 
   const actualizarPsicologo = async (id: number, data: any) => { 
     try {
       await api.psicologos.update(id, data); 
-      toast.success("Datos actualizados");
       await loadData(); 
     } catch (e: any) {
       toast.error("Error al actualizar");
+      throw e;
     }
   };
 

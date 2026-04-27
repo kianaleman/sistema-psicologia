@@ -8,7 +8,9 @@ interface CreatePsicologoDTO {
   apellido: string;
   codigoMinsa: string;
   telefono: string;
-  email?: string;
+  email: string; // 🟢 Ahora es obligatorio para el login
+  password?: string; // 🟢 Para la cuenta de acceso
+  idRol: number; // 🟢 ID del Rol de Psicólogo
   direccion: { 
     pais?: string; 
     departamento: string; 
@@ -17,7 +19,7 @@ interface CreatePsicologoDTO {
     calle: string; 
   };
   especialidadIds?: number[];
-  especialidades?: number[]; // Soporte para JSON de Thunder Client
+  especialidades?: number[]; 
   No_Telefono?: string;
   Activo?: boolean;
 }
@@ -35,10 +37,11 @@ const validarTelefonoNica = (telefono: string | undefined | null) => {
 
 export const PsicologoService = {
   
-  // 1. Obtener todos con relaciones
+  // 1. Obtener todos con relaciones (CORREGIDO: Incluye Usuario para el correo)
   getAll: async () => {
     return await prisma.psicologo.findMany({
       include: {
+        Usuario: true, // 🟢 CRUCIAL: Permite ver el correo en el listado y modal
         Direccion: true, 
         Psicologo_EspecialidadPsicologo: { 
           include: { EspecialidadPsicologo: true } 
@@ -48,14 +51,13 @@ export const PsicologoService = {
     });
   },
 
-  // 2. Crear con Blindaje de Integridad (Buscar o Crear Dirección)
+  // 2. Crear con Blindaje de Integridad y Creación de Cuenta
   create: async (data: CreatePsicologoDTO) => {
     if (!data) throw new Error("No se recibieron datos.");
 
     const telefonoRaw = data.telefono || data.No_Telefono;
     const telefonoLimpio = validarTelefonoNica(telefonoRaw);
 
-    // Normalización para evitar errores de Unique Constraint en SQL Server
     const depto = data.direccion?.departamento?.trim();
     const ciudad = data.direccion?.ciudad?.trim();
     const barrio = data.direccion?.barrio?.trim();
@@ -88,7 +90,6 @@ export const PsicologoService = {
             }
           });
         } catch (error) {
-          // Rescate en caso de colisión de concurrencia
           direccion = await tx.direccion.findFirst({
             where: { Departamento: depto, Ciudad: ciudad, Barrio: barrio, Calle: calle }
           });
@@ -96,7 +97,24 @@ export const PsicologoService = {
         }
       }
 
-      // C. Crear el Psicólogo
+      // 🟢 PASO: Crear el Usuario para el login
+      const usuario = await tx.usuario.create({
+        data: {
+          Email: data.email.trim(),
+          PasswordHash: data.password || 'Resiliencia2026*', // Password temporal
+          Activo: true
+        }
+      });
+
+      // 🟢 PASO: Asignar el Rol al Usuario
+      await tx.usuario_Rol.create({
+        data: {
+          ID_Usuario: usuario.ID_Usuario,
+          ID_Rol: data.idRol
+        }
+      });
+
+      // C. Crear el Psicólogo vinculado al nuevo Usuario
       const psicologo = await tx.psicologo.create({
         data: {
           Nombre: data.nombre.trim(),
@@ -104,12 +122,12 @@ export const PsicologoService = {
           CodigoMinsa: data.codigoMinsa.trim(),
           No_Telefono: telefonoLimpio,
           ID_Direccion: direccion.ID_Direccion,
-          Activo: data.Activo ?? true,
-          ID_Usuario: null 
+          ID_Usuario: usuario.ID_Usuario,
+          Activo: data.Activo ?? true
         }
       });
 
-      // D. Registrar Especialidades (Igual al código viejo)
+      // D. Registrar Especialidades
       const idsEspecialidades = data.especialidadIds || data.especialidades;
       if (idsEspecialidades && idsEspecialidades.length > 0) {
         const relaciones = idsEspecialidades.map(espId => ({
@@ -123,7 +141,7 @@ export const PsicologoService = {
     });
   },
 
-  // 3. Actualizar con Sincronización Completa (Como el código viejo)
+  // 3. Actualizar con Sincronización Completa
   update: async (id: number, data: any) => {
     let telefonoLimpio: string | undefined = undefined;
     const telefonoRaw = data.telefono || data.No_Telefono;
@@ -133,7 +151,6 @@ export const PsicologoService = {
     }
 
     return await prisma.$transaction(async (tx) => {
-      // A. Actualizar datos básicos del Psicólogo
       const updateData: any = {
         Nombre: data.nombre?.trim(),
         Apellido: data.apellido?.trim(),
@@ -145,10 +162,11 @@ export const PsicologoService = {
 
       const psicologo = await tx.psicologo.update({
         where: { ID_Psicologo: id },
-        data: updateData
+        data: updateData,
+        // CORRECCIÓN: Devolver el objeto Usuario tras actualizar por si se requiere en el front
+        include: { Usuario: true } 
       });
 
-      // B. Actualizar Dirección vinculada
       if (data.direccion) {
         await tx.direccion.update({
           where: { ID_Direccion: psicologo.ID_Direccion },
@@ -161,7 +179,6 @@ export const PsicologoService = {
         });
       }
 
-      // C. Sincronizar Especialidades (Borrar antiguas y crear nuevas)
       const idsEspecialidades = data.especialidadIds || data.especialidades;
       if (idsEspecialidades) {
         await tx.psicologo_EspecialidadPsicologo.deleteMany({ 

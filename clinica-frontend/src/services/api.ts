@@ -8,8 +8,8 @@ import type {
   Ocupacion, 
   EstadoCivil, 
   Parentesco, 
-  MotivoCancelacion, // Verifica que en types/index.ts se llame exactamente así
-  Especialidad, // <--- ASEGÚRATE DE AGREGAR ESTO AQUÍ
+  MotivoCancelacion, 
+  Especialidad, 
   Stats
 } from '../types';
 
@@ -46,7 +46,7 @@ interface CatalogosResponse {
   estadosCiviles: EstadoCivil[];
   parentescos: Parentesco[];
   psicologos: Psicologo[];
-  tutores: Tutor[]; // <--- AGREGA ESTA LÍNEA
+  tutores: Tutor[]; 
   especialidades: Especialidad[];
 }
 
@@ -55,7 +55,7 @@ export const api = {
   post: <T>(url: string, body: any) => request<T>(url, { method: 'POST', body: JSON.stringify(body) }),
   put: <T>(url: string, body: any) => request<T>(url, { method: 'PUT', body: JSON.stringify(body) }),
   patch: <T>(url: string, body: any) => request<T>(url, { method: 'PATCH', body: JSON.stringify(body) }),
-  delete: <T>(url: string) => request<T>(url, { method: 'DELETE' }),
+  delete: <T>(url: string) => request<T>(url) , // Nota: Fetch delete suele no llevar body
 
   pacientes: {
     getAll: () => request<Paciente[]>('/pacientes'),
@@ -73,6 +73,7 @@ export const api = {
       method: 'PATCH', 
       body: JSON.stringify({ activo }) 
     }),
+    
   },
 
   tutores: {
@@ -83,7 +84,6 @@ export const api = {
   psicologos: {
     getAll: () => request<Psicologo[]>('/psicologos'),
     create: (data: any) => request('/psicologos', { method: 'POST', body: JSON.stringify(data) }),
-    // CORRECCIÓN AQUÍ (Línea 87): Se eliminó el "body:" duplicado y erróneo
     update: (id: number, data: any) => request(`/psicologos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   },
 
@@ -120,7 +120,9 @@ export const api = {
   general: {
     catalogos: () => request<CatalogosResponse>('/general/catalogos'), 
     stats: () => request<Stats>('/general/stats'),
-    historialCompleto: () => request<any[]>('/general/historial'), // <--- AGREGÁ ESTA LÍNEA
+    // 🟢 CORRECCIÓN: Agregada la función para la Agenda del Día
+    agendaHoy: () => request<Cita[]>('/general/agenda-hoy'),
+    historialCompleto: () => request<any[]>('/general/historial'), 
     graficos: (inicio?: string, fin?: string) => {
       const params = new URLSearchParams();
       if (inicio) params.append('inicio', inicio);

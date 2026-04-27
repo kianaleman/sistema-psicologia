@@ -31,11 +31,10 @@ const validarTelefonoNica = (telefono: string) => {
 
 export const TutorService = {
   
-  // 1. Obtener todos los tutores (Solo datos personales y relaciones de ocupación/pacientes)
+  // 1. Obtener todos los tutores
   getAll: async () => {
     return await prisma.tutor.findMany({
       include: {
-        // Nombres de relación según el db pull de tu nueva base de datos
         Ocupacion_Tutor_OcupacionToOcupacion: true, 
         EstadoCivil_Tutor_EstadoCivilToEstadoCivil: true,
         Tutor_PacienteMenor: {
@@ -53,16 +52,14 @@ export const TutorService = {
     });
   },
 
-  // 2. Actualizar Tutor (Sin tocar direcciones)
+  // 2. Actualizar Tutor
   update: async (id: number, data: UpdateTutorDTO) => {
     validarFormatoCedula(data.No_Cedula);
     const telefonoLimpio = validarTelefonoNica(data.No_Telefono);
 
-    // Validar si existe
     const existe = await prisma.tutor.findUnique({ where: { ID_Tutor: id } });
     if (!existe) throw new Error('Tutor no encontrado');
 
-    // Validar duplicidad de cédula
     const cedulaDuplicada = await prisma.tutor.findFirst({
         where: {
             No_Cedula: data.No_Cedula,
@@ -73,7 +70,6 @@ export const TutorService = {
         throw new Error(`La cédula ${data.No_Cedula} ya la tiene otro tutor registrado.`);
     }
 
-    // Actualización directa en dbo.Tutor
     return await prisma.tutor.update({
       where: { ID_Tutor: id },
       data: {
@@ -81,9 +77,13 @@ export const TutorService = {
         Apellido: data.Apellido,
         No_Cedula: data.No_Cedula,
         No_Telefono: telefonoLimpio,
-        // Usando los IDs directos como campos FK
         Ocupacion: Number(data.ID_Ocupacion),
         EstadoCivil: Number(data.ID_EstadoCivil)
+      },
+      // 🟢 CORRECCIÓN: Agregamos include en el update para que el Frontend reciba los nombres de ocupación/estado civil tras guardar
+      include: {
+        Ocupacion_Tutor_OcupacionToOcupacion: true,
+        EstadoCivil_Tutor_EstadoCivilToEstadoCivil: true
       }
     });
   }

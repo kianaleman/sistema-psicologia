@@ -12,7 +12,6 @@ export const ReciboService = {
             Paciente: {
               include: {
                 PacienteAdulto: true,
-                // CORRECCIÓN: Nombre con guion bajo según el db pull de SQL Server
                 Paciente_Menor: {
                   include: {
                     Tutor_PacienteMenor: { 
@@ -25,12 +24,10 @@ export const ReciboService = {
               }
             },
             Psicologo: true,
-            // CORRECCIÓN: Verifica si es TipoDeCita o TipoDe_Cita (Prisma suele poner guion bajo)
             TipoDeCita: true 
           }
         },
         Divisa: true,
-        // CORRECCIÓN: Verifica si es MetodoPago o Metodo_Pago
         MetodoPago: true 
       },
       orderBy: { 

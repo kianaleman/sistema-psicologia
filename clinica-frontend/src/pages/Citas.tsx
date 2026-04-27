@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { toast } from "sonner";
+//import { toast } from "sonner";
 import { useCitas } from "../hooks/useCitas";
 import type { Cita } from "../types";
 
@@ -42,38 +42,32 @@ export default function Citas() {
 
   const confirmarCancelacion = async (motivoId: number, nota: string) => {
     if (idCancelar) {
-        await acciones.cancelarCita(idCancelar, motivoId, nota);
-        setIdCancelar(null); 
+      await acciones.cancelarCita(idCancelar, motivoId, nota);
+      setIdCancelar(null);
     }
   };
 
   const handleFinalizarSesion = async (data: any) => {
-    toast.promise(acciones.guardarSesion(data), {
-      loading: "Finalizando sesión clínica...",
-      success: "Sesión guardada exitosamente",
-      error: "No se pudo guardar la sesión",
-    });
-    setModalOpen(null);
+    const success = await acciones.guardarSesion(data);
+    if (success) setModalOpen(null);
   };
 
-  // --- HELPERS VISUALES CORREGIDOS PARA SQL SERVER ---
   const formatearHora = (h: string) => {
     if (!h) return "--:--";
-    // Si la hora viene de SQL Server como "2026-04-26T14:30:00Z"
     const fecha = new Date(h);
-    return fecha.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit', 
-        hour12: true,
-        timeZone: 'UTC' 
+    return fecha.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'UTC'
     });
   };
 
   const formatearFechaCompleta = (f: string) => {
     if (!f) return "Fecha no válida";
     const fechaObj = new Date(f);
-    const opciones: Intl.DateTimeFormatOptions = { 
-        weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC"
+    const opciones: Intl.DateTimeFormatOptions = {
+      weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC"
     };
     const fechaStr = fechaObj.toLocaleDateString("es-ES", opciones);
     return fechaStr.charAt(0).toUpperCase() + fechaStr.slice(1);
@@ -81,20 +75,19 @@ export default function Citas() {
 
   const getEstadoColor = (st: string) => {
     const s = st.toLowerCase();
-    if (s.includes("programada")) return "bg-blue-100 text-blue-700";
-    if (s.includes("completada")) return "bg-emerald-100 text-emerald-700";
-    if (s.includes("cancelada")) return "bg-rose-100 text-rose-700";
+    if (s.includes("programada") || s.includes("pendiente")) return "bg-blue-100 text-blue-700";
+    if (s.includes("completada") || s.includes("realizada")) return "bg-emerald-100 text-emerald-700";
+    if (s.includes("cancelada") || s.includes("no asistió")) return "bg-rose-100 text-rose-700";
     return "bg-slate-100 text-slate-700";
   };
 
   const renderDireccion = (dir: any) => {
     if (!dir) return null;
-    const textoCorto = `${dir.Ciudad}, ${dir.Calle}`;
-    const textoCompleto = `${dir.Departamento}, ${dir.Ciudad}. B° ${dir.Barrio}, ${dir.Calle}`;
+    const direccionCompleta = `${dir.Ciudad}, B° ${dir.Barrio}, ${dir.Calle}`;
     return (
-      <div className="flex items-start gap-1.5 text-xs text-slate-500 mt-2 bg-slate-50 p-2 rounded-md border border-slate-100 cursor-help" title={textoCompleto}>
+      <div className="flex items-start gap-1.5 text-[11px] text-slate-500 mt-2 bg-slate-50 p-2 rounded-lg border border-slate-100 shadow-sm" title={direccionCompleta}>
         <span className="text-sm shrink-0">📍</span>
-        <span className="truncate w-full font-medium">{textoCorto}</span>
+        <span className="leading-tight font-medium text-slate-600">{direccionCompleta}</span>
       </div>
     );
   };
@@ -111,7 +104,6 @@ export default function Citas() {
         </button>
       </div>
 
-      {/* PANEL DE FILTROS */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-8">
         <div className="flex flex-col lg:flex-row gap-6 justify-between">
           <div className="flex flex-col gap-3">
@@ -122,11 +114,29 @@ export default function Citas() {
                   <button key={btn.id} className={`join-item btn btn-sm border-none transition-all ${filtros.periodo === btn.id ? "bg-white text-slate-900 shadow-sm" : "bg-transparent text-slate-500"}`} onClick={() => setFiltro("periodo", btn.id)}>{btn.label}</button>
                 ))}
               </div>
-              {filtros.periodo === "rango" && (
-                <div className="flex items-center gap-2 animate-fade-in bg-white p-1 rounded-lg border border-slate-200">
-                  <input type="date" className="input input-xs bg-transparent" value={filtros.fechaInicio} onChange={(e) => setFiltro("fechaInicio", e.target.value)} />
-                  <span className="text-slate-300">➔</span>
-                  <input type="date" className="input input-xs bg-transparent" value={filtros.fechaFin} onChange={(e) => setFiltro("fechaFin", e.target.value)} />
+
+              {/* 🟢 CORRECCIÓN: Inputs de fecha condicionales con validación de rango */}
+              {filtros.periodo === 'rango' && (
+                <div className="flex items-center gap-2 animate-fade-in">
+                  <input 
+                    type="date" 
+                    className="input input-bordered input-xs bg-white rounded-md text-slate-600 font-bold border-slate-200" 
+                    value={filtros.fechaInicio}
+                    onChange={(e) => {
+                        setFiltro('fechaInicio', e.target.value);
+                        if (filtros.fechaFin && e.target.value > filtros.fechaFin) {
+                          setFiltro('fechaFin', '');
+                        }
+                    }}
+                  />
+                  <span className="text-xs text-slate-400 font-bold">al</span>
+                  <input 
+                    type="date" 
+                    className="input input-bordered input-xs bg-white rounded-md text-slate-600 font-bold border-slate-200" 
+                    value={filtros.fechaFin}
+                    min={filtros.fechaInicio} 
+                    onChange={(e) => setFiltro('fechaFin', e.target.value)}
+                  />
                 </div>
               )}
             </div>
@@ -134,22 +144,11 @@ export default function Citas() {
 
           <div className="flex flex-col gap-3 flex-1">
             <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Icons.Filter /> Criterios</span>
-                {(filtros.estado || filtros.paciente || filtros.psicologo || filtros.periodo !== "todos") && (
-                    <button onClick={() => { setFiltro("estado", ""); setFiltro("paciente", ""); setFiltro("psicologo", ""); setFiltro("periodo", "todos"); }} className="text-xs font-medium text-blue-500 hover:underline">Limpiar filtros</button>
-                )}
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Icons.Filter /> Criterios</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400"><Icons.User /></div>
-                <input list="lista-doctores" placeholder="Doctor..." className="input input-bordered input-sm w-full pl-9 bg-slate-50" value={filtros.psicologo} onChange={(e) => setFiltro("psicologo", e.target.value)} />
-                <datalist id="lista-doctores">{catalogos.psicologos.map((p: any) => (<option key={p.ID_Psicologo} value={`${p.Nombre} ${p.Apellido}`} />))}</datalist>
-              </div>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400"><Icons.Search /></div>
-                <input list="lista-pacientes" placeholder="Paciente..." className="input input-bordered input-sm w-full pl-9 bg-slate-50" value={filtros.paciente} onChange={(e) => setFiltro("paciente", e.target.value)} />
-                <datalist id="lista-pacientes">{catalogos.pacientes.map((p: any) => (<option key={p.ID_Paciente} value={`${p.Nombre} ${p.Apellido}`} />))}</datalist>
-              </div>
+              <input list="lista-doctores" placeholder="Doctor..." className="input input-bordered input-sm w-full pl-9 bg-slate-50" value={filtros.psicologo} onChange={(e) => setFiltro("psicologo", e.target.value)} />
+              <input list="lista-pacientes" placeholder="Paciente..." className="input input-bordered input-sm w-full pl-9 bg-slate-50" value={filtros.paciente} onChange={(e) => setFiltro("paciente", e.target.value)} />
               <select className="select select-bordered select-sm bg-slate-50 w-full" value={filtros.estado} onChange={(e) => setFiltro("estado", e.target.value)}>
                 <option value="">Todos los estados</option>
                 {catalogos.estadosCita.map((e: any) => (<option key={e.ID_EstadoCita} value={e.ID_EstadoCita}>{e.NombreEstado}</option>))}
@@ -159,21 +158,21 @@ export default function Citas() {
         </div>
       </div>
 
-      {/* GRID DE CITAS */}
       {loading ? (
         <div className="text-center py-32"><span className="loading loading-spinner loading-lg text-primary"></span></div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {citas.map((cita) => {
-            const esProgramada = cita.EstadoCita?.NombreEstado === "Programada";
-            const esCancelada = cita.EstadoCita?.NombreEstado === "Cancelada" || cita.EstadoCita?.NombreEstado === "No Asistió";
+            const nombreEstado = cita.EstadoCita?.NombreEstado || "";
+            const esProgramada = nombreEstado.toLowerCase().includes("programada") || nombreEstado.toLowerCase().includes("pendiente");
+            const esCancelada = nombreEstado.toLowerCase().includes("cancelada") || nombreEstado.toLowerCase().includes("no asistió");
 
             return (
               <div key={cita.ID_Cita} className={`card bg-white border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col ${esCancelada ? "opacity-60 grayscale" : ""}`}>
                 <div className="px-6 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
                   <span className="text-xs font-bold text-slate-500 uppercase">📅 {formatearFechaCompleta(cita.FechaCita)}</span>
-                  <div className={`badge ${getEstadoColor(cita.EstadoCita?.NombreEstado || "")} font-bold border-none h-auto py-1 px-3 rounded-md text-[10px]`}>
-                    {cita.EstadoCita?.NombreEstado.toUpperCase()}
+                  <div className={`badge ${getEstadoColor(nombreEstado)} font-bold border-none h-auto py-1 px-3 rounded-md text-[10px]`}>
+                    {nombreEstado.toUpperCase()}
                   </div>
                 </div>
 
@@ -191,15 +190,12 @@ export default function Citas() {
                     </div>
                     <div className="text-xs text-slate-400 pt-1">Dr. {cita.Psicologo?.Apellido}</div>
 
-                    {esCancelada ? (
-                        <div className="mt-2 p-2 bg-rose-50 border border-rose-100 rounded-lg">
-                            <div className="flex items-center gap-1.5 text-rose-700 font-bold text-xs mb-1">
-                                <Icons.Ban /> <span>{cita.MotivoCancelacion?.Motivo || 'Cancelada'}</span>
-                            </div>
-                            {cita.NotasCancelacion && <p className="text-xs text-rose-600/80 italic">"{cita.NotasCancelacion}"</p>}
+                    {!esCancelada && cita.Direccion && renderDireccion(cita.Direccion)}
+                    
+                    {esCancelada && (
+                        <div className="mt-2 p-2 bg-rose-50 border border-rose-100 rounded-lg text-rose-700 text-[10px] italic">
+                            "{cita.NotasCancelacion || 'Sin observaciones'}"
                         </div>
-                    ) : (
-                        cita.Direccion && renderDireccion(cita.Direccion)
                     )}
                   </div>
                 </div>
@@ -224,7 +220,6 @@ export default function Citas() {
         </div>
       )}
 
-      {/* MODALES REUTILIZABLES */}
       <CitaFormModal isOpen={modalOpen === "create"} onClose={() => setModalOpen(null)} onSubmit={handleCreateOrUpdate} citaEditar={selectedCita} catalogos={catalogos} />
       <SesionModal isOpen={modalOpen === "session"} onClose={() => setModalOpen(null)} onSubmit={handleFinalizarSesion} cita={selectedCita} catalogos={catalogos} />
       <HistorialModal isOpen={modalOpen === "view"} onClose={() => setModalOpen(null)} cita={selectedCita} />

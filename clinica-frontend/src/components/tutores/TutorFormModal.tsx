@@ -1,5 +1,5 @@
+import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
-//import type { TutorCompleto } from '../../hooks/useTutores';
 
 interface Props {
   isOpen: boolean;
@@ -35,65 +35,70 @@ export default function TutorFormModal({ isOpen, onClose, onSubmit, formData, se
     onSubmit(e);
   };
 
-  return (
-    <dialog className="modal modal-open backdrop-blur-sm">
-      <div className="modal-box w-11/12 max-w-3xl bg-white p-0 rounded-2xl shadow-xl">
-        <div className="bg-slate-800 text-white px-8 py-4 border-b border-slate-200 flex justify-between items-center">
-            <h3 className="font-bold text-lg font-serif">Editar Información del Tutor</h3>
-            <button className="btn btn-sm btn-circle btn-ghost text-slate-200" onClick={onClose}>✕</button>
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[92vh] border border-slate-200 overflow-hidden animate-fade-in-up">
+        
+        <div className="bg-slate-800 text-white px-8 py-5 border-b border-slate-700 flex justify-between items-center shrink-0">
+            <h3 className="font-bold text-xl font-serif">Editar Información del Tutor</h3>
+            <button className="btn btn-sm btn-circle btn-ghost text-slate-300" onClick={onClose}>✕</button>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto text-slate-700 bg-slate-50">
+        <div className="overflow-y-auto flex-1 bg-slate-50 p-8 custom-scrollbar">
+          <form id="edit-tutor-form" onSubmit={handleSubmit} className="space-y-8">
             <div>
-              <label className="label-text font-bold text-slate-500 uppercase text-xs">Datos Personales</label>
-              <div className="grid grid-cols-2 gap-4 mt-2">
-                <div className="form-control"><label className="label pt-0"><span className="label-text-alt">Nombre</span></label><input type="text" className="input input-bordered bg-white" value={formData.Nombre} onChange={e => setFormData({...formData, Nombre: e.target.value})} /></div>
-                <div className="form-control"><label className="label pt-0"><span className="label-text-alt">Apellido</span></label><input type="text" className="input input-bordered bg-white" value={formData.Apellido} onChange={e => setFormData({...formData, Apellido: e.target.value})} /></div>
-                <div className="form-control"><label className="label pt-0"><span className="label-text-alt">Cédula</span></label><input type="text" className="input input-bordered bg-white font-mono" value={formData.No_Cedula} maxLength={16} onChange={e => setFormData({...formData, No_Cedula: formatearCedula(e.target.value)})} /></div>
-                <div className="form-control"><label className="label pt-0"><span className="label-text-alt">Teléfono</span></label><input type="text" className="input input-bordered bg-white" value={formData.No_Telefono} onChange={e => setFormData({...formData, No_Telefono: e.target.value})} maxLength={8} /></div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4">Datos del Responsable</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="form-control">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 mb-2">Nombre</label>
+                  <input type="text" required className="input input-bordered bg-white border-slate-200 focus:border-blue-500 rounded-xl" value={formData.Nombre} onChange={e => setFormData({...formData, Nombre: e.target.value})} />
+                </div>
+                <div className="form-control">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 mb-2">Apellido</label>
+                  <input type="text" required className="input input-bordered bg-white border-slate-200 focus:border-blue-500 rounded-xl" value={formData.Apellido} onChange={e => setFormData({...formData, Apellido: e.target.value})} />
+                </div>
+                <div className="form-control">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 mb-2">Cédula</label>
+                  <input type="text" required className="input input-bordered bg-white font-mono border-slate-200 focus:border-blue-500 rounded-xl" value={formData.No_Cedula} maxLength={16} onChange={e => setFormData({...formData, No_Cedula: formatearCedula(e.target.value)})} />
+                </div>
+                <div className="form-control">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 mb-2">Teléfono</label>
+                  <input type="text" required className="input input-bordered bg-white font-mono border-slate-200 focus:border-blue-500 rounded-xl" value={formData.No_Telefono} onChange={e => setFormData({...formData, No_Telefono: e.target.value})} maxLength={8} />
+                </div>
               </div>
             </div>
 
             <div>
-              <label className="label-text font-bold text-slate-500 uppercase text-xs">Información Adicional</label>
-              <div className="grid grid-cols-2 gap-4 mt-2">
-                {/* 🟢 CORRECCIÓN: Nombres de campos de catálogos sincronizados con index.ts */}
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4">Información Civil y Laboral</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="form-control">
-                    <label className="label pt-0"><span className="label-text-alt">Ocupación</span></label>
-                    <select className="select select-bordered bg-white" value={formData.ID_Ocupacion} onChange={e => setFormData({...formData, ID_Ocupacion: parseInt(e.target.value)})}>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 mb-2">Ocupación</label>
+                    <select required className="select select-bordered bg-white border-slate-200 focus:border-blue-500 rounded-xl" value={formData.ID_Ocupacion} onChange={e => setFormData({...formData, ID_Ocupacion: parseInt(e.target.value)})}>
                         <option value="">Seleccionar...</option>
                         {catalogos.ocupaciones?.map((o:any) => <option key={o.ID_Ocupacion} value={o.ID_Ocupacion}>{o.Nombre_DeOcupacion}</option>)}
                     </select>
                 </div>
                 <div className="form-control">
-                    <label className="label pt-0"><span className="label-text-alt">Estado Civil</span></label>
-                    <select className="select select-bordered bg-white" value={formData.ID_EstadoCivil} onChange={e => setFormData({...formData, ID_EstadoCivil: parseInt(e.target.value)})}>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase ml-1 mb-2">Estado Civil</label>
+                    <select required className="select select-bordered bg-white border-slate-200 focus:border-blue-500 rounded-xl" value={formData.ID_EstadoCivil} onChange={e => setFormData({...formData, ID_EstadoCivil: parseInt(e.target.value)})}>
                         <option value="">Seleccionar...</option>
                         {catalogos.estadosCiviles?.map((ec:any) => <option key={ec.ID_EstadoCivil} value={ec.ID_EstadoCivil}>{ec.Nombre_EstadoCivil}</option>)}
                     </select>
                 </div>
               </div>
             </div>
-
-            {/* 🟢 CORRECCIÓN: Estructura de dirección simplificada o alineada según la respuesta de la API */}
-            <div>
-              <label className="label-text font-bold text-slate-500 uppercase text-xs">Dirección del Tutor</label>
-              <div className="grid grid-cols-2 gap-4 mt-2">
-                <input type="text" placeholder="Departamento" className="input input-bordered bg-white" value={formData.DireccionTutor?.Departamento || ''} onChange={e => setFormData({...formData, DireccionTutor: {...formData.DireccionTutor, Departamento: e.target.value}})} />
-                <input type="text" placeholder="Ciudad" className="input input-bordered bg-white" value={formData.DireccionTutor?.Ciudad || ''} onChange={e => setFormData({...formData, DireccionTutor: {...formData.DireccionTutor, Ciudad: e.target.value}})} />
-                <input type="text" placeholder="Barrio" className="input input-bordered bg-white" value={formData.DireccionTutor?.Barrio || ''} onChange={e => setFormData({...formData, DireccionTutor: {...formData.DireccionTutor, Barrio: e.target.value}})} />
-                <input type="text" placeholder="Calle" className="input input-bordered bg-white" value={formData.DireccionTutor?.Calle || ''} onChange={e => setFormData({...formData, DireccionTutor: {...formData.DireccionTutor, Calle: e.target.value}})} />
-              </div>
-            </div>
-          </div>
-          
-          <div className="modal-action bg-slate-50 px-8 py-4 border-t border-slate-200 rounded-b-2xl">
-            <button type="button" className="btn btn-ghost hover:bg-slate-100" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="btn btn-primary text-white">Actualizar Tutor</button>
-          </div>
-        </form>
+          </form>
+        </div>
+        
+        <div className="bg-white px-8 py-5 border-t border-slate-100 flex justify-end gap-3 shrink-0">
+          <button type="button" className="btn btn-ghost px-8 font-bold text-slate-400" onClick={onClose}>Cancelar</button>
+          <button type="submit" form="edit-tutor-form" className="btn bg-slate-900 hover:bg-slate-800 text-white px-10 rounded-xl font-bold shadow-lg transition-all">
+            Actualizar Tutor
+          </button>
+        </div>
       </div>
-    </dialog>
+    </div>
   );
+
+  return createPortal(modalContent, document.getElementById('modal-root')!);
 }

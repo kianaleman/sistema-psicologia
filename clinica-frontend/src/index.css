@@ -90,3 +90,24 @@ body {
 /* Scrollbars */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+
+/* src/index.css */
+
+/* Forzar colores de inputs para que no se vean oscuros */
+.input, .select, .textarea {
+  background-color: #ffffff !important;
+  color: #1e293b !important; /* Slate 800 */
+  border: 1px solid #e2e8f0 !important;
+}
+
+/* Corregir el scroll de los modales para que no se corten */
+.modal {
+  align-items: center !important;
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+.modal-box {
+  max-height: calc(100vh - 5em);
+  overflow-y: auto; /* Permite scroll dentro del formulario si es muy largo */
+}

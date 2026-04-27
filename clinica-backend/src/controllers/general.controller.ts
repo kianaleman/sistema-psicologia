@@ -23,6 +23,17 @@ export const getDashboardStats = async (req: Request, res: Response) => {
   }
 };
 
+// 🟢 NUEVO: GET Agenda de Hoy (Lista de citas pendientes)
+export const getAgendaHoy = async (req: Request, res: Response) => {
+  try {
+    const agenda = await GeneralService.getAgendaHoy();
+    res.json(agenda);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error cargando la agenda del día' });
+  }
+};
+
 // GET: Historial Completo
 export const getHistorialGeneral = async (req: Request, res: Response) => {
   try {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../services/api';
+import { toast } from 'sonner'; 
 import type { Stats, Cita } from '../types';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -16,6 +17,7 @@ const Icons = {
 };
 
 export default function Dashboard() {
+  // 🟢 CORRECCIÓN: Se aplica el tipo Stats para eliminar el warning 6196
   const [stats, setStats] = useState<Stats | null>(null);
   const [agendaHoy, setAgendaHoy] = useState<Cita[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,29 +27,28 @@ export default function Dashboard() {
 
   useEffect(() => {
     cargarKPIs();
-    cargarGraficos(); 
   }, []);
 
   useEffect(() => {
-    if (filtroGrafico === 'rango' && (!fechasRango.inicio || !fechasRango.fin)) return;
+    if (filtroGrafico === 'rango') {
+      if (!fechasRango.inicio || !fechasRango.fin) return;
+      if (new Date(fechasRango.inicio) > new Date(fechasRango.fin)) {
+        toast.error("La fecha inicial no puede ser mayor a la final.");
+        return;
+      }
+    }
     cargarGraficos();
   }, [filtroGrafico, fechasRango]);
 
   const cargarKPIs = async () => {
     try {
-      const statsData = await api.general.stats();
+      setLoading(true);
+      const [statsData, agendaData] = await Promise.all([
+        api.general.stats(),
+        api.general.agendaHoy()
+      ]);
       setStats(statsData);
-
-      const citasData = await api.citas.getAll();
-      const hoyStr = new Date().toISOString().split('T')[0];
-      
-      const programadasHoy = citasData.filter((c: any) => {
-        const fechaCitaStr = c.FechaCita.split('T')[0];
-        return fechaCitaStr === hoyStr && c.ID_EstadoCita === 1;
-      });
-      
-      programadasHoy.sort((a: any, b: any) => new Date(a.HoraCita).getTime() - new Date(b.HoraCita).getTime());
-      setAgendaHoy(programadasHoy);
+      setAgendaHoy(agendaData);
       setLoading(false);
     } catch (error) { 
       console.error("Error cargando KPIs:", error); 
@@ -83,7 +84,7 @@ export default function Dashboard() {
   const formatearHora = (h: string) => {
     if (!h) return "--:--";
     const fecha = new Date(h);
-    return fecha.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+    return fecha.toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -101,7 +102,6 @@ export default function Dashboard() {
     return null;
   };
 
-  // 🟢 DEFINICIÓN CORREGIDA: Usamos <div> en lugar de <h2> para permitir el layout bimoneda
   const KpiCard = ({ title, value, subtitle, icon, color }: any) => (
     <div className="card bg-white border border-slate-100 shadow-sm hover:shadow-md transition-all">
       <div className="card-body p-5 flex flex-row items-center justify-between">
@@ -137,45 +137,34 @@ export default function Dashboard() {
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
-        <KpiCard title="Citas Hoy" value={agendaHoy.length} subtitle="Atenciones programadas" icon={<Icons.Calendar />} color="text-blue-600" />
-        <KpiCard title="Pacientes" value={stats?.totalPacientes} subtitle="Registrados en sistema" icon={<Icons.Users />} color="text-slate-800" />
-        <KpiCard title="Especialistas" value={stats?.psicologosActivos} subtitle="Psicólogos activos" icon={<Icons.Doctor />} color="text-slate-800" />
-        
-        {/* 🟢 KPI DE INGRESOS CORREGIDO: Usando ingresosTotalesNIO e ingresosTotalesUSD */}
-        <KpiCard 
-          title="Ingresos" 
-          value={
-            <div className="flex flex-col leading-tight">
-              <span className="text-emerald-600">
-                C$ {Number(stats?.ingresosTotalesNIO || 0).toLocaleString('en-NI')}
-              </span>
-              <span className="text-blue-600 text-sm font-bold opacity-80">
-                $ {Number(stats?.ingresosTotalesUSD || 0).toLocaleString('en-US')}
-              </span>
-            </div>
-          } 
-          subtitle="Facturación bimoneda" 
-          icon={<Icons.Cash />} 
-          color="" 
-        />
+        <KpiCard title="Citas Hoy" value={agendaHoy.length} subtitle="Atenciones pendientes" icon={<Icons.Calendar />} color="text-blue-600" />
+        <KpiCard title="Pacientes Activos" value={stats?.totalPacientes || 0} subtitle="Expedientes registrados" icon={<Icons.Users />} color="text-slate-800" />
+        <KpiCard title="Psicólogos" value={stats?.psicologosActivos || 0} subtitle="Personal disponible" icon={<Icons.Doctor />} color="text-slate-800" />
+        <KpiCard title="Ingresos Totales" value={`C$ ${Number(stats?.ingresosTotalesNIO || 0).toLocaleString('en-NI')}`} subtitle="Facturado histórico" icon={<Icons.Cash />} color="text-emerald-600" />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         <div className="xl:col-span-2 space-y-8">
           <div className="card bg-white border border-slate-100 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-slate-50 flex justify-between items-center">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2"><Icons.TrendingUp /> Flujo de Ingresos</h3>
+              <h3 className="font-bold text-slate-800 flex items-center gap-2"><Icons.TrendingUp /> Ingresos Financieros</h3>
               <div className="join bg-slate-50 p-1 rounded-lg border border-slate-200">
                 {['semana', 'mes', 'rango'].map((f) => (
-                  <button key={f} className={`join-item btn btn-xs border-none px-4 ${filtroGrafico === f ? 'bg-white shadow text-slate-900' : 'bg-transparent text-slate-500'}`} onClick={() => setFiltroGrafico(f as any)}>{f}</button>
+                  <button key={f} className={`join-item btn btn-xs border-none px-4 uppercase font-bold text-[9px] ${filtroGrafico === f ? 'bg-white shadow text-slate-900' : 'bg-transparent text-slate-400'}`} onClick={() => setFiltroGrafico(f as any)}>{f}</button>
                 ))}
               </div>
             </div>
             <div className="p-6">
               {filtroGrafico === 'rango' && (
-                <div className="flex justify-end gap-2 mb-6 animate-fade-in">
-                   <input type="date" className="input input-xs input-bordered" value={fechasRango.inicio} onChange={e => setFechasRango({...fechasRango, inicio: e.target.value})} />
-                   <input type="date" className="input input-xs input-bordered" value={fechasRango.fin} onChange={e => setFechasRango({...fechasRango, fin: e.target.value})} />
+                <div className="flex justify-end gap-2 mb-6 animate-fade-in bg-slate-50 p-3 rounded-xl border border-slate-100">
+                   <div className="flex flex-col">
+                     <span className="text-[9px] font-bold text-slate-400 ml-1">DESDE</span>
+                     <input type="date" className="input input-xs input-bordered bg-white" value={fechasRango.inicio} onChange={e => setFechasRango({...fechasRango, inicio: e.target.value})} />
+                   </div>
+                   <div className="flex flex-col">
+                     <span className="text-[9px] font-bold text-slate-400 ml-1">HASTA</span>
+                     <input type="date" className="input input-xs input-bordered bg-white" value={fechasRango.fin} onChange={e => setFechasRango({...fechasRango, fin: e.target.value})} />
+                   </div>
                 </div>
               )}
               <div className="h-72">
@@ -236,10 +225,10 @@ export default function Dashboard() {
 
         <div className="card bg-white border border-slate-100 shadow-sm overflow-hidden h-fit">
             <div className="p-6 border-b border-slate-50 flex justify-between items-center">
-                <h2 className="font-bold text-slate-800 flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span> Agenda de Hoy</h2>
-                <Link to="/citas" className="text-[10px] font-bold text-blue-600 hover:underline uppercase">Ver Todo</Link>
+                <h2 className="font-bold text-slate-800 flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span> Agenda del Día</h2>
+                <Link to="/agenda" className="text-[10px] font-bold text-blue-600 hover:underline uppercase">Ver Todo</Link>
             </div>
-            <div className="max-h-[750px] overflow-y-auto">
+            <div className="max-h-[750px] overflow-y-auto custom-scrollbar">
                {loading ? (
                    <div className="p-10 text-center"><span className="loading loading-spinner text-blue-500"></span></div>
                ) : agendaHoy.length > 0 ? (
@@ -247,18 +236,16 @@ export default function Dashboard() {
                        {agendaHoy.map((cita) => (
                            <li key={cita.ID_Cita} className="p-5 hover:bg-slate-50 transition-colors">
                                <div className="flex gap-4">
-                                   <div className="text-center min-w-[50px]">
+                                   <div className="text-center min-w-[55px] bg-slate-50 rounded-xl p-2 border border-slate-100">
                                        <span className="text-sm font-black text-slate-800 block">{formatearHora(cita.HoraCita)}</span>
-                                       <span className="text-[9px] text-slate-400 font-bold uppercase">Hora</span>
                                    </div>
                                    <div className="flex-1 min-w-0">
                                        <div className="flex justify-between items-start">
                                            <h4 className="font-bold text-slate-700 text-sm truncate">{cita.Paciente?.Nombre} {cita.Paciente?.Apellido}</h4>
-                                           <span className="badge badge-ghost text-[9px] font-bold border-none">{cita.TipoDeCita?.Nombre_DeCita}</span>
                                        </div>
-                                       <p className="text-[11px] text-slate-500">Dr. {cita.Psicologo?.Apellido}</p>
+                                       <p className="text-[11px] text-slate-500 font-medium">Dr. {cita.Psicologo?.Apellido}</p>
                                        <div className="mt-3">
-                                           <Link to={`/pacientes/${cita.ID_Paciente}`} className="btn btn-xs btn-ghost border-slate-200 text-slate-500 w-full text-[9px]">Ver Expediente</Link>
+                                           <Link to={`/pacientes/${cita.ID_Paciente}`} className="btn btn-xs btn-ghost border-slate-200 text-slate-500 w-full text-[9px] font-bold">VER EXPEDIENTE</Link>
                                        </div>
                                    </div>
                                </div>
@@ -266,8 +253,12 @@ export default function Dashboard() {
                        ))}
                    </ul>
                ) : (
-                   <div className="py-20 text-center px-6">
-                       <p className="text-sm font-medium text-slate-400 italic">No hay citas programadas para hoy.</p>
+                   <div className="py-24 text-center px-6">
+                        <div className="bg-slate-50 w-16 h-16 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-slate-100">
+                            <Icons.Calendar />
+                        </div>
+                        <p className="text-sm font-bold text-slate-700">No hay citas para hoy</p>
+                        <p className="text-xs text-slate-400 mt-1 italic">¡Disfruta el tiempo libre!</p>
                    </div>
                )}
             </div>

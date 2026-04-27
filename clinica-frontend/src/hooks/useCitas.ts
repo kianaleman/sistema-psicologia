@@ -21,7 +21,7 @@ export const useCitas = () => {
     tiposCita: [],
     estadosCita: [],
     metodosPago: [],
-    divisas: [], // Agregado para bimoneda
+    divisas: [],
     pacientes: [],
     psicologos: [],
     viasAdmin: [],       
@@ -46,21 +46,23 @@ export const useCitas = () => {
 
   const fetchCatalogos = useCallback(async () => {
     try {
-      // Sincronizado con la nueva ruta unificada del Backend
       const data: any = await api.citas.getCatalogos(); 
+      
+      // 🟢 CORRECCIÓN: Mapeo sincronizado con el controlador unificado
       setCatalogos({
-         tiposCita: data.tiposCita || [],
-         estadosCita: data.estadosCita || [],
-         metodosPago: data.metodosPago || [],
-         divisas: data.divisas || [], // Sincronizado con el backend bimoneda
-         pacientes: data.pacientes || [],
-         psicologos: data.psicologos || [],
-         viasAdmin: data.viasAdmin || [], 
-         tiposTerapia: data.tiposTerapia || [],
-         exploraciones: data.exploraciones || []
+          tiposCita: data.tiposCita || [],
+          estadosCita: data.estadosCita || [],
+          metodosPago: data.metodosPago || [],
+          divisas: data.divisas || [], 
+          pacientes: data.pacientes || [],
+          psicologos: data.psicologos || [],
+          // Aseguramos la captura de los catálogos de sesión unificados
+          viasAdmin: data.viasAdmin || [], 
+          tiposTerapia: data.tiposTerapia || [],
+          exploraciones: data.exploraciones || []
       });
     } catch (err) {
-      console.error("Error al cargar catálogos de citas", err);
+      console.error("Error al cargar catálogos unificados en useCitas", err);
     }
   }, []);
 
@@ -113,58 +115,59 @@ export const useCitas = () => {
   const guardarSesion = async (data: any) => {
      try {
         await api.sesiones.create(data);
-        toast.success('Sesión guardada');
-        fetchCitas();
+        toast.success('Sesión clínica finalizada con éxito');
+        fetchCitas(); 
+        return true;
      } catch (err: any) {
-        throw new Error(err.response?.data?.error || 'Error al guardar sesión');
+        const msg = err.response?.data?.error || 'Error al guardar sesión';
+        toast.error(msg);
+        return false;
      }
   };
 
   // --- FILTRADO ADAPTADO A SNAKE_CASE ---
   const citasFiltradas = citas.filter(c => {
-     // Prisma devuelve FechaCita
-     const fechaCitaStr = c.FechaCita.toString().split('T')[0];
-     const hoyStr = new Date().toLocaleDateString('en-CA');
+      const fechaCitaStr = c.FechaCita.toString().split('T')[0];
+      const hoyStr = new Date().toLocaleDateString('en-CA');
 
-     let matchPeriodo = true;
-     if (filtros.periodo === 'hoy') {
-        matchPeriodo = fechaCitaStr === hoyStr;
-     } 
-     else if (filtros.periodo === 'semana') {
-        const fechaCitaObj = new Date(fechaCitaStr + "T00:00:00");
-        const hoy = new Date();
-        const primerDia = new Date(hoy); 
-        primerDia.setDate(hoy.getDate() - hoy.getDay());
-        primerDia.setHours(0, 0, 0, 0);
-        const ultimoDia = new Date(hoy); 
-        ultimoDia.setDate(hoy.getDate() - hoy.getDay() + 6);
-        ultimoDia.setHours(23, 59, 59, 999);
-        matchPeriodo = fechaCitaObj >= primerDia && fechaCitaObj <= ultimoDia;
-     } 
-     else if (filtros.periodo === 'mes') {
-        const fechaCitaObj = new Date(fechaCitaStr + "T00:00:00");
-        const hoy = new Date();
-        matchPeriodo = fechaCitaObj.getMonth() === hoy.getMonth() && fechaCitaObj.getFullYear() === hoy.getFullYear();
-     } 
-     else if (filtros.periodo === 'rango' && filtros.fechaInicio && filtros.fechaFin) {
-        matchPeriodo = fechaCitaStr >= filtros.fechaInicio && fechaCitaStr <= filtros.fechaFin;
-     }
+      let matchPeriodo = true;
+      if (filtros.periodo === 'hoy') {
+         matchPeriodo = fechaCitaStr === hoyStr;
+      } 
+      else if (filtros.periodo === 'semana') {
+         const fechaCitaObj = new Date(fechaCitaStr + "T00:00:00");
+         const hoy = new Date();
+         const primerDia = new Date(hoy); 
+         primerDia.setDate(hoy.getDate() - hoy.getDay());
+         primerDia.setHours(0, 0, 0, 0);
+         const ultimoDia = new Date(hoy); 
+         ultimoDia.setDate(hoy.getDate() - hoy.getDay() + 6);
+         ultimoDia.setHours(23, 59, 59, 999);
+         matchPeriodo = fechaCitaObj >= primerDia && fechaCitaObj <= ultimoDia;
+      } 
+      else if (filtros.periodo === 'mes') {
+         const fechaCitaObj = new Date(fechaCitaStr + "T00:00:00");
+         const hoy = new Date();
+         matchPeriodo = fechaCitaObj.getMonth() === hoy.getMonth() && fechaCitaObj.getFullYear() === hoy.getFullYear();
+      } 
+      else if (filtros.periodo === 'rango' && filtros.fechaInicio && filtros.fechaFin) {
+         matchPeriodo = fechaCitaStr >= filtros.fechaInicio && fechaCitaStr <= filtros.fechaFin;
+      }
 
-     let matchEstado = true;
-     if (filtros.estado) matchEstado = c.ID_EstadoCita.toString() === filtros.estado;
+      let matchEstado = true;
+      if (filtros.estado) matchEstado = c.ID_EstadoCita.toString() === filtros.estado;
 
-     let matchTexto = true;
-     // IMPORTANTE: Acceso a Paciente y Psicologo con PascalCase de Prisma
-     if (filtros.paciente && c.Paciente) {
-        const pName = `${c.Paciente.Nombre} ${c.Paciente.Apellido}`.toLowerCase();
-        matchTexto = matchTexto && pName.includes(filtros.paciente.toLowerCase());
-     }
-     if (filtros.psicologo && c.Psicologo) {
-        const dName = `${c.Psicologo.Nombre} ${c.Psicologo.Apellido}`.toLowerCase();
-        matchTexto = matchTexto && dName.includes(filtros.psicologo.toLowerCase());
-     }
+      let matchTexto = true;
+      if (filtros.paciente && c.Paciente) {
+         const pName = `${c.Paciente.Nombre} ${c.Paciente.Apellido}`.toLowerCase();
+         matchTexto = matchTexto && pName.includes(filtros.paciente.toLowerCase());
+      }
+      if (filtros.psicologo && c.Psicologo) {
+         const dName = `${c.Psicologo.Nombre} ${c.Psicologo.Apellido}`.toLowerCase();
+         matchTexto = matchTexto && dName.includes(filtros.psicologo.toLowerCase());
+      }
 
-     return matchPeriodo && matchEstado && matchTexto;
+      return matchPeriodo && matchEstado && matchTexto;
   });
 
   const setFiltro = (key: string, value: string) => {

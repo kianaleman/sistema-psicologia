@@ -17,11 +17,13 @@ interface CreateSesionDTO {
   citaId: number;
   pacienteId: number;
   psicologoId: number;
+  idExpediente?: number; 
   observaciones: string;
   diagnostico: string;
   criterios?: string;
   historial?: string;
   horaInicio: string; 
+  horaFinal: string; 
   tratamientos: TratamientoInput[];
   exploracionIds: number[];
 }
@@ -29,44 +31,68 @@ interface CreateSesionDTO {
 export const SesionService = {
 
   /**
-   * Crea una sesión completa vinculada a una cita, actualiza el expediente
-   * y registra tratamientos y exploraciones en una sola transacción.
+   * Obtiene catálogos sincronizados con el esquema Prisma.
+   */
+  getCatalogosSesion: async () => {
+    const [viasAdmin, tiposTerapia, exploraciones] = await Promise.all([
+      prisma.viaAdministracion.findMany(),
+      prisma.tipoDe_Terapia.findMany(),
+      prisma.exploracionPsicologica.findMany()
+    ]);
+
+    return { viasAdmin, tiposTerapia, exploraciones };
+  },
+
+  /**
+   * Crea una sesión completa vinculada a una cita.
    */
   create: async (data: CreateSesionDTO) => {
     return await prisma.$transaction(async (tx) => {
       
+      // 🟢 VALIDACIÓN DE DATOS DE ENTRADA
+      const pId = Number(data.pacienteId);
+      const cId = Number(data.citaId);
+
+      if (!pId) {
+        throw new Error("El ID del paciente es requerido para localizar el expediente.");
+      }
+
       // 1. Obtener el Expediente del paciente (Obligatorio para la FK ID_Expediente)
       const expediente = await tx.expediente.findUnique({
-        where: { ID_Paciente: data.pacienteId }
+        where: { ID_Paciente: pId }
       });
 
       if (!expediente) {
-        throw new Error("No se encontró un expediente para este paciente.");
+        throw new Error(`No se encontró un expediente para el paciente con ID ${pId}.`);
       }
 
-      // 2. Manejo de Horas
-      const horaInicioParts = data.horaInicio.split(':');
-      const fechaInicio = new Date(); 
-      
-      // Aseguramos que los valores existan antes de parsear para evitar errores de tipo
-      const horas = parseInt(horaInicioParts[0] ?? '0');
-      const minutos = parseInt(horaInicioParts[1] ?? '0');
-      
-      fechaInicio.setHours(horas, minutos, 0, 0);
-      const fechaFinal = new Date(); 
+      // 2. Manejo de Horas Robusto
+      const parsearHora = (horaStr: string) => {
+          if (!horaStr) return new Date();
+          const hoy = new Date();
+          const fechaBase = hoy.toISOString().split('T')[0];
+          
+          const horaLimpia = horaStr.replace(/\s?[ap]\.?m\.?/i, '').trim();
+          
+          const [hRaw, mRaw] = horaLimpia.split(':');
+          const h = Number(hRaw ?? 0);
+          const m = Number(mRaw ?? 0);
+          
+          const date = new Date(`${fechaBase}T${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:00`);
+          return isNaN(date.getTime()) ? new Date() : date;
+      };
 
-      // 3. Crear la Sesión (Nombres de campos sincronizados con tu SQL)
+      // 3. Crear la Sesión
       const nuevaSesion = await tx.sesion.create({
         data: {
-          ID_Cita: data.citaId,
-          HoraDeInicio: fechaInicio,
-          HoraFinal: fechaFinal,
-          Observaciones: data.observaciones,
-          DiagnosticoDiferencial: data.diagnostico,
-          // CORRECCIÓN FINAL: Usamos ?? '' para garantizar que nunca sea undefined
+          ID_Cita: cId,
+          ID_Expediente: expediente.ID_Expediente,
+          HoraDeInicio: parsearHora(data.horaInicio),
+          HoraFinal: parsearHora(data.horaFinal),
+          Observaciones: data.observaciones ?? '',
+          DiagnosticoDiferencial: data.diagnostico ?? '',
           Criterios_DeDiagnostico: data.criterios ?? '', 
           HistorialDeEvolucion: data.historial ?? '',
-          ID_Expediente: expediente.ID_Expediente
         }
       });
 
@@ -85,7 +111,7 @@ export const SesionService = {
             await tx.tratamiento_Farmaceutico.create({
               data: {
                 ID_Tratamiento_Farmaceutico: tratamientoBase.ID_Tratamiento,
-                ID_ViaAdministracion: Number(t.viaAdminId),
+                ID_ViaAdministracion: t.viaAdminId ? Number(t.viaAdminId) : null,
                 Nombre_Medicamento: t.medicamento ?? '',
                 Dosis: t.dosis ?? ''
               }
@@ -94,7 +120,7 @@ export const SesionService = {
             await tx.tratamiento_Terapeutico.create({
               data: {
                 ID_TratamientoTerapeutico: tratamientoBase.ID_Tratamiento,
-                ID_Tipo_Terapia: Number(t.tipoTerapiaId),
+                ID_Tipo_Terapia: t.tipoTerapiaId ? Number(t.tipoTerapiaId) : null,
                 Objetivo: t.objetivo ?? ''
               }
             });
@@ -104,19 +130,17 @@ export const SesionService = {
 
       // 5. Insertar Exploraciones Psicológicas (Relación M:N)
       if (data.exploracionIds && data.exploracionIds.length > 0) {
-        const exploracionesData = data.exploracionIds.map((id) => ({
-          ID_Sesion: nuevaSesion.ID_Sesion,
-          ID_ExploracionPsicologica: Number(id)
-        }));
-        
         await tx.sesion_ExploracionPsicologica.createMany({
-          data: exploracionesData
+          data: data.exploracionIds.map((id) => ({
+            ID_Sesion: nuevaSesion.ID_Sesion,
+            ID_ExploracionPsicologica: Number(id)
+          }))
         });
       }
 
       // 6. Cierre Automático de la Cita: Cambia a 'Completada' (ID 2)
       await tx.cita.update({
-        where: { ID_Cita: data.citaId },
+        where: { ID_Cita: cId },
         data: { ID_EstadoCita: 2 } 
       });
 
@@ -130,8 +154,8 @@ export const SesionService = {
   findByParams: async (pacienteId: number, psicologoId: number) => {
     return await prisma.sesion.findFirst({
       where: { 
-        Expediente: { ID_Paciente: pacienteId },
-        Cita: { ID_Psicologo: psicologoId }
+        Expediente: { ID_Paciente: Number(pacienteId) },
+        Cita: { ID_Psicologo: Number(psicologoId) }
       },
       orderBy: { ID_Sesion: 'desc' },
       include: { 

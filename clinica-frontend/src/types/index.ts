@@ -121,6 +121,14 @@ export interface Paciente {
   Direccion?: Direccion;
   PacienteAdulto?: PacienteAdultoDetalle | null;
   Paciente_Menor?: PacienteMenorDetalle | null; // Sincronizado: Paciente_Menor
+
+  // 🟢 AGREGADO: Relación con Expediente para solucionar Error 2339
+  Expediente?: {
+    ID_Expediente: number;
+    No_Expediente: string;
+    FechaIngreso?: string;
+    Observaciones_Generales?: string;
+  } | null;
 }
 
 export interface CreatePacienteDTO {
@@ -171,7 +179,15 @@ export interface Divisa {
 
 export interface MetodoPago {
   ID_MetodoPago: number;
-  NombreMetodo: string;
+  Nombre_Metodo: string;
+}
+
+export interface Stats {
+  totalPacientes: number;
+  psicologosActivos: number;
+  citasHoy: number;
+  ingresosTotalesNIO: number;
+  ingresosTotalesUSD: number;
 }
 
 export interface Recibo {

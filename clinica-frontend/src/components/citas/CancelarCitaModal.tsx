@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from "react-dom"; // 🟢 Importación necesaria
 import { api } from '../../services/api';
 import type { MotivoCancelacion } from '../../types';
 import { toast } from 'sonner';
@@ -19,10 +20,8 @@ export default function CancelarCitaModal({ isOpen, onClose, onConfirm }: Props)
   const [notas, setNotas] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Cargar catálogo al abrir
   useEffect(() => {
     if (isOpen) {
-      // Usamos la ruta sincronizada en el api.ts corregido
       api.general.motivosCancelacion()
         .then(data => setMotivos(data))
         .catch(() => toast.error("Error cargando motivos"));
@@ -38,48 +37,45 @@ export default function CancelarCitaModal({ isOpen, onClose, onConfirm }: Props)
     
     setLoading(true);
     onConfirm(Number(motivoSeleccionado), notas);
-    // Nota: El setLoading(false) y onClose() los maneja usualmente el componente padre tras el onConfirm exitoso
-    // pero mantenemos tu flujo funcional actual.
     onClose(); 
     setLoading(false);
   };
 
   if (!isOpen) return null;
 
-  return (
-    <dialog className="modal modal-open bg-slate-900/50 backdrop-blur-sm transition-all duration-200">
-      <div className="modal-box w-full max-w-lg bg-white p-0 rounded-2xl shadow-2xl overflow-hidden">
+  // 🟢 Definimos el contenido del modal como una constante
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh] border border-slate-200 overflow-hidden animate-fade-in-up text-slate-800">
         
-        {/* --- ENCABEZADO DE ALERTA --- */}
-        <div className="bg-rose-50 px-6 py-6 border-b border-rose-100 flex gap-4 items-start">
-            <div className="p-3 bg-white rounded-full text-rose-600 shadow-sm border border-rose-100">
+        {/* ENCABEZADO DE ALERTA */}
+        <div className="bg-rose-50 px-8 py-6 border-b border-rose-100 flex gap-4 items-start shrink-0">
+            <div className="p-3 bg-white rounded-2xl text-rose-600 shadow-sm border border-rose-100">
                 <Icons.Warning />
             </div>
             <div>
-                <h3 className="font-serif font-bold text-xl text-rose-700">Confirmar Cancelación</h3>
-                <p className="text-rose-600/80 text-sm mt-1 leading-relaxed">
-                    Esta acción registrará la cita como no realizada. Por favor, documente la razón para las estadísticas.
+                <h3 className="font-serif font-bold text-xl text-rose-700 italic">Confirmar Cancelación</h3>
+                <p className="text-rose-600/80 text-[11px] mt-1 leading-relaxed uppercase font-black tracking-wider">
+                    Esta acción registrará la cita como no realizada. Por favor, documente la razón.
                 </p>
             </div>
         </div>
         
-        <form onSubmit={handleSubmit}>
-            <div className="p-6 space-y-5">
-                
-                {/* SELECTOR DE MOTIVO */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+            {/* CUERPO DEL MODAL (Scrollable) */}
+            <div className="p-8 space-y-6 overflow-y-auto flex-1 bg-slate-50/30">
                 <div className="form-control">
-                    <label className="label pt-0 pb-1.5">
-                        <span className="label-text font-bold text-xs text-slate-500 uppercase tracking-wide">Motivo Principal *</span>
+                    <label className="label pt-0 pb-2">
+                        <span className="label-text font-black text-[10px] text-slate-400 uppercase tracking-widest ml-1">Motivo Principal *</span>
                     </label>
                     <select 
-                        className="select select-bordered w-full bg-white text-slate-700 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all" 
+                        className="select select-bordered w-full bg-white border-slate-200 focus:border-rose-500 font-bold text-slate-700 rounded-2xl shadow-sm transition-all" 
                         value={motivoSeleccionado}
                         onChange={e => setMotivoSeleccionado(e.target.value)}
                         required
                     >
                         <option value="">Seleccione una opción...</option>
                         {motivos.map(m => (
-                            // CORRECCIÓN: Usamos ID_MotivoCancelacion y Motivo (PascalCase del Backend)
                             <option key={m.ID_MotivoCancelacion} value={m.ID_MotivoCancelacion}>
                                 {m.Motivo}
                             </option>
@@ -87,13 +83,12 @@ export default function CancelarCitaModal({ isOpen, onClose, onConfirm }: Props)
                     </select>
                 </div>
 
-                {/* TEXT AREA DETALLE */}
                 <div className="form-control">
-                    <label className="label pt-0 pb-1.5">
-                        <span className="label-text font-bold text-xs text-slate-500 uppercase tracking-wide">Detalles Adicionales</span>
+                    <label className="label pt-0 pb-2">
+                        <span className="label-text font-black text-[10px] text-slate-400 uppercase tracking-widest ml-1">Detalles Adicionales</span>
                     </label>
                     <textarea 
-                        className="textarea textarea-bordered h-32 resize-none bg-white text-slate-700 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all" 
+                        className="textarea textarea-bordered h-36 resize-none bg-white border-slate-200 focus:border-rose-500 text-sm text-slate-700 rounded-2xl shadow-inner transition-all" 
                         placeholder="Ej: El paciente tuvo un inconveniente de transporte..."
                         value={notas}
                         onChange={e => setNotas(e.target.value)}
@@ -101,11 +96,11 @@ export default function CancelarCitaModal({ isOpen, onClose, onConfirm }: Props)
                 </div>
             </div>
 
-            {/* --- FOOTER DE ACCIONES --- */}
-            <div className="modal-action bg-slate-50 px-6 py-4 border-t border-slate-200 m-0 flex justify-end gap-3">
+            {/* FOOTER DE ACCIONES */}
+            <div className="px-8 py-6 bg-white border-t border-slate-100 flex justify-end gap-3 shrink-0">
                 <button 
                     type="button" 
-                    className="btn btn-ghost text-slate-600 hover:bg-slate-200 font-medium" 
+                    className="btn btn-ghost text-slate-400 hover:bg-slate-50 font-bold px-6 rounded-xl transition-colors" 
                     onClick={onClose}
                     disabled={loading}
                 >
@@ -113,7 +108,7 @@ export default function CancelarCitaModal({ isOpen, onClose, onConfirm }: Props)
                 </button>
                 <button 
                     type="submit" 
-                    className="btn bg-rose-600 hover:bg-rose-700 text-white border-none shadow-md shadow-rose-500/20 px-6" 
+                    className="btn bg-rose-600 hover:bg-rose-700 text-white border-none shadow-xl shadow-rose-200 px-8 font-bold rounded-xl transition-all" 
                     disabled={loading || !motivoSeleccionado}
                 >
                     {loading ? <span className="loading loading-spinner loading-xs"></span> : 'Confirmar Cancelación'}
@@ -121,6 +116,9 @@ export default function CancelarCitaModal({ isOpen, onClose, onConfirm }: Props)
             </div>
         </form>
       </div>
-    </dialog>
+    </div>
   );
+
+  // 🟢 Retornamos a través de Portal para saltar cualquier restricción de overflow del padre
+  return createPortal(modalContent, document.getElementById("modal-root")!);
 }

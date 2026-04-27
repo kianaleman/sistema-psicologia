@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { usePsicologos } from '../hooks/usePsicologos';
-import type { Psicologo } from '../types';
+// 🟢 Se importa PsicologoCompleto para un tipado profesional
+import { usePsicologos, type PsicologoCompleto } from '../hooks/usePsicologos';
 import PsicologoFormModal from '../components/psicologos/PsicologoFormModal';
 
 const Icons = {
@@ -20,14 +20,15 @@ export default function Psicologos() {
   } = usePsicologos();
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedPsicologo, setSelectedPsicologo] = useState<Psicologo | null>(null);
+  // 🟢 Tipado estricto con PsicologoCompleto en lugar de 'any'
+  const [selectedPsicologo, setSelectedPsicologo] = useState<PsicologoCompleto | null>(null);
 
   const handleOpenNuevo = () => {
     setSelectedPsicologo(null);
     setModalOpen(true);
   };
 
-  const handleOpenEditar = (p: Psicologo) => {
+  const handleOpenEditar = (p: PsicologoCompleto) => {
     setSelectedPsicologo(p);
     setModalOpen(true);
   };
@@ -42,7 +43,10 @@ export default function Psicologos() {
     toast.promise(promise, {
       loading: 'Sincronizando con el servidor...',
       success: `Psicólogo ${isEdit ? 'actualizado' : 'registrado'} correctamente`,
-      error: (e) => `Error: ${e.message || 'Ocurrió un fallo en el proceso'}`
+      error: (e) => {
+        const errorMsg = e.response?.data?.error || e.message || 'Ocurrió un fallo en el proceso';
+        return `Error: ${errorMsg}`;
+      }
     });
   };
 
@@ -56,7 +60,7 @@ export default function Psicologos() {
             Directorio de Especialistas
           </h1>
           <p className="text-slate-500 mt-2 text-sm ml-14">
-            Gestión de psicólogos activos en las sedes de Managua y Rosita
+            Gestión de psicólogos activos y sus credenciales de acceso
           </p>
         </div>
         <button className="btn btn-primary shadow-xl text-white gap-2 rounded-xl px-8" onClick={handleOpenNuevo}>
@@ -73,7 +77,7 @@ export default function Psicologos() {
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Icons.Search /></div>
                     <input 
                         type="text" 
-                        placeholder="Nombre, Código MINSA o Correo Institucional..." 
+                        placeholder="Nombre, Código MINSA o Correo de Acceso..." 
                         className="input input-bordered w-full pl-10 bg-slate-50 focus:bg-white border-slate-200" 
                         value={busqueda} 
                         onChange={(e) => setBusqueda(e.target.value)} 
@@ -105,14 +109,14 @@ export default function Psicologos() {
               <tr>
                 <th className="py-5 pl-8 text-[10px] font-black text-slate-500 uppercase tracking-widest">Especialista</th>
                 <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Identificación Profesional</th>
-                <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Información de Contacto</th>
+                <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cuenta y Contacto</th>
                 <th className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-right pr-8">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr><td colSpan={4} className="text-center py-24"><span className="loading loading-spinner loading-lg text-slate-800"></span></td></tr>
-              ) : psicologos.map(p => (
+              ) : psicologos.map((p) => (
                 <tr key={p.ID_Psicologo} className="hover:bg-slate-50/80 transition-all group">
                   <td className="pl-8 py-5">
                     <div className="flex items-center gap-4">
@@ -139,7 +143,9 @@ export default function Psicologos() {
                   </td>
                   <td>
                     <div className="text-xs text-slate-700 font-bold">{p.No_Telefono}</div>
-                    <div className="text-[11px] text-blue-500 font-medium hover:underline cursor-pointer">{p.Email || 'No cuenta con correo'}</div>
+                    <div className="text-[11px] text-blue-500 font-medium hover:underline cursor-pointer">
+                        {p.Usuario?.Email || 'Sin cuenta de acceso'}
+                    </div>
                   </td>
                   <td className="text-right pr-8">
                     <button 
@@ -153,7 +159,7 @@ export default function Psicologos() {
                 </tr>
               ))}
               {!loading && psicologos.length === 0 && (
-                <tr><td colSpan={4} className="text-center py-20 text-slate-400 italic font-medium">No se encontraron especialistas registrados en esta categoría.</td></tr>
+                <tr><td colSpan={4} className="text-center py-20 text-slate-400 italic font-medium">No se encontraron especialistas registrados.</td></tr>
               )}
             </tbody>
           </table>

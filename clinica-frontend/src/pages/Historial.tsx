@@ -11,7 +11,8 @@ export default function Historial() {
   const { registros, loading, busqueda, setBusqueda } = useHistorial();
 
   const formatearFecha = (fecha: string | null | undefined) => {
-      if (!fecha) return "---";
+    if (!fecha) return "---";
+    try {
       const fechaObj = new Date(fecha);
       return fechaObj.toLocaleDateString('es-ES', { 
         day: '2-digit', 
@@ -19,6 +20,7 @@ export default function Historial() {
         year: 'numeric',
         timeZone: 'UTC' 
       });
+    } catch (e) { return "---"; }
   };
 
   return (
@@ -53,14 +55,14 @@ export default function Historial() {
       {/* TABLA DE HISTORIAL */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="table w-full">
+          <table className="table w-full border-collapse">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="text-[10px] font-bold text-slate-500 uppercase py-4 pl-6">Fecha Sesión</th>
-                <th className="text-[10px] font-bold text-slate-500 uppercase">Paciente / Exp</th>
-                <th className="text-[10px] font-bold text-slate-500 uppercase">Motivo y Tipo</th>
-                <th className="text-[10px] font-bold text-slate-500 uppercase">Evolución / Diagnóstico</th>
-                <th className="text-[10px] font-bold text-slate-500 uppercase">Especialista</th>
+                <th className="text-[10px] font-bold text-slate-500 uppercase py-4 pl-6 text-left">Fecha Sesión</th>
+                <th className="text-[10px] font-bold text-slate-500 uppercase text-left">Paciente / Exp</th>
+                <th className="text-[10px] font-bold text-slate-500 uppercase text-left">Tipo Servicio</th>
+                <th className="text-[10px] font-bold text-slate-500 uppercase text-left">Diagnóstico / Evolución</th>
+                <th className="text-[10px] font-bold text-slate-500 uppercase text-left">Especialista</th>
                 <th className="text-[10px] font-bold text-slate-500 uppercase text-right pr-6">Acción</th>
               </tr>
             </thead>
@@ -68,104 +70,109 @@ export default function Historial() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr><td colSpan={6} className="text-center py-20"><span className="loading loading-spinner loading-lg text-primary"></span></td></tr>
-              ) : registros.map((reg: Sesion) => (
-                <tr key={reg.ID_Sesion} className="hover:bg-slate-50 transition-colors group">
-                  
-                  {/* FECHA (Basada en la cita vinculada) */}
-                  <td className="pl-6 py-4">
-                      <div className="font-mono text-xs font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded inline-block">
-                         {formatearFecha(reg.Cita?.FechaCita)}
-                      </div>
-                  </td>
+              ) : registros.map((reg: Sesion) => {
+                // 🟢 Lógica de rescate de datos: usamos el tipo Sesion correctamente
+                const paciente = reg.Cita?.Paciente;
+                const noExpediente = reg.Expediente?.No_Expediente || paciente?.Expediente?.No_Expediente || 'S/E';
+                const psicologo = reg.Cita?.Psicologo;
 
-                  {/* PACIENTE */}
-                  <td className="py-4">
-                    <div className="flex flex-col">
-                        <span className="font-bold text-slate-800 text-sm">
-                            {reg.Cita?.Paciente?.Nombre} {reg.Cita?.Paciente?.Apellido}
-                        </span>
-                        <div className="flex items-center gap-2 mt-1">
-                           <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 rounded border border-blue-100">
-                              EXP: {reg.Expediente?.No_Expediente || 'S/E'}
-                           </span>
+                return (
+                  <tr key={reg.ID_Sesion} className="hover:bg-slate-50 transition-colors group">
+                    
+                    {/* FECHA */}
+                    <td className="pl-6 py-4">
+                        <div className="font-mono text-xs font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded inline-block">
+                           {formatearFecha(reg.Cita?.FechaCita || reg.HoraDeInicio)}
                         </div>
-                    </div>
-                  </td>
+                    </td>
 
-                  {/* MOTIVO */}
-                  <td className="py-4">
-                    <div className="flex flex-col gap-1 max-w-[180px]">
-                        <span className="badge badge-sm badge-ghost text-[9px] font-bold uppercase">
-                           {reg.Cita?.TipoDeCita?.Nombre_DeCita}
-                        </span>
-                        <span className="text-xs text-slate-500 truncate italic">
-                           "{reg.Cita?.MotivoConsulta}"
-                        </span>
-                    </div>
-                  </td>
-
-                  {/* DIAGNÓSTICO Y EVOLUCIÓN */}
-                  <td className="py-4">
-                    <div className="max-w-xs">
-                        <p className="text-sm text-slate-700 font-bold truncate">
-                            {reg.DiagnosticoDiferencial || 'Sin diagnóstico'}
-                        </p>
-                        <p className="text-[11px] text-slate-400 line-clamp-1 italic">
-                            {reg.HistorialDeEvolucion || 'Sin registro de evolución'}
-                        </p>
-                    </div>
-                  </td>
-
-                  {/* ESPECIALISTA */}
-                  <td className="py-4 whitespace-nowrap">
-                      <div className="text-xs font-medium text-slate-500">
-                          Dr. {reg.Cita?.Psicologo?.Apellido}
+                    {/* PACIENTE */}
+                    <td className="py-4">
+                      <div className="flex flex-col">
+                          <span className="font-bold text-slate-800 text-sm">
+                              {paciente?.Nombre} {paciente?.Apellido}
+                          </span>
+                          <div className="flex items-center gap-2 mt-1">
+                             <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 rounded border border-blue-100 uppercase">
+                                EXP: {noExpediente}
+                             </span>
+                          </div>
                       </div>
-                  </td>
+                    </td>
 
-                  {/* ACCIÓN (Modal para Ver Nota) */}
-                  <td className="py-4 text-right pr-6">
-                    <button 
-                        className="btn btn-sm btn-ghost text-slate-400 hover:text-blue-600"
-                        onClick={() => (document.getElementById(`modal_nota_${reg.ID_Sesion}`) as HTMLDialogElement).showModal()}
-                    >
-                        <Icons.FileText />
-                    </button>
+                    {/* TIPO SERVICIO */}
+                    <td className="py-4">
+                      <div className="flex flex-col gap-1">
+                          <span className="badge badge-sm badge-ghost text-[9px] font-bold uppercase py-2">
+                             {reg.Cita?.TipoDeCita?.Nombre_DeCita || "Consulta"}
+                          </span>
+                      </div>
+                    </td>
 
-                    <dialog id={`modal_nota_${reg.ID_Sesion}`} className="modal backdrop-blur-sm text-left">
-                        <div className="modal-box bg-white p-0 rounded-2xl overflow-hidden max-w-2xl">
-                           <div className="bg-slate-800 text-white px-6 py-4 flex justify-between items-center">
-                                <div>
-                                    <h3 className="font-bold text-lg">Resumen de Sesión</h3>
-                                    <p className="text-[10px] text-slate-300 uppercase tracking-widest">{reg.Cita?.Paciente?.Nombre} {reg.Cita?.Paciente?.Apellido}</p>
-                                </div>
-                                <form method="dialog"><button className="btn btn-sm btn-circle btn-ghost text-white">✕</button></form>
-                           </div>
-                           <div className="p-8 space-y-6">
-                               <section>
-                                   <h4 className="text-[10px] font-black text-slate-400 uppercase mb-2">Criterios de Diagnóstico</h4>
-                                   <div className="bg-slate-50 p-4 rounded-xl text-slate-700 text-sm italic border border-slate-100">
-                                       {reg.Criterios_DeDiagnostico || "No se registraron criterios específicos."}
-                                   </div>
-                               </section>
-                               <section>
-                                   <h4 className="text-[10px] font-black text-slate-400 uppercase mb-2">Observaciones Generales</h4>
-                                   <div className="prose prose-sm text-slate-600 max-w-none">
-                                       <p className="whitespace-pre-wrap">{reg.Observaciones || "Sin observaciones adicionales."}</p>
-                                   </div>
-                               </section>
-                           </div>
-                           <div className="bg-slate-50 px-6 py-4 flex justify-end border-t">
-                              <form method="dialog">
-                                  <button className="btn btn-primary btn-sm text-white px-8">Entendido</button>
-                              </form>
-                           </div>
+                    {/* DIAGNÓSTICO Y EVOLUCIÓN */}
+                    <td className="py-4">
+                      <div className="max-w-xs">
+                          <p className="text-sm text-slate-700 font-bold truncate">
+                              {reg.DiagnosticoDiferencial || 'Sin diagnóstico'}
+                          </p>
+                          <p className="text-[11px] text-slate-400 line-clamp-1 italic">
+                              {reg.HistorialDeEvolucion || 'Sin registro de evolución'}
+                          </p>
+                      </div>
+                    </td>
+
+                    {/* ESPECIALISTA */}
+                    <td className="py-4 whitespace-nowrap">
+                        <div className="text-xs font-medium text-slate-500">
+                            Dr. {psicologo?.Apellido || "---"}
                         </div>
-                        <form method="dialog" className="modal-backdrop"><button>close</button></form>
-                    </dialog>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+
+                    {/* ACCIÓN */}
+                    <td className="py-4 text-right pr-6">
+                      <button 
+                          className="btn btn-sm btn-ghost text-slate-400 hover:text-blue-600"
+                          onClick={() => (document.getElementById(`modal_nota_${reg.ID_Sesion}`) as HTMLDialogElement).showModal()}
+                      >
+                          <Icons.FileText />
+                      </button>
+
+                      {/* MODAL DETALLE DE NOTA */}
+                      <dialog id={`modal_nota_${reg.ID_Sesion}`} className="modal backdrop-blur-sm text-left">
+                          <div className="modal-box bg-white p-0 rounded-2xl overflow-hidden max-w-2xl border border-slate-200">
+                             <div className="bg-slate-800 text-white px-6 py-4 flex justify-between items-center">
+                                  <div>
+                                      <h3 className="font-bold text-lg">Resumen de Sesión</h3>
+                                      <p className="text-[10px] text-slate-300 uppercase tracking-widest">{paciente?.Nombre} {paciente?.Apellido}</p>
+                                  </div>
+                                  <form method="dialog"><button className="btn btn-sm btn-circle btn-ghost text-white">✕</button></form>
+                             </div>
+                             <div className="p-8 space-y-6">
+                                 <section>
+                                     <h4 className="text-[10px] font-black text-slate-400 uppercase mb-2">Criterios de Diagnóstico</h4>
+                                     <div className="bg-slate-50 p-4 rounded-xl text-slate-700 text-sm italic border border-slate-100">
+                                         {reg.Criterios_DeDiagnostico || "No se registraron criterios específicos."}
+                                     </div>
+                                 </section>
+                                 <section>
+                                     <h4 className="text-[10px] font-black text-slate-400 uppercase mb-2">Observaciones Generales</h4>
+                                     <div className="bg-white p-4 border border-slate-100 rounded-xl text-slate-600 text-sm">
+                                         <p className="whitespace-pre-wrap">{reg.Observaciones || "Sin observaciones adicionales."}</p>
+                                     </div>
+                                 </section>
+                             </div>
+                             <div className="bg-slate-50 px-6 py-4 flex justify-end border-t">
+                                <form method="dialog">
+                                    <button className="btn btn-primary btn-sm text-white px-8">Entendido</button>
+                                </form>
+                             </div>
+                          </div>
+                          <form method="dialog" className="modal-backdrop"><button>close</button></form>
+                      </dialog>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           {!loading && registros.length === 0 && (

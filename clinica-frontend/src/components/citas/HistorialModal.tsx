@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { api } from '../../services/api';
 import { generarPDFReceta } from '../../services/pdfGenerator';
@@ -16,143 +17,168 @@ export default function HistorialModal({ isOpen, onClose, cita }: Props) {
 
   useEffect(() => {
     if (isOpen && cita?.ID_Paciente) {
-        setLoading(true);
-        api.pacientes.getHistorial(cita.ID_Paciente)
-            .then((data: any[]) => setHistorial(data)) // Tipamos data como arreglo
-            .catch((err: Error) => { // Tipamos el error
-                toast.error("Error al cargar historial clínico.");
-                console.error("Error cargando historial:", err);
-                setHistorial([]);
-            })
-            .finally(() => setLoading(false));
+      setLoading(true);
+      api.pacientes.getHistorial(cita.ID_Paciente)
+        .then((data: any[]) => setHistorial(data))
+        .catch((err: Error) => {
+          toast.error("Error al cargar historial clínico.");
+          console.error("Error cargando historial:", err);
+          setHistorial([]);
+        })
+        .finally(() => setLoading(false));
     }
-    
-    if (!isOpen) {
-        setHistorial([]);
-    }
-}, [isOpen, cita]);
+    if (!isOpen) setHistorial([]);
+  }, [isOpen, cita]);
 
-  // Helpers de formato consistentes con el resto del sistema
-  const formatearFecha = (f: string) => { 
-      if(!f) return 'N/A';
-      try {
-        const p = f.toString().split('T')[0].split('-'); 
-        return new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]))
-          .toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
-      } catch (e) {
-        return f;
-      }
+  const formatearFecha = (f: string) => {
+    if (!f) return 'N/A';
+    try {
+      const p = f.toString().split('T')[0].split('-');
+      return new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]))
+        .toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+    } catch (e) { return f; }
   };
+
+  // 🟢 LÓGICA DE EXPEDIENTE BLINDADA (Busca en múltiples niveles)
+  const noExpediente = useMemo(() => {
+    // 1. Intentar desde el objeto cita pasado por prop
+    if (cita?.Paciente?.Expediente?.No_Expediente) return cita.Paciente.Expediente.No_Expediente;
+    
+    // 2. Intentar desde los registros cargados del historial (relación Sesion -> Expediente)
+    if (historial.length > 0 && historial[0]?.Expediente?.No_Expediente) return historial[0].Expediente.No_Expediente;
+    
+    // 3. Fallback mientras carga o si no se encuentra
+    return loading ? "CARGANDO..." : "SIN EXPEDIENTE";
+  }, [cita, historial, loading]);
 
   if (!isOpen) return null;
 
-  return (
-    <dialog className="modal modal-open bg-black/50 backdrop-blur-sm">
-      <div className="modal-box w-11/12 max-w-4xl bg-white text-slate-800 p-0 overflow-hidden rounded-2xl shadow-2xl">
-          
-          {/* HEADER DEL MODAL - PascalCase: Nombre, Apellido */}
-          <div className="bg-slate-800 text-white px-8 py-5 flex justify-between items-center">
-             <div>
-                <h3 className="font-bold text-2xl mb-1 font-serif">Historial Clínico</h3>
-                <p className="opacity-90 font-medium text-sm">
-                  {cita?.Paciente?.Nombre} {cita?.Paciente?.Apellido}
-                </p>
-             </div>
-             <div className="text-right">
-                <span className="badge bg-slate-700 border-none text-white font-mono text-xs">
-                   {/* Acceso a No_Expediente vía la relación de la sesión */}
-                   EXP: {historial.length > 0 && historial[0]?.Expediente ? historial[0].Expediente.No_Expediente : 'Generando...'}
-                </span>
-             </div>
-             <button className="btn btn-circle btn-ghost btn-sm text-slate-200 absolute top-4 right-4" onClick={onClose}>✕</button>
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+      {/* Contenedor con max-h-[95vh] para evitar recortes visuales */}
+      <div className="bg-white w-full max-w-5xl rounded-[2rem] shadow-2xl flex flex-col max-h-[95vh] border border-slate-200 overflow-hidden animate-fade-in-up">
+        
+        {/* HEADER FIJO */}
+        <div className="bg-[#1e293b] text-white px-8 py-5 flex justify-between items-center shrink-0">
+          <div>
+            <h3 className="font-bold text-2xl mb-1 font-serif text-white">Historial Clínico</h3>
+            <p className="opacity-90 font-medium text-sm text-slate-300">
+              Paciente: {cita?.Paciente?.Nombre} {cita?.Paciente?.Apellido}
+            </p>
           </div>
+          <div className="flex items-center gap-4">
+            <span className="badge bg-blue-600 border-none text-white font-mono text-xs p-4 shadow-lg">
+              EXP: {noExpediente}
+            </span>
+            <button className="btn btn-sm btn-circle btn-ghost text-white" onClick={onClose}>✕</button>
+          </div>
+        </div>
 
-          <div className="p-8 max-h-[70vh] overflow-y-auto bg-slate-50">
-               {loading ? (
-                   <div className="text-center py-20"><span className="loading loading-spinner loading-lg text-primary"></span></div>
-               ) : historial.length > 0 ? (
-                 <div className="space-y-4">
-                    {historial.map((sesion, index) => (
-                        <div key={sesion.ID_Sesion || index} className="collapse collapse-plus bg-white shadow-md border border-slate-200 hover:shadow-lg transition-shadow rounded-xl">
-                            <input type="checkbox" className="peer" /> 
-                            
-                            <div className="collapse-title font-bold text-slate-700 flex justify-between items-center py-4 peer-checked:bg-blue-50 peer-checked:border-b peer-checked:border-slate-200">
-                                <div className="flex items-center gap-3">
-                                   <span className="bg-slate-800 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">
-                                        {historial.length - index}
-                                   </span>
-                                   <span className="text-lg font-medium">Sesión Clínica</span>
-                                   <span className="text-xs font-normal text-slate-500 uppercase tracking-wider ml-2">
-                                        {formatearFecha(sesion.HoraDeInicio)} 
-                                   </span>
-                                </div>
+        {/* CUERPO CON SCROLL INDEPENDIENTE */}
+        <div className="p-8 overflow-y-auto bg-slate-50/50 flex-1 text-slate-800 custom-scrollbar">
+          {loading ? (
+            <div className="text-center py-20">
+              <span className="loading loading-spinner loading-lg text-primary"></span>
+              <p className="text-slate-400 mt-4 font-medium">Sincronizando registros clínicos...</p>
+            </div>
+          ) : historial.length > 0 ? (
+            <div className="space-y-4">
+              {historial.map((sesion, index) => (
+                <div key={sesion.ID_Sesion || index} className="collapse collapse-plus bg-white shadow-md border border-slate-200 rounded-2xl overflow-hidden transition-all hover:border-blue-200">
+                  <input type="checkbox" className="peer" />
+                  <div className="collapse-title font-bold text-slate-700 flex justify-between items-center py-5 peer-checked:bg-blue-50/50">
+                    <div className="flex items-center gap-4">
+                      <span className="bg-slate-800 text-white w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold">
+                        {historial.length - index}
+                      </span>
+                      <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-4">
+                        <span className="text-lg font-bold text-slate-800">Sesión Clínica</span>
+                        <span className="text-xs font-normal text-slate-500 uppercase tracking-widest">
+                           {formatearFecha(sesion.HoraDeInicio || sesion.Cita?.FechaCita)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 mr-8" onClick={(e) => e.stopPropagation()}>
+                      <button 
+                        className="btn btn-xs btn-outline btn-success gap-1 border-2"
+                        onClick={() => generarPDFReceta(sesion, `${cita?.Paciente?.Nombre} ${cita?.Paciente?.Apellido}`)}
+                      >
+                        🖨️ Receta
+                      </button>
+                      <span className="font-normal text-xs text-slate-400 hidden md:inline italic">
+                         Atendido por: Dr. {sesion.Cita?.Psicologo?.Apellido || 'Especialista'}
+                      </span>
+                    </div>
+                  </div>
 
-                                <div className="flex items-center gap-4 text-sm" onClick={(e) => e.stopPropagation()}>
-                                    <button 
-                                      className="btn btn-xs btn-outline btn-success gap-1 z-10"
-                                      onClick={() => generarPDFReceta(sesion, `${cita?.Paciente?.Nombre} ${cita?.Paciente?.Apellido}`)}
-                                    >
-                                      🖨️ Receta
-                                    </button>
-                                    <span className="font-normal text-slate-500">
-                                       Dr. {sesion.Cita?.Psicologo?.Apellido || 'N/A'}
-                                    </span>
-                                </div>
-                            </div>
+                  <div className="collapse-content bg-white p-6 border-t border-slate-100">
+                    <div className="space-y-6 pt-4">
+                      <div className="p-5 border-l-4 border-blue-600 bg-blue-50/50 rounded-r-2xl">
+                        <h4 className="font-black text-blue-800 text-[10px] mb-2 uppercase tracking-widest">Diagnóstico Diferencial</h4>
+                        <p className="text-slate-700 italic text-sm leading-relaxed">"{sesion.DiagnosticoDiferencial || 'Sin diagnóstico registrado'}"</p>
+                        <p className="text-[11px] text-slate-500 mt-3 font-medium">Criterios aplicados: {sesion.Criterios_DeDiagnostico || 'No especificados'}</p>
+                      </div>
 
-                            <div className="collapse-content bg-white p-6 border-t border-slate-100">
-                                <div className="space-y-6">
-                                    <div className="p-4 border-l-4 border-blue-600 bg-blue-50/50 rounded-r-lg">
-                                        <h4 className="font-bold text-slate-700 text-sm mb-1 uppercase tracking-wider">Diagnóstico Diferencial</h4>
-                                        <p className="text-slate-800 italic">{sesion.DiagnosticoDiferencial || 'Sin diagnóstico registrado'}</p>
-                                        <p className="text-xs text-slate-500 mt-2">Criterios: {sesion.Criterios_DeDiagnostico || 'No especificados'}</p>
-                                    </div>
-                                    
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <div>
-                                            <h4 className="font-bold text-slate-700 text-sm mb-2 uppercase tracking-wider">Observaciones Clínicas</h4>
-                                            <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap">{sesion.Observaciones || 'Sin observaciones'}</p>
-                                        </div>
-                                        <div>
-                                            <h4 className="font-bold text-amber-800 text-sm mb-2 uppercase tracking-wider">Evolución del Paciente</h4>
-                                            {/* Sincronizado con HistorialDeEvolucion */}
-                                            <p className="text-amber-900 italic text-sm bg-amber-50 p-3 rounded-lg border border-amber-100">{sesion.HistorialDeEvolucion || 'No hay evolución registrada.'}</p>
-                                        </div>
-                                    </div>
-
-                                    {/* Tratamientos: Adaptado a la estructura N:M del Backend */}
-                                    {(sesion.Tratamiento?.length > 0) && (
-                                        <div className="pt-4">
-                                            <h4 className="font-bold text-slate-700 text-sm mb-2 uppercase tracking-wider border-t pt-4">Plan de Tratamiento</h4>
-                                            {sesion.Tratamiento.map((t: any, tid: number) => (
-                                                <div key={tid} className="flex flex-col border-b last:border-b-0 pb-3 mb-3 last:mb-0">
-                                                    <span className="font-bold text-sm text-slate-800">
-                                                        {t.Medicamento ? t.Medicamento : (t.TipoDeTerapia?.NombreDeTerapia || 'Terapia Clínica')}
-                                                        <span className="badge badge-sm ml-2">{t.Frecuencia}</span>
-                                                    </span>
-                                                    <span className="text-xs text-slate-500 mt-1">
-                                                        {t.Medicamento ? `Dosis: ${t.Dosis} - Vía: ${t.ViaAdministracion?.NombreDePresentacion || 'Oral'}` : `Objetivo: ${t.Objetivo || 'Mejora clínica'}`}
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                          <h4 className="font-black text-slate-400 text-[10px] mb-3 uppercase tracking-widest">Observaciones Clínicas</h4>
+                          <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap">
+                            {sesion.Observaciones || 'Sin observaciones adicionales.'}
+                          </p>
                         </div>
-                    ))}
-                 </div>
-               ) : (
-                 <div className="text-center py-10 text-slate-400">
-                    <p>No se encontraron registros previos en el expediente.</p>
-                 </div>
-               )}
-          </div>
-          
-          <div className="p-4 bg-white border-t border-slate-100 flex justify-end rounded-b-2xl">
-              <button className="btn btn-ghost px-8" onClick={onClose}>Cerrar</button>
-          </div>
+                        <div className="bg-amber-50/50 p-5 rounded-2xl border border-amber-100">
+                          <h4 className="font-black text-amber-600 text-[10px] mb-3 uppercase tracking-widest">Evolución del Paciente</h4>
+                          <p className="text-amber-900 italic text-sm leading-relaxed">
+                            {sesion.HistorialDeEvolucion || 'No hay evolución registrada.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Sección de Tratamientos (Relación N:M) */}
+                      {sesion.Tratamiento?.length > 0 && (
+                        <div className="pt-4 border-t border-slate-100">
+                           <h4 className="font-black text-slate-800 text-[10px] mb-4 uppercase tracking-widest flex items-center gap-2">
+                              💊 Plan de Tratamiento y Seguimiento
+                           </h4>
+                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              {sesion.Tratamiento.map((t: any, tid: number) => (
+                                <div key={tid} className="p-4 bg-white border border-slate-200 rounded-xl flex flex-col shadow-sm">
+                                  <div className="flex justify-between items-start mb-2">
+                                    <span className="font-bold text-slate-800 text-sm">
+                                      {t.Tratamiento_Farmaceutico ? t.Tratamiento_Farmaceutico.Nombre_Medicamento : (t.Tratamiento_Terapeutico?.TipoDe_Terapia?.Nombre_De_Terapia || 'Terapia Clínica')}
+                                    </span>
+                                    <span className="badge badge-sm bg-slate-100 text-slate-600 border-none font-bold uppercase text-[9px]">{t.Frecuencia}</span>
+                                  </div>
+                                  <span className="text-[11px] text-slate-500 italic">
+                                    {t.Tratamiento_Farmaceutico ? `Dosis: ${t.Tratamiento_Farmaceutico.Dosis}` : `Objetivo: ${t.Tratamiento_Terapeutico?.Objetivo || 'Mejora clínica'}`}
+                                  </span>
+                                </div>
+                              ))}
+                           </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-24 bg-white rounded-[2.5rem] border-2 border-dashed border-slate-200">
+              <p className="text-slate-400 font-serif text-xl italic mb-2">Expediente limpio</p>
+              <p className="text-slate-300 text-sm">Las sesiones aparecerán aquí una vez que se completen las citas programadas.</p>
+            </div>
+          )}
+        </div>
+
+        {/* FOOTER FIJO */}
+        <div className="px-8 py-5 bg-white border-t border-slate-100 flex justify-end shrink-0">
+          <button className="btn btn-ghost px-12 font-bold text-slate-400 uppercase tracking-widest text-xs hover:bg-slate-50" onClick={onClose}>
+            Cerrar Expediente
+          </button>
+        </div>
       </div>
-    </dialog>
+    </div>
   );
+
+  return createPortal(modalContent, document.getElementById('modal-root')!);
 }
