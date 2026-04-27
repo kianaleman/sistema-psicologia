@@ -28,7 +28,10 @@ export default function Dashboard() {
   const [filtroGrafico, setFiltroGrafico] = useState<'semana' | 'mes' | 'rango'>('mes');
   const [fechasRango, setFechasRango] = useState({ inicio: '', fin: '' });
 
-  // 🟢 ESTADOS PARA EL MODAL DE EXPEDIENTE (Replica de Citas.tsx)
+  // 🟢 DETECTAR ROL PARA CAMBIOS EN LA UI
+  const userRole = Number(localStorage.getItem('user_role'));
+  const esAdmin = userRole === 1;
+
   const [selectedCita, setSelectedCita] = useState<Cita | null>(null);
   const [isHistorialOpen, setIsHistorialOpen] = useState(false);
 
@@ -100,7 +103,6 @@ export default function Dashboard() {
     return `${hInt}:${minutos} ${ampm}`;
   };
 
-  // 🟢 FUNCIÓN PARA ABRIR EL EXPEDIENTE
   const handleVerExpediente = (cita: Cita) => {
     setSelectedCita(cita);
     setIsHistorialOpen(true);
@@ -145,7 +147,7 @@ export default function Dashboard() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 font-serif">Panel General</h1>
-          <p className="text-slate-500 text-sm">Resiliencia: Actividad clínica y financiera</p>
+          <p className="text-slate-500 text-sm">Resiliencia: Actividad clínica {esAdmin && 'y financiera'}</p>
         </div>
         <div className="text-right hidden md:block bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
           <p className="text-[10px] font-bold text-slate-400 uppercase">Hoy es</p>
@@ -155,53 +157,63 @@ export default function Dashboard() {
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${esAdmin ? 'xl:grid-cols-4' : 'xl:grid-cols-2'} gap-6 mb-8`}>
         <KpiCard title="Citas Hoy" value={agendaHoy.length} subtitle="Atenciones pendientes" icon={<Icons.Calendar />} color="text-blue-600" />
-        <KpiCard title="Pacientes Activos" value={stats?.totalPacientes || 0} subtitle="Expedientes registrados" icon={<Icons.Users />} color="text-slate-800" />
-        <KpiCard title="Psicólogos" value={stats?.psicologosActivos || 0} subtitle="Personal disponible" icon={<Icons.Doctor />} color="text-slate-800" />
-        <KpiCard title="Ingresos Totales" value={`C$ ${Number(stats?.ingresosTotalesNIO || 0).toLocaleString('en-NI')}`} subtitle="Facturado histórico" icon={<Icons.Cash />} color="text-emerald-600" />
+        <KpiCard title={esAdmin ? "Pacientes Activos" : "Mis Pacientes"} value={stats?.totalPacientes || 0} subtitle="Expedientes registrados" icon={<Icons.Users />} color="text-slate-800" />
+        
+        {/* KPIs SOLO PARA ADMINISTRADOR */}
+        {esAdmin && (
+          <>
+            <KpiCard title="Psicólogos" value={stats?.psicologosActivos || 0} subtitle="Personal disponible" icon={<Icons.Doctor />} color="text-slate-800" />
+            <KpiCard title="Ingresos Totales" value={`C$ ${Number(stats?.ingresosTotalesNIO || 0).toLocaleString('en-NI')}`} subtitle="Facturado histórico" icon={<Icons.Cash />} color="text-emerald-600" />
+          </>
+        )}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <div className="xl:col-span-2 space-y-8">
-          {/* Gráfico */}
-          <div className="card bg-white border border-slate-100 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-slate-50 flex justify-between items-center">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2"><Icons.TrendingUp /> Ingresos Financieros</h3>
-              <div className="join bg-slate-50 p-1 rounded-lg border border-slate-200">
-                {['semana', 'mes', 'rango'].map((f) => (
-                  <button key={f} className={`join-item btn btn-xs border-none px-4 uppercase font-bold text-[9px] ${filtroGrafico === f ? 'bg-white shadow text-slate-900' : 'bg-transparent text-slate-400'}`} onClick={() => setFiltroGrafico(f as any)}>{f}</button>
-                ))}
-              </div>
-            </div>
-            <div className="p-6">
-              {filtroGrafico === 'rango' && (
-                <div className="flex justify-end gap-2 mb-6 animate-fade-in bg-slate-50 p-3 rounded-xl border border-slate-100">
-                   <div className="flex flex-col">
-                     <span className="text-[9px] font-bold text-slate-400 ml-1">DESDE</span>
-                     <input type="date" className="input input-xs input-bordered bg-white" value={fechasRango.inicio} onChange={e => setFechasRango({...fechasRango, inicio: e.target.value})} />
-                   </div>
-                   <div className="flex flex-col">
-                     <span className="text-[9px] font-bold text-slate-400 ml-1">HASTA</span>
-                     <input type="date" className="input input-xs input-bordered bg-white" value={fechasRango.fin} onChange={e => setFechasRango({...fechasRango, fin: e.target.value})} />
-                   </div>
+        <div className={esAdmin ? "xl:col-span-2 space-y-8" : "xl:col-span-1 space-y-8"}>
+          
+          {/* Gráfico Financiero: SOLO PARA ADMINISTRADOR */}
+          {esAdmin && (
+            <div className="card bg-white border border-slate-100 shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-slate-50 flex justify-between items-center">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2"><Icons.TrendingUp /> Ingresos Financieros</h3>
+                <div className="join bg-slate-50 p-1 rounded-lg border border-slate-200">
+                  {['semana', 'mes', 'rango'].map((f) => (
+                    <button key={f} className={`join-item btn btn-xs border-none px-4 uppercase font-bold text-[9px] ${filtroGrafico === f ? 'bg-white shadow text-slate-900' : 'bg-transparent text-slate-400'}`} onClick={() => setFiltroGrafico(f as any)}>{f}</button>
+                  ))}
                 </div>
-              )}
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dataGraficos.ingresos}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="fecha" tick={{fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} />
-                    <YAxis tick={{fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} tickFormatter={(v) => `C$${v}`} />
-                    <Tooltip content={<CustomTooltip />} cursor={{fill: '#f8fafc'}} />
-                    <Bar dataKey="monto" fill="#10b981" radius={[4, 4, 0, 0]} barSize={35} />
-                  </BarChart>
-                </ResponsiveContainer>
+              </div>
+              <div className="p-6">
+                {filtroGrafico === 'rango' && (
+                  <div className="flex justify-end gap-2 mb-6 animate-fade-in bg-slate-50 p-3 rounded-xl border border-slate-100">
+                     <div className="flex flex-col">
+                       <span className="text-[9px] font-bold text-slate-400 ml-1">DESDE</span>
+                       <input type="date" className="input input-xs input-bordered bg-white" value={fechasRango.inicio} onChange={e => setFechasRango({...fechasRango, inicio: e.target.value})} />
+                     </div>
+                     <div className="flex flex-col">
+                       <span className="text-[9px] font-bold text-slate-400 ml-1">HASTA</span>
+                       <input type="date" className="input input-xs input-bordered bg-white" value={fechasRango.fin} onChange={e => setFechasRango({...fechasRango, fin: e.target.value})} />
+                     </div>
+                  </div>
+                )}
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={dataGraficos.ingresos}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="fecha" tick={{fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                      <YAxis tick={{fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} tickFormatter={(v) => `C$${v}`} />
+                      <Tooltip content={<CustomTooltip />} cursor={{fill: '#f8fafc'}} />
+                      <Bar dataKey="monto" fill="#10b981" radius={[4, 4, 0, 0]} barSize={35} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Gráficos Demográficos (Género y Edad) */}
+          <div className={`grid grid-cols-1 ${esAdmin ? 'md:grid-cols-2' : 'md:grid-cols-1'} gap-6`}>
              <div className="card bg-white border border-slate-100 shadow-sm">
                 <div className="p-6">
                     <h3 className="text-xs font-bold text-slate-400 uppercase mb-6">Género Pacientes</h3>
@@ -224,16 +236,17 @@ export default function Dashboard() {
                     <h3 className="text-xs font-bold text-slate-400 uppercase mb-6">Rangos Etarios</h3>
                     <div className="space-y-4">
                         {dataGraficos.edades.map((edad: any) => {
-                            const pct = (edad.value / (stats?.totalPacientes || 1)) * 100;
+                            const total = stats?.totalPacientes || 1;
+                            const pct = (edad.value / total) * 100;
                             return (
                                <div key={edad.name}>
-                                   <div className="flex justify-between text-[10px] mb-1 font-bold">
-                                       <span className="text-slate-500">{edad.name}</span>
-                                       <span className="text-slate-800">{edad.value} ({pct.toFixed(0)}%)</span>
-                                   </div>
-                                   <div className="w-full bg-slate-100 rounded-full h-1.5">
-                                       <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: edad.fill }}></div>
-                                   </div>
+                                    <div className="flex justify-between text-[10px] mb-1 font-bold">
+                                        <span className="text-slate-500">{edad.name}</span>
+                                        <span className="text-slate-800">{edad.value} ({pct.toFixed(0)}%)</span>
+                                    </div>
+                                    <div className="w-full bg-slate-100 rounded-full h-1.5">
+                                        <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: edad.fill }}></div>
+                                    </div>
                                </div>
                             )
                         })}
@@ -243,7 +256,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="card bg-white border border-slate-100 shadow-sm overflow-hidden h-fit">
+        {/* Agenda del Día: Se expande si el psicólogo no ve finanzas */}
+        <div className={`card bg-white border border-slate-100 shadow-sm overflow-hidden h-fit ${!esAdmin ? 'xl:col-span-2' : ''}`}>
             <div className="p-6 border-b border-slate-50 flex justify-between items-center">
                 <h2 className="font-bold text-slate-800 flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span> Agenda del Día</h2>
                 <Link to="/citas" className="text-[10px] font-bold text-blue-600 hover:underline uppercase">Ver Todo</Link>
@@ -265,12 +279,11 @@ export default function Dashboard() {
                                        </div>
                                        <p className="text-[11px] text-slate-500 font-medium">Dr. {cita.Psicologo?.Apellido}</p>
                                        <div className="mt-3">
-                                           {/* 🟢 CAMBIO: Ahora llama a handleVerExpediente pasando el objeto cita */}
                                            <button 
-                                              onClick={() => handleVerExpediente(cita)}
-                                              className="btn btn-xs btn-ghost border-slate-200 text-slate-500 w-full text-[9px] font-bold"
+                                             onClick={() => handleVerExpediente(cita)}
+                                             className="btn btn-xs btn-ghost border-slate-200 text-slate-500 w-full text-[9px] font-bold"
                                            >
-                                              VER EXPEDIENTE
+                                             VER EXPEDIENTE
                                            </button>
                                        </div>
                                    </div>
@@ -291,7 +304,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* 🟢 MODAL DE HISTORIAL REUTILIZADO DE CITAS.TSX */}
       <HistorialModal 
         isOpen={isHistorialOpen} 
         onClose={() => {

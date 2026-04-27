@@ -79,55 +79,71 @@ export const GeneralService = {
     };
   },
 
-  // 2. Dashboard Stats (KPIs con fix para undefined y zona horaria)
-  getDashboardStats: async () => {
+  // 2. Dashboard Stats (KPIs filtrados por psicólogo si aplica)
+  getDashboardStats: async (psicologoId?: number) => {
     const { inicioDia, finDia } = getRangoHoyNica();
 
+    // Filtro dinámico para contar solo pacientes que han tenido cita con este psicólogo
+    const filtroPacientes = psicologoId 
+      ? { Cita: { some: { ID_Psicologo: psicologoId } }, OR: [{ Activo: true }, { Activo: null }] }
+      : { OR: [{ Activo: true }, { Activo: null }] };
+
     const [totalPacientes, psicologosActivos, citasHoy, ingresosTotales] = await Promise.all([
-      prisma.paciente.count({ where: { OR: [{ Activo: true }, { Activo: null }] } }), 
+      prisma.paciente.count({ where: filtroPacientes }), 
       prisma.psicologo.count({ where: { OR: [{ Activo: true }, { Activo: null }] } }), 
-      prisma.cita.count({ where: { ID_EstadoCita: 1, FechaCita: { gte: inicioDia, lte: finDia } } }),
-      prisma.recibo.aggregate({ _sum: { MontoTotal: true } })
+      prisma.cita.count({ 
+        where: { 
+          ID_EstadoCita: 1, 
+          FechaCita: { gte: inicioDia, lte: finDia },
+          ...(psicologoId ? { ID_Psicologo: psicologoId } : {}) 
+        } 
+      }),
+      prisma.recibo.aggregate({ 
+        where: psicologoId ? { Cita: { ID_Psicologo: psicologoId } } : {},
+        _sum: { MontoTotal: true } 
+      })
     ]);
 
     return { 
       totalPacientes, 
-      psicologosActivos, 
+      psicologosActivos: psicologoId ? 1 : psicologosActivos, // Si es psicólogo, solo se cuenta a él mismo
       citasHoy, 
       ingresosTotalesNIO: Number(ingresosTotales._sum?.MontoTotal) || 0 
     };
   },
 
-  // 🟢 FUNCIÓN CORREGIDA: Incluye Expediente y Sesión para evitar errores de UI
-  getAgendaHoy: async () => {
+  // 🟢 FUNCIÓN FILTRADA: Solo muestra la agenda del psicólogo logueado si aplica
+  getAgendaHoy: async (psicologoId?: number) => {
     const { inicioDia, finDia } = getRangoHoyNica();
 
     return await prisma.cita.findMany({
       where: {
         FechaCita: { gte: inicioDia, lte: finDia },
-        ID_EstadoCita: 1 // Solo pendientes
+        ID_EstadoCita: 1, // Solo pendientes
+        ...(psicologoId ? { ID_Psicologo: psicologoId } : {})
       },
       include: {
         Paciente: { 
           include: { 
-            Expediente: true // 🟢 CORRECCIÓN: Para que aparezca el No_Expediente
+            Expediente: true 
           } 
         },
         Psicologo: { select: { Nombre: true, Apellido: true } },
         TipoDeCita: true,
-        Sesion: true // 🟢 CORRECCIÓN: Para obtener la fecha real de sesión si existe
+        Sesion: true 
       },
       orderBy: { HoraCita: 'asc' }
     });
   },
 
-  // 3. Historial General
-  getHistorialGeneral: async () => {
+  // 3. Historial General (Filtrado por psicólogo)
+  getHistorialGeneral: async (psicologoId?: number) => {
     const sesiones = await prisma.sesion.findMany({
+      where: {
+        ...(psicologoId ? { Cita: { ID_Psicologo: psicologoId } } : {})
+      },
       include: { 
-        // 🟢 CORRECCIÓN: Aseguramos que el expediente venga con su número
         Expediente: { include: { Paciente: true } }, 
-        // 🟢 CORRECCIÓN: Aseguramos que la cita venga con su fecha para evitar el 1970
         Cita: { include: { Psicologo: true, TipoDeCita: true } } 
       },
       orderBy: { ID_Sesion: 'desc' }
@@ -145,8 +161,8 @@ export const GeneralService = {
     }));
   },
 
-  // 4. Datos para Gráficos (Ajustado para filtros por rango)
-  getGraficosData: async (inicioStr?: string, finStr?: string) => {
+  // 4. Datos para Gráficos (Filtrados por psicólogo para privacidad clínica)
+  getGraficosData: async (inicioStr?: string, finStr?: string, psicologoId?: number) => {
     const hoy = new Date();
     let fechaFin = finStr ? new Date(finStr) : hoy;
     let fechaInicio = inicioStr ? new Date(inicioStr) : new Date();
@@ -166,7 +182,8 @@ export const GeneralService = {
       by: ['FechaRecibo'],
       where: { 
         FechaRecibo: { gte: fechaInicio, lte: fechaFin },
-        MontoTotal: { not: null }
+        MontoTotal: { not: null },
+        ...(psicologoId ? { Cita: { ID_Psicologo: psicologoId } } : {})
       }, 
       _sum: { MontoTotal: true },
       orderBy: { FechaRecibo: 'asc' }
@@ -178,7 +195,10 @@ export const GeneralService = {
     }));
 
     const pacientes = await prisma.paciente.findMany({
-      where: { Activo: true }, 
+      where: { 
+        Activo: true,
+        ...(psicologoId ? { Cita: { some: { ID_Psicologo: psicologoId } } } : {})
+      }, 
       select: { Genero: true, Fecha_Nacimiento: true } 
     });
 

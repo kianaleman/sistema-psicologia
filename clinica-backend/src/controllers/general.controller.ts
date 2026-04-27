@@ -15,7 +15,11 @@ export const getCatalogos = async (req: Request, res: Response) => {
 // GET: Dashboard Stats
 export const getDashboardStats = async (req: Request, res: Response) => {
   try {
-    const stats = await GeneralService.getDashboardStats();
+    // 🟢 Detectar si es Psicólogo para filtrar KPIs
+    const user = (req as any).user;
+    const psicologoId = user.idRol === 2 ? user.id : undefined;
+
+    const stats = await GeneralService.getDashboardStats(psicologoId);
     res.json(stats);
   } catch (error) {
     console.error(error);
@@ -23,10 +27,14 @@ export const getDashboardStats = async (req: Request, res: Response) => {
   }
 };
 
-// 🟢 NUEVO: GET Agenda de Hoy (Lista de citas pendientes)
+// 🟢 NUEVO: GET Agenda de Hoy (Lista de citas pendientes filtrada)
 export const getAgendaHoy = async (req: Request, res: Response) => {
   try {
-    const agenda = await GeneralService.getAgendaHoy();
+    // 🟢 Detectar si es Psicólogo para filtrar agenda
+    const user = (req as any).user;
+    const psicologoId = user.idRol === 2 ? user.id : undefined;
+
+    const agenda = await GeneralService.getAgendaHoy(psicologoId);
     res.json(agenda);
   } catch (error) {
     console.error(error);
@@ -37,7 +45,11 @@ export const getAgendaHoy = async (req: Request, res: Response) => {
 // GET: Historial Completo
 export const getHistorialGeneral = async (req: Request, res: Response) => {
   try {
-    const historial = await GeneralService.getHistorialGeneral();
+    // 🟢 Detectar si es Psicólogo para filtrar historial
+    const user = (req as any).user;
+    const psicologoId = user.idRol === 2 ? user.id : undefined;
+
+    const historial = await GeneralService.getHistorialGeneral(psicologoId);
     res.json(historial);
   } catch (error) {
     console.error(error);
@@ -50,9 +62,14 @@ export const getGraficosData = async (req: Request, res: Response) => {
   const { inicio, fin } = req.query;
 
   try {
+    // 🟢 Detectar si es Psicólogo para filtrar datos de gráficos
+    const user = (req as any).user;
+    const psicologoId = user.idRol === 2 ? user.id : undefined;
+
     const graficos = await GeneralService.getGraficosData(
       inicio as string, 
-      fin as string
+      fin as string,
+      psicologoId
     );
     res.json(graficos);
   } catch (error) {

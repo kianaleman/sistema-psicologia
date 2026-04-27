@@ -104,10 +104,23 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
             return toast.error("Por favor complete los campos obligatorios");
         }
 
-        const [horas] = formData.hora.split(':').map(Number);
+        const [horas, minutos] = formData.hora.split(':').map(Number);
         if (horas < 8 || horas >= 19) {
             return toast.warning("Horario no disponible", {
                 description: "La clínica atiende de 8:00 AM a 7:00 PM.",
+                duration: 5000
+            });
+        }
+
+        // 🟢 VALIDACIÓN DE TIEMPO REAL
+        const ahora = new Date();
+        const [anio, mes, dia] = formData.fecha.split('-').map(Number);
+        // Creamos la fecha de la cita (mes - 1 porque en JS los meses van de 0 a 11)
+        const fechaCitaCompleta = new Date(anio, mes - 1, dia, horas, minutos);
+
+        if (!citaEditar && fechaCitaCompleta < ahora) {
+            return toast.error("Cita inválida", {
+                description: "No puedes agendar una cita para un horario que ya pasó hoy.",
                 duration: 5000
             });
         }
