@@ -47,8 +47,13 @@ const verificarDisponibilidad = async (psicologoId: number, fecha: Date, horaUTC
 
 export const CitaService = {
 
-  getAll: async () => {
+  // 🟢 CORRECCIÓN: Se agrega psicologoId como parámetro opcional
+  getAll: async (psicologoId?: number) => {
     const citas = await prisma.cita.findMany({
+      where: {
+        // Si psicologoId existe, se filtra por él. Si es undefined, no aplica filtro.
+        ...(psicologoId ? { ID_Psicologo: psicologoId } : {})
+      },
       include: {
         Paciente: { include: { Expediente: true } },
         Psicologo: true,
@@ -242,10 +247,8 @@ export const CitaService = {
     });
   },
 
-  // 🟢 NUEVO: Guardar Sesión Clínica y Marcar Cita como Realizada
   guardarSesion: async (data: any) => {
     return await prisma.$transaction(async (tx) => {
-      // 1. Crear el registro en la tabla Sesion
       const sesion = await tx.sesion.create({
         data: {
           ID_Cita: Number(data.idCita),
@@ -259,7 +262,6 @@ export const CitaService = {
         }
       });
 
-      // 2. Actualizar el estado de la Cita a Completada (Estado ID: 2)
       await tx.cita.update({
         where: { ID_Cita: Number(data.idCita) },
         data: { ID_EstadoCita: 2 }

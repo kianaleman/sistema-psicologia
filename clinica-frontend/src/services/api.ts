@@ -27,11 +27,16 @@ export class ApiError extends Error {
 }
 
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  // 🟢 RECUPERAR TOKEN PARA CABECERAS (Vital para el Administrador)
+  const token = localStorage.getItem('token');
+
   const response = await fetch(`${API_URL}${endpoint}`, {
     // 🟢 CORRECCIÓN CRÍTICA: Permitir el envío y recepción de cookies (JWT)
     credentials: 'include', 
     headers: { 
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      // 🟢 INYECTAR TOKEN AUTOMÁTICAMENTE
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     },
     ...options,
   });

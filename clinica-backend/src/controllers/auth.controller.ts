@@ -49,10 +49,12 @@ export const login = async (req: Request, res: Response) => {
       maxAge: 8 * 60 * 60 * 1000 
     });
 
-    // 6. Respuesta al cliente
+    // 6. Respuesta al cliente (🟢 CORREGIDO: Incluimos token e id en el JSON)
     res.json({ 
       message: 'Bienvenido a Resiliencia',
+      token: token, // 🟢 Necesario para que el request de fetch en api.ts funcione
       user: { 
+        id: usuario.ID_Usuario, // 🟢 Agregado para el localStorage.id
         email: usuario.Email,
         idRol: idRol, // 🟢 Informamos al frontend para ocultar menús
         debeCambiarPassword: usuario.Ultimo_Acceso === null // 🟢 Bandera de primer inicio
