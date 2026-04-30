@@ -72,12 +72,19 @@ export default function PsicologoFormModal({ isOpen, onClose, onSubmit, psicolog
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        
+        // 1. Validar Teléfono
         if (!esTelefonoValido(formData.telefono)) {
             return toast.error('El teléfono debe ser de 8 dígitos (empezar con 2, 5, 7 u 8)');
         }
-        if (!formData.email.includes('@')) {
-            return toast.error('Debe ingresar un correo electrónico válido para la cuenta');
+
+        // 🟢 2. VALIDACIÓN ESTRICTA DE GMAIL
+        const emailLower = formData.email.toLowerCase().trim();
+        if (!emailLower.endsWith('@gmail.com')) {
+            return toast.error('El sistema solo permite correos de Google (@gmail.com) para crear la cuenta de acceso');
         }
+
+        // 3. Validar Especialidades
         if (formData.especialidadIds.length === 0) {
             return toast.error('Debe seleccionar al menos una especialidad');
         }
@@ -86,6 +93,7 @@ export default function PsicologoFormModal({ isOpen, onClose, onSubmit, psicolog
         try {
             const payload = { 
                 ...formData, 
+                email: emailLower, // 🟢 Enviamos el correo normalizado
                 especialidadIds: formData.especialidadIds.map(Number),
                 idRol: 2 
             };

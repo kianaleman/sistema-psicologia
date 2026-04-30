@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcrypt'; // 🟢 IMPORTACIÓN NECESARIA
+import bcrypt from 'bcrypt'; 
 
 const prisma = new PrismaClient();
 
@@ -9,9 +9,9 @@ interface CreatePsicologoDTO {
   apellido: string;
   codigoMinsa: string;
   telefono: string;
-  email: string; // 🟢 Ahora es obligatorio para el login
-  password?: string; // 🟢 Para la cuenta de acceso
-  idRol: number; // 🟢 ID del Rol de Psicólogo
+  email: string; 
+  password?: string; 
+  idRol: number; 
   direccion: { 
     pais?: string; 
     departamento: string; 
@@ -36,13 +36,22 @@ const validarTelefonoNica = (telefono: string | undefined | null) => {
   return limpio;
 };
 
+// 🟢 HELPER VALIDACIÓN GMAIL
+const validarGmail = (email: string) => {
+  if (!email) throw new Error('El correo electrónico es obligatorio.');
+  const emailLower = email.toLowerCase().trim();
+  if (!emailLower.endsWith('@gmail.com')) {
+    throw new Error('El sistema solo permite correos de Google (@gmail.com).');
+  }
+  return emailLower;
+};
+
 export const PsicologoService = {
   
-  // 1. Obtener todos con relaciones (CORREGIDO: Incluye Usuario para el correo)
   getAll: async () => {
     return await prisma.psicologo.findMany({
       include: {
-        Usuario: true, // 🟢 CRUCIAL: Permite ver el correo en el listado y modal
+        Usuario: true, 
         Direccion: true, 
         Psicologo_EspecialidadPsicologo: { 
           include: { EspecialidadPsicologo: true } 
@@ -52,29 +61,27 @@ export const PsicologoService = {
     });
   },
 
-  // 2. Crear con Blindaje de Integridad y Creación de Cuenta
   create: async (data: CreatePsicologoDTO) => {
     if (!data) throw new Error("No se recibieron datos.");
 
     const telefonoRaw = data.telefono || data.No_Telefono;
     const telefonoLimpio = validarTelefonoNica(telefonoRaw);
+    
+    // 🟢 Validar que el correo sea Gmail antes de procesar
+    const emailValidado = validarGmail(data.email);
 
     const depto = data.direccion?.departamento?.trim();
     const ciudad = data.direccion?.ciudad?.trim();
     const barrio = data.direccion?.barrio?.trim();
     const calle = data.direccion?.calle?.trim();
 
-    // 🟢 ENCRIPTACIÓN DE CONTRASEÑA (MAESTRA O PROPORCIONADA)
     const saltRounds = 10;
     const passwordOriginal = data.password || 'Resiliencia2026*';
     const hashedPassword = await bcrypt.hash(passwordOriginal, saltRounds);
 
     return await prisma.$transaction(async (tx) => {
       
-      let direccion;
-
-      // A. Buscar dirección existente
-      direccion = await tx.direccion.findFirst({
+      let direccion = await tx.direccion.findFirst({
         where: {
           Departamento: depto,
           Ciudad: ciudad,
@@ -83,36 +90,27 @@ export const PsicologoService = {
         }
       });
 
-      // B. Si no existe, crearla
       if (!direccion) {
-        try {
-          direccion = await tx.direccion.create({
-            data: {
-              Pais: data.direccion?.pais?.trim() || 'Nicaragua',
-              Departamento: depto,
-              Ciudad: ciudad,
-              Barrio: barrio,
-              Calle: calle
-            }
-          });
-        } catch (error) {
-          direccion = await tx.direccion.findFirst({
-            where: { Departamento: depto, Ciudad: ciudad, Barrio: barrio, Calle: calle }
-          });
-          if (!direccion) throw new Error("Error de integridad al gestionar la dirección.");
-        }
+        direccion = await tx.direccion.create({
+          data: {
+            Pais: data.direccion?.pais?.trim() || 'Nicaragua',
+            Departamento: depto,
+            Ciudad: ciudad,
+            Barrio: barrio,
+            Calle: calle
+          }
+        });
       }
 
-      // 🟢 PASO CORREGIDO: Crear el Usuario con el Hash generado
       const usuario = await tx.usuario.create({
         data: {
-          Email: data.email.trim(),
+          Email: emailValidado, // 🟢 Usar el email validado
           PasswordHash: hashedPassword, 
-          Activo: true
+          Activo: true,
+          Verificado: true 
         }
       });
 
-      // 🟢 PASO: Asignar el Rol al Usuario
       await tx.usuario_Rol.create({
         data: {
           ID_Usuario: usuario.ID_Usuario,
@@ -120,7 +118,6 @@ export const PsicologoService = {
         }
       });
 
-      // C. Crear el Psicólogo vinculado al nuevo Usuario
       const psicologo = await tx.psicologo.create({
         data: {
           Nombre: data.nombre.trim(),
@@ -133,7 +130,6 @@ export const PsicologoService = {
         }
       });
 
-      // D. Registrar Especialidades
       const idsEspecialidades = data.especialidadIds || data.especialidades;
       if (idsEspecialidades && idsEspecialidades.length > 0) {
         const relaciones = idsEspecialidades.map(espId => ({
@@ -147,7 +143,6 @@ export const PsicologoService = {
     });
   },
 
-  // 3. Actualizar con Sincronización Completa
   update: async (id: number, data: any) => {
     let telefonoLimpio: string | undefined = undefined;
     const telefonoRaw = data.telefono || data.No_Telefono;

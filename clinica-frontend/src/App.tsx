@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { Toaster, toast } from 'sonner';
-import logoClinica from './assets/logo-clinica.png';
+import logoClinica from './assets/logo_resiliencia.png';
 import { api } from './services/api';
 
 // Páginas
@@ -15,20 +15,24 @@ import Configuracion from './pages/Configuracion';
 import PacienteDetalle from './pages/PacienteDetalle';
 import Presentacion from './pages/Presentacion';
 
+// 🟢 IMPORTACIÓN DE NUEVAS PÁGINAS
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+
 // ----------------------------------------------------
 // NavItem: Componente para el link de navegación
 function NavItem({ to, label, icon }: { to: string, label: string, icon: string }) {
   const location = useLocation();
   const isActive = location.pathname === to || (to !== '/' && location.pathname.startsWith(to));
-  
+
   return (
     <li>
-      <Link 
-        to={to} 
+      <Link
+        to={to}
         className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group
-        ${isActive 
-          ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20 font-semibold' 
-          : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
+        ${isActive
+            ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20 font-semibold'
+            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
       >
         <span className={`text-lg transition-transform duration-200 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`}>{icon}</span>
         <span className="text-sm">{label}</span>
@@ -41,15 +45,12 @@ function NavItem({ to, label, icon }: { to: string, label: string, icon: string 
 // Layout: Componente que renderiza el Sidebar y el Outlet
 function Layout() {
   const navigate = useNavigate();
-
-  // 🟢 EXTRAER ROL DEL USUARIO (Asumiendo que lo guardas en localStorage al hacer Login)
-  // Si no lo tienes guardado, este es el momento de agregarlo en la función de login
-  const userRole = Number(localStorage.getItem('user_role')) || 2; 
+  const userRole = Number(localStorage.getItem('user_role')) || 2;
 
   const handleLogout = async () => {
     try {
       await api.post('/auth/logout', {});
-      localStorage.removeItem('user_role'); // Limpiar rol al salir
+      localStorage.removeItem('user_role');
       toast.success('Sesión cerrada correctamente');
       navigate('/', { replace: true });
     } catch (error) {
@@ -60,34 +61,46 @@ function Layout() {
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC]">
-      
+
       {/* --- SIDEBAR LATERAL --- */}
       <aside className="w-64 bg-white border-r border-slate-200 fixed h-full z-30 hidden lg:block overflow-y-auto">
         <div className="p-6 flex flex-col h-full">
-          <div className="flex items-center gap-3 mb-10 px-2">
-            <img 
-                src={logoClinica} 
-                alt="Logo" 
-                className="w-10 h-10 object-contain drop-shadow-sm" 
-            />
-            <span className="text-xl font-black text-slate-800 tracking-tight font-serif">Resiliencia</span>
+          {/* Cambié px-2 por pl-0 para eliminar el espacio de la izquierda */}
+          <div className="flex items-center gap-4 mb-10 pl-0">
+
+            {/* Contenedor del logo con tamaño robusto */}
+            <div className="flex-shrink-0 w-28 h-28 -ml-8">
+              <img
+                src={logoClinica}
+                alt="Logo"
+                className="w-full h-full object-contain drop-shadow-md"
+              />
+            </div>
+
+            {/* Bloque de texto alineado */}
+            <div className="flex flex-col justify-center -ml-10"> {/* Margen negativo opcional para acercarlo aún más al logo */}
+              <h1 className="text-[28px] font-black text-slate-800 tracking-tighter font-serif leading-[0.8]">
+                Resiliencia
+              </h1>
+              <span className="text-[12px] text-emerald-600 font-bold uppercase tracking-[0.3em] mt-1">
+                Clínica
+              </span>
+            </div>
           </div>
-          
+
           <ul className="menu space-y-1 p-0 flex-1">
-            <span className="text-[10px] font-black text-slate-400 uppercase px-4 mb-2 tracking-widest">Principal</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase px-4 mb-2 tracking-widest -mt-10">Principal</span>
             <NavItem to="/dashboard" label="Dashboard" icon="📊" />
             <NavItem to="/citas" label="Agenda" icon="📅" />
             <NavItem to="/pacientes" label="Pacientes" icon="👥" />
-            
+
             <span className="text-[10px] font-black text-slate-400 uppercase px-4 mb-2 mt-6 tracking-widest">Clínica</span>
             <NavItem to="/historial" label="Historial" icon="📂" />
-            
-            {/* 🔒 SOLO ADMINISTRADORES (ID: 1) PUEDEN VER FINANZAS */}
+
             {userRole === 1 && (
               <NavItem to="/facturacion" label="Finanzas" icon="💰" />
             )}
-            
-            {/* 🔒 SECCIÓN DE ADMINISTRACIÓN: SOLO PARA ROL 1 */}
+
             {userRole === 1 && (
               <>
                 <span className="text-[10px] font-black text-slate-400 uppercase px-4 mb-2 mt-6 tracking-widest">Administración</span>
@@ -99,7 +112,7 @@ function Layout() {
           </ul>
 
           <div className="pt-4 mt-4 border-t border-slate-100">
-            <button 
+            <button
               onClick={handleLogout}
               className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group text-slate-500 hover:bg-red-50 hover:text-red-600 w-full"
             >
@@ -112,19 +125,17 @@ function Layout() {
 
       <main className="flex-1 lg:ml-64 min-h-screen flex flex-col">
         <header className="lg:hidden flex justify-between items-center p-4 bg-white border-b border-slate-200 sticky top-0 z-20">
-            <div className="flex items-center gap-2">
-                <img src={logoClinica} className="w-8 h-8 object-contain" alt="Logo" />
-                <span className="font-bold text-slate-800">Resiliencia</span>
-            </div>
-            <button onClick={handleLogout} className="btn btn-sm btn-ghost text-xl">🏠</button>
+          <div className="flex items-center gap-2">
+            <img src={logoClinica} className="w-8 h-8 object-contain" alt="Logo" />
+            <span className="font-bold text-slate-800">Resiliencia</span>
+          </div>
+          <button onClick={handleLogout} className="btn btn-sm btn-ghost text-xl">🏠</button>
         </header>
-        
+
         <div className="p-4 md:p-8 flex-1 overflow-x-hidden">
-          <Outlet /> 
+          <Outlet />
         </div>
       </main>
-
-      <Toaster position="top-right" richColors closeButton theme="light" />
     </div>
   );
 }
@@ -132,9 +143,19 @@ function Layout() {
 export default function App() {
   return (
     <BrowserRouter>
+      {/* 🟢 Toaster movido aquí para que funcione en TODAS las páginas (Públicas y Privadas) */}
+      <Toaster position="top-right" richColors closeButton theme="dark" />
+
       <Routes>
+        {/* Rutas Públicas */}
         <Route path="/" element={<Presentacion />} />
-        
+        <Route path="/login" element={<Presentacion />} />
+
+        {/* 🟢 RUTAS DE RECUPERACIÓN (Fuera del Layout) */}
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+
+        {/* Rutas Privadas */}
         <Route element={<Layout />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/citas" element={<Citas />} />

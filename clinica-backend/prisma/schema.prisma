@@ -338,6 +338,9 @@ model Usuario {
   Activo         Boolean?      @default(true, map: "DF__Usuario__Activo__4CA06362")
   Psicologo      Psicologo?
   Usuario_Rol    Usuario_Rol[]
+  Verificado       Boolean  @default(false) // 👈 Nuevo
+  ResetToken       String?                  // 👈 Nuevo (para recuperación)
+  ResetTokenExpire DateTime?
 }
 
 model Usuario_Rol {

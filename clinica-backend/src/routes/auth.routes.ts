@@ -1,20 +1,13 @@
 import { Router } from 'express';
-// 🟢 Cambiamos la extensión a .js (necesario si usa type: module en package.json)
-// y nos aseguramos de que la ruta sea correcta
-import { login, logout } from '../controllers/auth.controller.js';
+import { login, logout, forgotPassword, resetPassword } from '../controllers/auth.controller.js';
 
 const router = Router();
 
-/**
- * @route POST /api/auth/login
- * @desc  Iniciar sesión y obtener cookie HttpOnly
- */
 router.post('/login', login); 
-
-/**
- * @route POST /api/auth/logout
- * @desc  Cerrar sesión eliminando la cookie
- */
 router.post('/logout', logout);
+
+// 🟢 NUEVAS RUTAS PARA GMAIL
+router.post('/forgot-password', forgotPassword); // Para solicitar el correo
+router.post('/reset-password', resetPassword);   // Para cambiar la clave con el token
 
 export default router;
