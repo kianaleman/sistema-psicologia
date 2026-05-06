@@ -1,12 +1,14 @@
 import { useState } from "react";
 //import { toast } from "sonner";
 import { useCitas } from "../hooks/useCitas";
+import { usePacientes } from "../hooks/usePacientes"; // 🟢 Importación agregada
 import type { Cita } from "../types";
 
 import CitaFormModal from "../components/citas/CitaFormModal";
 import SesionModal from "../components/citas/SesionModal";
 import HistorialModal from "../components/citas/HistorialModal";
 import CancelarCitaModal from "../components/citas/CancelarCitaModal";
+import PacienteFormModal from "../components/pacientes/PacienteFormModal"; 
 
 const Icons = {
   Search: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" /></svg>,
@@ -19,13 +21,19 @@ const Icons = {
 
 export default function Citas() {
   const { citas, loading, filtros, setFiltro, catalogos, acciones } = useCitas();
+  const { acciones: accionesPacientes } = usePacientes(); 
 
-  const [modalOpen, setModalOpen] = useState<"create" | "session" | "view" | null>(null);
+  const [modalOpen, setModalOpen] = useState<"create" | "session" | "view" | "paciente" | null>(null); 
   const [selectedCita, setSelectedCita] = useState<Cita | null>(null);
   const [idCancelar, setIdCancelar] = useState<number | null>(null);
+  // 🟢 ESTADO PARA DATOS PRECARGADOS DE SEGUIMIENTO
+  const [seguimientoData, setSeguimientoData] = useState<any>(null);
+  // 🟢 ESTADO INDEPENDIENTE PARA NO CERRAR EL MODAL DE SESIÓN
+  const [isSeguimientoOpen, setIsSeguimientoOpen] = useState(false);
 
-  const openModal = (type: "create" | "session" | "view", cita?: Cita) => {
+  const openModal = (type: "create" | "session" | "view" | "paciente", cita?: Cita) => { 
     setSelectedCita(cita || null);
+    if (type !== "create") setSeguimientoData(null); 
     setModalOpen(type);
   };
 
@@ -36,7 +44,33 @@ export default function Citas() {
     } else {
       success = await acciones.crearCita(data);
     }
-    if (success) setModalOpen(null);
+    if (success) {
+      // 🟢 Si el éxito viene de un seguimiento, cerramos su estado específico
+      if (isSeguimientoOpen) {
+        setIsSeguimientoOpen(false);
+        setSeguimientoData(null);
+      } else {
+        setModalOpen(null);
+        setSeguimientoData(null);
+      }
+    }
+    return success;
+  };
+
+  // 🟢 Función para abrir el modal de citas sin desmontar SesionModal
+  const handleAbrirSeguimiento = (datos: any) => {
+    setSeguimientoData(datos);
+    setIsSeguimientoOpen(true); // Abrimos en un estado paralelo
+  };
+
+  const handleCreatePaciente = async (data: any) => {
+    const success = await accionesPacientes.crearPaciente(data);
+    if (success) {
+      // Refrescamos los catálogos para que el nuevo paciente aparezca en el select de citas
+      await acciones.reloadCatalogos?.();
+      // Regresamos al modal de la cita
+      setModalOpen("create");
+    }
     return success;
   };
 
@@ -78,6 +112,8 @@ export default function Citas() {
     if (s.includes("programada") || s.includes("pendiente")) return "bg-blue-100 text-blue-700";
     if (s.includes("completada") || s.includes("realizada")) return "bg-emerald-100 text-emerald-700";
     if (s.includes("cancelada") || s.includes("no asistió")) return "bg-rose-100 text-rose-700";
+    // 🟡 Resaltado para el nuevo estado propuesto
+    if (s.includes("no procesada")) return "bg-amber-100 text-amber-700 border border-amber-200";
     return "bg-slate-100 text-slate-700";
   };
 
@@ -115,7 +151,6 @@ export default function Citas() {
                 ))}
               </div>
 
-              {/* 🟢 CORRECCIÓN: Inputs de fecha condicionales con validación de rango */}
               {filtros.periodo === 'rango' && (
                 <div className="flex items-center gap-2 animate-fade-in">
                   <input 
@@ -166,9 +201,30 @@ export default function Citas() {
             const nombreEstado = cita.EstadoCita?.NombreEstado || "";
             const esProgramada = nombreEstado.toLowerCase().includes("programada") || nombreEstado.toLowerCase().includes("pendiente");
             const esCancelada = nombreEstado.toLowerCase().includes("cancelada") || nombreEstado.toLowerCase().includes("no asistió");
+            // 🟢 Variable utilizada para aplicar estilos de borde adicionales si el estado es "no procesada"
+            const esNoProcesada = nombreEstado.toLowerCase().includes("no procesada");
+
+            // 🟡 Lógica de Advertencia (Warning): Más de 2 horas de retraso y sigue pendiente
+            const horaCita = new Date(cita.HoraCita);
+            const ahora = new Date();
+            const diferenciaHoras = (ahora.getTime() - horaCita.getTime()) / (1000 * 60 * 60);
+            const esAlerta = esProgramada && diferenciaHoras >= 2;
 
             return (
-              <div key={cita.ID_Cita} className={`card bg-white border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col ${esCancelada ? "opacity-60 grayscale" : ""}`}>
+              <div 
+                key={cita.ID_Cita} 
+                className={`card bg-white border shadow-sm hover:shadow-md transition-all flex flex-col 
+                  ${esCancelada ? "opacity-60 grayscale border-slate-200" : ""} 
+                  ${esAlerta ? "border-amber-400 bg-amber-50/50 shadow-md ring-1 ring-amber-200" : "border-slate-200"}
+                  ${esNoProcesada ? "border-dashed border-2 border-amber-300 shadow-inner" : ""}`}
+              >
+                {/* Banner de alerta para citas olvidadas */}
+                {esAlerta && (
+                  <div className="bg-amber-500 text-white text-[9px] font-black uppercase py-1 px-3 text-center rounded-t-xl">
+                    ⚠️ ATENCIÓN: SESIÓN SIN FINALIZAR
+                  </div>
+                )}
+
                 <div className="px-6 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
                   <span className="text-xs font-bold text-slate-500 uppercase">📅 {formatearFechaCompleta(cita.FechaCita)}</span>
                   <div className={`badge ${getEstadoColor(nombreEstado)} font-bold border-none h-auto py-1 px-3 rounded-md text-[10px]`}>
@@ -220,8 +276,44 @@ export default function Citas() {
         </div>
       )}
 
-      <CitaFormModal isOpen={modalOpen === "create"} onClose={() => setModalOpen(null)} onSubmit={handleCreateOrUpdate} citaEditar={selectedCita} catalogos={catalogos} />
-      <SesionModal isOpen={modalOpen === "session"} onClose={() => setModalOpen(null)} onSubmit={handleFinalizarSesion} cita={selectedCita} catalogos={catalogos} />
+      {/* 🟢 MODAL DE CREACIÓN/EDICIÓN NORMAL */}
+      <CitaFormModal 
+        isOpen={modalOpen === "create"} 
+        onClose={() => { setModalOpen(null); setSeguimientoData(null); }} 
+        onSubmit={handleCreateOrUpdate} 
+        citaEditar={selectedCita} 
+        catalogos={catalogos} 
+        onOpenAddPaciente={() => setModalOpen("paciente")}
+      />
+
+      {/* 🟢 MODAL PARA SEGUIMIENTO (INSTANCIA PARALELA PARA NO DESMONTAR LA SESIÓN) */}
+      <CitaFormModal 
+        isOpen={isSeguimientoOpen} 
+        onClose={() => { setIsSeguimientoOpen(false); setSeguimientoData(null); }} 
+        onSubmit={handleCreateOrUpdate} 
+        citaEditar={null} 
+        catalogos={catalogos} 
+        datosSeguimiento={seguimientoData} 
+      />
+
+      <PacienteFormModal 
+        isOpen={modalOpen === "paciente"} 
+        onClose={() => setModalOpen("create")} 
+        catalogos={catalogos}
+        onSubmit={handleCreatePaciente} 
+        pacienteEditar={null}
+      />
+
+      {/* SesionModal permanece "viviendo" debajo de Seguimiento si isSeguimientoOpen es true */}
+      <SesionModal 
+        isOpen={modalOpen === "session"} 
+        onClose={() => setModalOpen(null)} 
+        onSubmit={handleFinalizarSesion} 
+        cita={selectedCita} 
+        catalogos={catalogos}
+        onOpenAgendarSeguimiento={handleAbrirSeguimiento} 
+      />
+
       <HistorialModal isOpen={modalOpen === "view"} onClose={() => setModalOpen(null)} cita={selectedCita} />
       <CancelarCitaModal isOpen={!!idCancelar} onClose={() => setIdCancelar(null)} onConfirm={confirmarCancelacion} />
     </div>

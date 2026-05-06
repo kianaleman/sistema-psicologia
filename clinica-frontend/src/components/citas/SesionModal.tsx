@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { Cita, TratamientoLocal } from "../../types";
 import { toast } from "sonner";
@@ -9,11 +9,13 @@ interface Props {
   onSubmit: (data: any) => Promise<void>;
   cita: Cita | null;
   catalogos: any;
+  onOpenAgendarSeguimiento?: (datos: any) => void; // 🟢 Propiedad añadida
 }
 
 const Icons = {
   Brain: () => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path d="M11 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM13.5 10a.5.5 0 00-.5.5v3.25a2.75 2.75 0 005.5 0v-3.25a.5.5 0 00-.5-.5h-4.5zM3 13.5a.5.5 0 00.5.5h3.25a2.75 2.75 0 000-5.5H3.5a.5.5 0 00-.5.5v4.5z" /></svg>),
   Pill: () => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path d="M11.5 2.25a.75.75 0 00-1.5 0v3.75h-3.75a.75.75 0 000 1.5h3.75v3.75a.75.75 0 001.5 0v-3.75h3.75a.75.75 0 000-1.5h-3.75V2.25z" /></svg>),
+  Calendar: () => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg>),
 };
 
 const initialTratamiento: TratamientoLocal = {
@@ -27,7 +29,7 @@ const initialTratamiento: TratamientoLocal = {
   tipoTerapiaId: undefined,
 };
 
-export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos }: Props) {
+export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos, onOpenAgendarSeguimiento }: Props) {
   const [datosSesion, setDatosSesion] = useState({
     horaInicio: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
     horaFinal: "",
@@ -40,6 +42,13 @@ export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos
   const [selectedExploraciones, setSelectedExploraciones] = useState<Set<number>>(new Set());
   const [formTratamiento, setFormTratamiento] = useState<TratamientoLocal>(initialTratamiento);
 
+  // 🟢 DETERMINAR SI ES PRIMERA TERAPIA
+  const esPrimeraTerapia = useMemo(() => {
+    if (!cita) return false;
+    const nombre = cita.TipoDeCita?.Nombre_DeCita || cita.TipoDeCita?.Nombre_DeCita || "";
+    return nombre.toLowerCase().includes("primera terapia");
+  }, [cita]);
+
   const viaMap = useMemo(() => 
     new Map<number, string>(catalogos.viasAdmin?.map((v: any) => [v.ID_ViaAdministracion, v.Nombre_De_Presentacion])), 
     [catalogos.viasAdmin]
@@ -50,10 +59,37 @@ export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos
     [catalogos.tiposTerapia]
   );
 
+  useEffect(() => {
+    if (isOpen) {
+        setDatosSesion(prev => ({
+            ...prev,
+            horaInicio: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+            horaFinal: "", observaciones: "", diagnostico: "", historial: ""
+        }));
+        setListaTratamientos([]);
+        setSelectedExploraciones(new Set());
+    }
+  }, [isOpen]);
+
   if (!isOpen || !cita) return null;
 
   const getViaNombre = (id: number | undefined) => id ? viaMap.get(id) || "N/A" : "N/A";
   const getTerapiaNombre = (id: number | undefined) => id ? terapiaMap.get(id) || "N/A" : "N/A";
+
+  // 🟢 FUNCIÓN PARA AGENDAR SEGUIMIENTO
+  const handleAgendarSeguimiento = () => {
+    if (onOpenAgendarSeguimiento) {
+      onOpenAgendarSeguimiento({
+        pacienteId: cita.ID_Paciente,
+        psicologoId: cita.ID_Psicologo,
+        tipoCitaId: 2, 
+        usarDireccionPaciente: cita.ID_Direccion !== 3,
+        direccion: cita.Direccion 
+      });
+    } else {
+        console.warn("onOpenAgendarSeguimiento no está definida en Props");
+    }
+  };
 
   const handleSave = () => {
     if (!datosSesion.diagnostico.trim()) return toast.error("El diagnóstico es obligatorio");
@@ -67,10 +103,9 @@ export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos
 
     const fechaBase = cita.FechaCita.split('T')[0];
     
-    // 🟢 CORRECCIÓN: Se añade pacienteId y psicologoId al envío de datos
     onSubmit({
       citaId: cita.ID_Cita,
-      pacienteId: cita.ID_Paciente, // <--- Dato requerido por el service para el expediente
+      pacienteId: cita.ID_Paciente, 
       psicologoId: cita.ID_Psicologo,
       idExpediente: cita.Paciente?.Expediente?.ID_Expediente,
       horaInicio: `${fechaBase}T${datosSesion.horaInicio}:00Z`,
@@ -147,7 +182,13 @@ export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos
             </div>
             <div className="space-y-3">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Evolución</label>
-              <textarea className="textarea textarea-bordered w-full h-44 bg-white text-sm shadow-inner" placeholder="Detalles..." value={datosSesion.historial} onChange={(e) => setDatosSesion({ ...datosSesion, historial: e.target.value })} />
+              <textarea 
+                className="textarea textarea-bordered w-full h-44 bg-white text-sm shadow-inner disabled:bg-slate-100 disabled:cursor-not-allowed" 
+                placeholder={esPrimeraTerapia ? "No disponible en Primera Terapia" : "Detalles..."}
+                value={datosSesion.historial} 
+                disabled={esPrimeraTerapia} 
+                onChange={(e) => setDatosSesion({ ...datosSesion, historial: e.target.value })} 
+              />
             </div>
           </div>
 
@@ -227,8 +268,16 @@ export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos
           </div>
         </div>
 
-        <div className="px-10 py-6 border-t border-slate-100 flex justify-between items-center bg-white shrink-0">
-          <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">Expediente #{cita.Paciente?.Expediente?.ID_Expediente}</span>
+        <div className="px-10 py-8 border-t border-slate-100 flex justify-between items-center bg-white shrink-0">
+          {/* 🟢 BOTÓN AGENDAR SEGUIMIENTO AGRANDADO */}
+          <button 
+            type="button" 
+            onClick={handleAgendarSeguimiento} 
+            className="btn btn-md btn-outline btn-primary border-2 rounded-2xl gap-3 font-black uppercase text-xs px-10 shadow-sm hover:shadow-md transition-all"
+          >
+            <Icons.Calendar /> Agendar Seguimiento
+          </button>
+
           <div className="flex gap-4">
             <button className="btn btn-ghost px-10 font-bold text-slate-400" onClick={onClose}>Cancelar</button>
             <button className="btn btn-primary px-16 text-white shadow-xl shadow-blue-200 font-bold" onClick={handleSave}>

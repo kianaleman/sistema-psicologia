@@ -18,6 +18,8 @@ import generalRoutes from './routes/general.routes.js';
 import reciboRoutes from './routes/recibo.routes.js';
 import configuracionRoutes from './routes/configuracion.routes.js';
 
+import '../jobs/cron.jobs.js';
+
 const app = express();
 const PORT = 3000;
 

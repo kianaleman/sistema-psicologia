@@ -26,7 +26,13 @@ export const useCitas = () => {
     psicologos: [],
     viasAdmin: [],       
     tiposTerapia: [],    
-    exploraciones: []    
+    exploraciones: [],
+    // 🟢 CAMPOS SINCRONIZADOS CON EL FORMULARIO DE PACIENTES
+    tutores: [],
+    listaTutores: [], // Requerido específicamente por el componente de registro
+    ocupaciones: [],
+    estadosCiviles: [],
+    parentescos: []
   });
 
   const fetchCitas = useCallback(async () => {
@@ -46,20 +52,28 @@ export const useCitas = () => {
 
   const fetchCatalogos = useCallback(async () => {
     try {
-      const data: any = await api.citas.getCatalogos(); 
+      // 🟢 CARGA PARALELA DE CATÁLOGOS DE AGENDA Y GENERALES
+      const [dataCitas, dataGeneral] = await Promise.all([
+        api.citas.getCatalogos(),
+        api.general.catalogos()
+      ]);
       
-      // 🟢 CORRECCIÓN: Mapeo sincronizado con el controlador unificado
       setCatalogos({
-          tiposCita: data.tiposCita || [],
-          estadosCita: data.estadosCita || [],
-          metodosPago: data.metodosPago || [],
-          divisas: data.divisas || [], 
-          pacientes: data.pacientes || [],
-          psicologos: data.psicologos || [],
-          // Aseguramos la captura de los catálogos de sesión unificados
-          viasAdmin: data.viasAdmin || [], 
-          tiposTerapia: data.tiposTerapia || [],
-          exploraciones: data.exploraciones || []
+          tiposCita: dataCitas.tiposCita || [],
+          estadosCita: dataCitas.estadosCita || [],
+          metodosPago: dataCitas.metodosPago || [],
+          divisas: dataCitas.divisas || [], 
+          pacientes: dataCitas.pacientes || [],
+          psicologos: dataCitas.psicologos || [],
+          viasAdmin: dataCitas.viasAdmin || [], 
+          tiposTerapia: dataCitas.tiposTerapia || [],
+          exploraciones: dataCitas.exploraciones || [],
+          // 🟢 MAPEADO PARA PACIENTEFORMMODAL (IMAGEN_128.PNG)
+          tutores: dataGeneral.tutores || [],
+          listaTutores: dataGeneral.tutores || [], // Asegura la visibilidad en el selector de menores
+          ocupaciones: dataGeneral.ocupaciones || [],
+          estadosCiviles: dataGeneral.estadosCiviles || [],
+          parentescos: dataGeneral.parentescos || []
       });
     } catch (err) {
       console.error("Error al cargar catálogos unificados en useCitas", err);
@@ -181,6 +195,6 @@ export const useCitas = () => {
     filtros,
     setFiltro,
     catalogos, 
-    acciones: { crearCita, actualizarCita, cancelarCita, guardarSesion }
+    acciones: { crearCita, actualizarCita, cancelarCita, guardarSesion, reloadCatalogos: fetchCatalogos }
   };
 };

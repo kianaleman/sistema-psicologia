@@ -33,5 +33,50 @@ export const EmailService = {
     };
 
     return await transporter.sendMail(mailOptions);
+  },
+
+  // 🟢 Enviar resumen diario de citas no procesadas
+  sendDailySummary: async (email: string, nombreUsuario: string, citas: any[], esAdmin: boolean) => {
+    const listaCitasHtml = citas.map(c => `
+      <li style="margin-bottom: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; list-style: none;">
+        <span style="color: #475569; font-size: 14px;">👤 <strong>Paciente:</strong> ${c.Paciente?.Nombre} ${c.Paciente?.Apellido}</span><br>
+        <span style="color: #475569; font-size: 14px;">⏰ <strong>Hora:</strong> ${new Date(c.HoraCita).toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+        ${esAdmin ? `<br><span style="color: #64748b; font-size: 12px;">👨‍⚕️ <strong>Especialista:</strong> Dr. ${c.Psicologo?.Apellido}</span>` : ''}
+      </li>
+    `).join('');
+
+    const mailOptions = {
+      from: `"Clínica Resiliencia" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: `Resumen de Citas Pendientes - ${new Date().toLocaleDateString('es-NI')}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 16px; padding: 30px; background-color: #ffffff;">
+          <div style="text-align: center; margin-bottom: 20px;">
+             <h2 style="color: #0f172a; margin: 0;">Clínica Resiliencia</h2>
+             <p style="color: #64748b; font-size: 14px;">Gestión de Agenda Diaria</p>
+          </div>
+          <p style="color: #1e293b; font-size: 16px;">Hola, <strong>${nombreUsuario}</strong>.</p>
+          <p style="color: #475569; font-size: 14px; line-height: 1.6;">Se han detectado las siguientes citas de hoy que aún no han sido gestionadas (finalizadas o canceladas):</p>
+          
+          <div style="margin: 25px 0; background-color: #f8fafc; border-radius: 12px; padding: 20px; border: 1px solid #f1f5f9;">
+            <ul style="padding: 0; margin: 0;">
+              ${listaCitasHtml}
+            </ul>
+          </div>
+
+          <div style="background-color: #fff7ed; border-left: 4px solid #f97316; padding: 15px; border-radius: 4px;">
+            <p style="color: #9a3412; font-size: 13px; margin: 0;">
+              <strong>⚠️ Nota importante:</strong> Estas citas pasarán automáticamente al estado <strong>"No Procesada"</strong> al finalizar el día (11:59 PM). Por favor, procéselas lo antes posible.
+            </p>
+          </div>
+          
+          <p style="font-size: 11px; color: #94a3b8; text-align: center; margin-top: 30px;">
+            Este es un correo automático generado por el sistema Resiliencia.
+          </p>
+        </div>
+      `,
+    };
+
+    return await transporter.sendMail(mailOptions);
   }
 };

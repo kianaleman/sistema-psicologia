@@ -14,7 +14,7 @@ interface CreateCitaDTO {
   metodoPagoId: number;
   idDivisa: number;
   tasaCambio: number;
-  idDireccion: number; // 0 si es domicilio del paciente, >0 si es manual/existente
+  idDireccion: number; 
   direccionManual?: {
     departamento: string;
     ciudad: string;
@@ -47,11 +47,9 @@ const verificarDisponibilidad = async (psicologoId: number, fecha: Date, horaUTC
 
 export const CitaService = {
 
-  // 🟢 CORRECCIÓN: Se agrega psicologoId como parámetro opcional
   getAll: async (psicologoId?: number) => {
     const citas = await prisma.cita.findMany({
       where: {
-        // Si psicologoId existe, se filtra por él. Si es undefined, no aplica filtro.
         ...(psicologoId ? { ID_Psicologo: psicologoId } : {})
       },
       include: {
@@ -306,5 +304,37 @@ export const CitaService = {
     });
 
     return { procesadas: resultado.count };
+  },
+
+  // 🟢 NUEVA: Obtener citas pendientes para el Cron Job
+  obtenerPendientesHoy: async () => {
+    return await prisma.cita.findMany({
+      where: {
+        ID_EstadoCita: 1, // Pendiente
+        FechaCita: new Date(new Date().setHours(0,0,0,0))
+      },
+      include: {
+        Paciente: true,
+        Psicologo: {
+          include: {
+            Usuario: true // Necesario para obtener el Email del psicólogo
+          }
+        }
+      }
+    });
+  },
+
+  // 🟢 NUEVA: Cierre de jornada automático
+  marcarCitasComoNoProcesadas: async () => {
+    const resultado = await prisma.cita.updateMany({
+      where: {
+        ID_EstadoCita: 1,
+        FechaCita: { lte: new Date(new Date().setHours(0,0,0,0)) }
+      },
+      data: {
+        ID_EstadoCita: 4 // Estado: No Procesada
+      }
+    });
+    return resultado.count;
   }
 };
