@@ -13,6 +13,27 @@ interface Props {
     datosSeguimiento?: any; // 🟢 Nueva propiedad para precarga desde SesionModal
 }
 
+// 🟢 DATA ESTRUCTURADA DE NICARAGUA
+const DIVISION_TERRITORIAL: Record<string, string[]> = {
+    "Boaco": ["Boaco", "Camoapa", "San José de los Remates", "San Lorenzo", "Santa Lucía", "Teustepe"],
+    "Carazo": ["Diriamba", "Dolores", "El Rosario", "Jinotepe", "La Conquista", "La Paz de Carazo", "San Marcos", "Santa Teresa"],
+    "Chinandega": ["Chichigalpa", "Chinandega", "Cinco Pinos", "Corinto", "El Realejo", "El Viejo", "Posoltega", "Puerto Morazán", "San Francisco del Norte", "San Pedro del Norte", "Santo Tomás del Norte", "Somotillo", "Villanueva"],
+    "Chontales": ["Acoyapa", "Comalapa", "Cuapa", "El Coral", "Juigalpa", "La Libertad", "San Francisco de Cuapa", "San Pedro de Lóvago", "Santo Domingo", "Santo Tomás", "Villa Sandino"],
+    "Estelí": ["Condega", "Estelí", "La Trinidad", "Pueblo Nuevo", "San Juan de Limay", "San Nicolás"],
+    "Granada": ["Diriá", "Diriomo", "Granada", "Nandaime"],
+    "Jinotega": ["El Cuá", "Jinotega", "La Concordia", "San José de Bocay", "San Rafael del Norte", "San Sebastián de Yalí", "Santa María de Pantasma", "Wiwilí de Jinotega"],
+    "León": ["Achuapa", "El Jicaral", "El Sauce", "La Paz Centro", "Larreynaga", "León", "Nagarote", "Quezalguaque", "Santa Rosa del Peñón", "Telica"],
+    "Madriz": ["Las Sabanas", "Palacagüina", "San José de Cusmapa", "San Juan de Río Coco", "San Lucas", "Somoto", "Telpaneca", "Totogalpa"],
+    "Managua": ["Ciudad Sandino", "El Crucero", "Managua", "Mateare", "San Francisco Libre", "San Rafael del Sur", "Ticuantepe", "Tipitapa", "Villa El Carmen"],
+    "Masaya": ["Catarina", "La Concepción", "Masatepe", "Masaya", "Nandasmo", "Nindirí", "Niquinohomo", "San Juan de Oriente", "Tisma"],
+    "Matagalpa": ["Ciudad Darío", "El Tuma - La Dalia", "Esquipulas", "Matagalpa", "Matiguás", "Muy Muy", "Rancho Grande", "Río Blanco", "San Dionisio", "San Isidro", "San Ramón", "Sébaco", "Terrabona"],
+    "Nueva Segovia": ["Ciudad Antigua", "Dipilto", "El Jícaro", "Jalapa", "Macuelizo", "Mozonte", "Murra", "Ocotal", "Quilalí", "San Fernando", "Santa María", "Wiwilí"],
+    "Río San Juan": ["El Almendro", "El Castillo", "Morrito", "San Carlos", "San Juan del Norte", "San Miguelito"],
+    "Rivas": ["Altagracia", "Belén", "Buenos Aires", "Cárdenas", "Moyogalpa", "Potosí", "Rivas", "San Jorge", "San Juan del Sur", "Tola"],
+    "RACCN": ["Bonanza", "Mulukukú", "Prinzapolka", "Puerto Cabezas", "Rosita", "Siuna", "Waslala", "Waspam"],
+    "RACCS": ["Bluefields", "Corn Island", "Desembocadura de Río Grande", "El Ayote", "El Rama", "El Tortuguero", "Kukra Hill", "La Cruz de Río Grande", "Laguna de Perlas", "Muelle de los Bueyes", "Nueva Guinea", "Paiwas"]
+};
+
 export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, catalogos, onOpenAddPaciente, datosSeguimiento }: Props) {
     // 🟢 DETECTAR ROL Y USUARIO PARA RESTRICCIONES
     const userRole = Number(localStorage.getItem('user_role'));
@@ -21,6 +42,12 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
 
     // 🟢 DETERMINAR SI ES UN MODO RESTRINGIDO (EDICIÓN O SEGUIMIENTO)
     const esModoRestringido = !!citaEditar || !!datosSeguimiento;
+
+    // 🟢 ESTADOS DE VISIBILIDAD PARA LISTAS FLOTANTES
+    const [showListaPacientes, setShowListaPacientes] = useState(false);
+    const [showListaPsicologos, setShowListaPsicologos] = useState(false);
+    const [showListaDepto, setShowListaDepto] = useState(false);
+    const [showListaCiudad, setShowListaCiudad] = useState(false);
 
     // 🟢 FUNCIÓN PARA BUSCAR LA DIRECCIÓN DE LA CLÍNICA EN LOS CATÁLOGOS (ID 3 SEGÚN DB)
     const getDireccionClinicaDB = () => {
@@ -48,9 +75,24 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
     const [usarDireccionPaciente, setUsarDireccionPaciente] = useState(false);
     const [busquedaPaciente, setBusquedaPaciente] = useState('');
     const [busquedaPsicologo, setBusquedaPsicologo] = useState('');
+    const [busquedaDepto, setBusquedaDepto] = useState('');
+    const [busquedaCiudad, setBusquedaCiudad] = useState('');
     const [guardando, setGuardando] = useState(false);
 
     const hoyString = new Date().toISOString().split('T')[0];
+
+    // 🟢 FILTRADO TERRITORIAL
+    const deptosFiltrados = useMemo(() => {
+        const term = busquedaDepto.toLowerCase().trim();
+        return Object.keys(DIVISION_TERRITORIAL).filter(d => d.toLowerCase().includes(term));
+    }, [busquedaDepto]);
+
+    const ciudadesFiltradas = useMemo(() => {
+        const depto = formData.direccion.departamento;
+        const lista = DIVISION_TERRITORIAL[depto] || [];
+        const term = busquedaCiudad.toLowerCase().trim();
+        return lista.filter(c => c.toLowerCase().includes(term));
+    }, [busquedaCiudad, formData.direccion.departamento]);
 
     const pacientesFiltrados = useMemo(() => {
         const lista = catalogos?.pacientes || [];
@@ -70,6 +112,27 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
             `${p.Nombre} ${p.Apellido}`.toLowerCase().includes(term)
         );
     }, [busquedaPsicologo, catalogos?.psicologos]);
+
+    // 🟢 FUNCIÓN DE CIERRE PERSONALIZADA PARA LIMPIAR TODO
+    const handleManualClose = () => {
+        setBusquedaDepto('');
+        setBusquedaCiudad('');
+        setBusquedaPaciente('');
+        setBusquedaPsicologo('');
+        onClose();
+    };
+
+    // 🟢 Efecto para cerrar listas al hacer clic fuera
+    useEffect(() => {
+        const handleClickExterno = () => {
+            setShowListaPacientes(false);
+            setShowListaPsicologos(false);
+            setShowListaDepto(false);
+            setShowListaCiudad(false);
+        };
+        window.addEventListener('click', handleClickExterno);
+        return () => window.removeEventListener('click', handleClickExterno);
+    }, []);
 
     // 🟢 VALIDACIÓN ESTRICTA: SOLO NÚMEROS Y UN PUNTO (SIN LETRAS NI NEGATIVOS)
     const validarFinanciero = (valor: string, nombreCampo: string) => {
@@ -138,6 +201,12 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
 
     // 🟢 Reset completo al abrir/cerrar para evitar errores de caché en campos
     useEffect(() => {
+        // Limpieza de estados de búsqueda cada vez que cambia visibilidad
+        setBusquedaDepto('');
+        setBusquedaCiudad('');
+        setBusquedaPaciente('');
+        setBusquedaPsicologo('');
+
         if (isOpen) {
             if (citaEditar) {
                 const esDirPaciente = citaEditar.ID_Direccion !== 3;
@@ -157,7 +226,6 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                     direccion: citaEditar.Direccion || getDireccionClinicaDB()
                 });
             } else if (datosSeguimiento) {
-                // 🟢 LÓGICA PARA CARGA AUTOMÁTICA DE SEGUIMIENTO
                 setUsarDireccionPaciente(datosSeguimiento.usarDireccionPaciente);
                 setFormData({
                     fecha: '', 
@@ -180,8 +248,6 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                     tipoCitaId: '', precio: '', metodoPagoId: '1', idDivisa: '1', tasaCambio: '1',
                     direccion: getDireccionClinicaDB() 
                 });
-                setBusquedaPaciente('');
-                setBusquedaPsicologo('');
             }
         }
     }, [isOpen, citaEditar, esPsicologo, userId, datosSeguimiento]);
@@ -227,7 +293,7 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
 
         setGuardando(true);
         const success = await onSubmit(payload, !!citaEditar);
-        if (success) onClose();
+        if (success) handleManualClose();
         setGuardando(false);
     };
 
@@ -244,17 +310,16 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                             {esPsicologo ? 'Usted está registrando una cita bajo su propia agenda profesional.' : 'Asegúrese de verificar la disponibilidad del especialista'}
                         </p>
                     </div>
-                    <button onClick={onClose} className="btn btn-sm btn-circle btn-ghost text-white">✕</button>
+                    <button onClick={handleManualClose} className="btn btn-sm btn-circle btn-ghost text-white">✕</button>
                 </div>
 
                 <div className="p-8 overflow-y-auto bg-slate-50/50 flex-1 text-slate-800">
                     <form className="space-y-8" id="form-cita" onSubmit={handleLocalSubmit}>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                            <div className="space-y-2">
+                            <div className="space-y-2 relative" onClick={e => e.stopPropagation()}>
                                 <div className="flex justify-between items-center">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Paciente</label>
-                                    {/* 🟢 OCULTAR BOTÓN SI ES EDICIÓN O SEGUIMIENTO */}
                                     {!esModoRestringido && (
                                         <button 
                                             type="button" 
@@ -270,15 +335,46 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                                     placeholder="🔍 Buscar por nombre o cédula..." 
                                     className="input input-sm input-bordered w-full bg-slate-50 disabled:opacity-30" 
                                     value={busquedaPaciente} 
-                                    onChange={e => setBusquedaPaciente(e.target.value)} 
-                                    disabled={esModoRestringido} // 🟢 BLOQUEO
+                                    onFocus={() => !esModoRestringido && setShowListaPacientes(true)}
+                                    onChange={e => {
+                                        setBusquedaPaciente(e.target.value);
+                                        setShowListaPacientes(true);
+                                    }} 
+                                    disabled={esModoRestringido}
                                 />
+
+                                {showListaPacientes && busquedaPaciente.length > 0 && !esModoRestringido && (
+                                    <div className="absolute z-[100] w-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-48 overflow-y-auto animate-fade-in">
+                                        {pacientesFiltrados.length > 0 ? (
+                                            pacientesFiltrados.map((p: any) => (
+                                                <div 
+                                                    key={p.ID_Paciente}
+                                                    className="px-4 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-slate-50 last:border-none transition-colors"
+                                                    onClick={() => {
+                                                        setFormData({ ...formData, pacienteId: p.ID_Paciente.toString() });
+                                                        setBusquedaPaciente('');
+                                                        setShowListaPacientes(false);
+                                                    }}
+                                                >
+                                                    <p className="font-bold text-slate-700">{p.Nombre} {p.Apellido}</p>
+                                                    <p className="text-[10px] text-slate-400 font-medium">{p.PacienteAdulto?.No_Cedula || 'Sin Cédula'}</p>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="px-4 py-3 text-slate-400 text-xs italic text-center">No se encontraron pacientes</div>
+                                        )}
+                                    </div>
+                                )}
+
                                 <select 
                                     required 
                                     className="select select-bordered select-sm w-full bg-white text-slate-900 font-medium disabled:bg-slate-100" 
                                     value={formData.pacienteId} 
-                                    onChange={e => setFormData({ ...formData, pacienteId: e.target.value })}
-                                    disabled={esModoRestringido} // 🟢 BLOQUEO
+                                    onChange={e => {
+                                        setFormData({ ...formData, pacienteId: e.target.value });
+                                        setBusquedaPaciente('');
+                                    }}
+                                    disabled={esModoRestringido}
                                 >
                                     <option value="">-- Seleccionar ({pacientesFiltrados.length}) --</option>
                                     {pacientesFiltrados.map((p: any) => (
@@ -287,22 +383,49 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                                 </select>
                             </div>
 
-                            <div className="space-y-2">
+                            <div className="space-y-2 relative" onClick={e => e.stopPropagation()}>
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Psicólogo Especialista</label>
                                 <input 
                                     type="text" 
                                     placeholder="🔍 Buscar doctor..." 
                                     className="input input-sm input-bordered w-full bg-slate-50 disabled:opacity-30" 
                                     value={busquedaPsicologo} 
-                                    disabled={esPsicologo || esModoRestringido} // 🟢 BLOQUEO
-                                    onChange={e => setBusquedaPsicologo(e.target.value)} 
+                                    onFocus={() => !esPsicologo && !esModoRestringido && setShowListaPsicologos(true)}
+                                    disabled={esPsicologo || esModoRestringido}
+                                    onChange={e => {
+                                        setBusquedaPsicologo(e.target.value);
+                                        setShowListaPsicologos(true);
+                                    }} 
                                 />
+
+                                {showListaPsicologos && busquedaPsicologo.length > 0 && !esPsicologo && !esModoRestringido && (
+                                    <div className="absolute z-[100] w-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-48 overflow-y-auto animate-fade-in">
+                                        {psicologosFiltrados.map((p: any) => (
+                                            <div 
+                                                key={p.ID_Psicologo}
+                                                className="px-4 py-3 hover:bg-emerald-50 cursor-pointer text-sm border-b border-slate-50 last:border-none transition-colors"
+                                                onClick={() => {
+                                                    setFormData({ ...formData, psicologoId: p.ID_Psicologo.toString() });
+                                                    setBusquedaPsicologo('');
+                                                    setShowListaPsicologos(false);
+                                                }}
+                                            >
+                                                <p className="font-bold text-slate-700">Dr. {p.Nombre} {p.Apellido}</p>
+                                                <p className="text-[9px] text-emerald-600 font-black uppercase">Especialista Activo</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
                                 <select 
                                     required 
                                     className="select select-bordered select-sm w-full bg-white text-slate-900 font-medium disabled:bg-slate-100" 
                                     value={formData.psicologoId} 
-                                    disabled={esPsicologo || esModoRestringido} // 🟢 BLOQUEO
-                                    onChange={e => setFormData({ ...formData, psicologoId: e.target.value })}
+                                    disabled={esPsicologo || esModoRestringido}
+                                    onChange={e => {
+                                        setFormData({ ...formData, psicologoId: e.target.value });
+                                        setBusquedaPsicologo('');
+                                    }}
                                 >
                                     <option value="">-- Seleccionar Especialista --</option>
                                     {psicologosFiltrados.map((p: any) => (
@@ -347,16 +470,85 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                                 </label>
                             </div>
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                                {['departamento', 'ciudad', 'barrio', 'calle'].map((field) => (
+                                {/* 🟢 DEPARTAMENTO BUSCADOR */}
+                                <div className="relative" onClick={e => e.stopPropagation()}>
                                     <input 
-                                        key={field} 
-                                        placeholder={field.charAt(0).toUpperCase() + field.slice(1)} 
-                                        className="input input-bordered input-sm bg-white" 
-                                        value={formData.direccion[field]} 
-                                        readOnly={usarDireccionPaciente} 
-                                        onChange={e => setFormData({ ...formData, direccion: { ...formData.direccion, [field]: e.target.value } })} 
+                                        placeholder="Depto..." 
+                                        className="input input-bordered input-sm w-full bg-white" 
+                                        value={busquedaDepto} 
+                                        readOnly={usarDireccionPaciente}
+                                        onFocus={() => !usarDireccionPaciente && setShowListaDepto(true)}
+                                        onChange={e => { setBusquedaDepto(e.target.value); setShowListaDepto(true); }}
                                     />
-                                ))}
+                                    {showListaDepto && busquedaDepto.length > 0 && (
+                                        <div className="absolute z-[110] w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto animate-fade-in">
+                                            {deptosFiltrados.map(d => (
+                                                <div key={d} className="px-4 py-2 hover:bg-blue-50 cursor-pointer text-[10px] font-bold border-b border-slate-50 last:border-none"
+                                                    onClick={() => {
+                                                        setFormData((prev: any) => ({ ...prev, direccion: { ...prev.direccion, departamento: d, ciudad: '' } }));
+                                                        setBusquedaDepto('');
+                                                        setBusquedaCiudad('');
+                                                        setShowListaDepto(false);
+                                                    }}>
+                                                    {d.toUpperCase()}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <select 
+                                        className="select select-bordered select-sm w-full bg-slate-50 mt-1 text-[10px]"
+                                        value={formData.direccion.departamento}
+                                        disabled={usarDireccionPaciente}
+                                        onChange={e => {
+                                            setFormData((prev: any) => ({ ...prev, direccion: { ...prev.direccion, departamento: e.target.value, ciudad: '' } }));
+                                            setBusquedaDepto('');
+                                        }}
+                                    >
+                                        <option value="">-- Depto ({deptosFiltrados.length}) --</option>
+                                        {Object.keys(DIVISION_TERRITORIAL).map(d => <option key={d} value={d}>{d}</option>)}
+                                    </select>
+                                </div>
+
+                                {/* 🟢 CIUDAD BUSCADOR */}
+                                <div className="relative" onClick={e => e.stopPropagation()}>
+                                    <input 
+                                        placeholder="Ciudad..." 
+                                        className="input input-bordered input-sm w-full bg-white disabled:bg-slate-100" 
+                                        value={busquedaCiudad}
+                                        disabled={usarDireccionPaciente || !formData.direccion.departamento}
+                                        onFocus={() => !usarDireccionPaciente && setShowListaCiudad(true)}
+                                        onChange={e => { setBusquedaCiudad(e.target.value); setShowListaCiudad(true); }}
+                                    />
+                                    {showListaCiudad && busquedaCiudad.length > 0 && (
+                                        <div className="absolute z-[110] w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto animate-fade-in">
+                                            {ciudadesFiltradas.map(c => (
+                                                <div key={c} className="px-4 py-2 hover:bg-blue-50 cursor-pointer text-[10px] font-bold border-b border-slate-50 last:border-none"
+                                                    onClick={() => {
+                                                        setFormData((prev: any) => ({ ...prev, direccion: { ...prev.direccion, ciudad: c } }));
+                                                        setBusquedaCiudad('');
+                                                        setShowListaCiudad(false);
+                                                    }}>
+                                                    {c.toUpperCase()}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <select 
+                                        className="select select-bordered select-sm w-full bg-slate-50 mt-1 text-[10px]"
+                                        disabled={usarDireccionPaciente || !formData.direccion.departamento}
+                                        value={formData.direccion.ciudad}
+                                        onChange={e => {
+                                            setFormData((prev: any) => ({ ...prev, direccion: { ...prev.direccion, ciudad: e.target.value } }));
+                                            setBusquedaCiudad('');
+                                        }}
+                                    >
+                                        <option value="">-- Ciudad ({ciudadesFiltradas.length}) --</option>
+                                        {(DIVISION_TERRITORIAL[formData.direccion.departamento] || []).map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </div>
+
+                                <input placeholder="Barrio" className="input input-bordered input-sm bg-white" value={formData.direccion.barrio} readOnly={usarDireccionPaciente} onChange={e => setFormData({ ...formData, direccion: { ...formData.direccion, barrio: e.target.value } })} />
+                                <input placeholder="Calle" className="input input-bordered input-sm bg-white" value={formData.direccion.calle} readOnly={usarDireccionPaciente} onChange={e => setFormData({ ...formData, direccion: { ...formData.direccion, calle: e.target.value } })} />
                             </div>
                         </div>
 
@@ -425,7 +617,7 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                 </div>
 
                 <div className="px-8 py-6 border-t border-slate-100 flex justify-end gap-3 bg-white shrink-0">
-                    <button onClick={onClose} type="button" className="btn btn-ghost px-8 font-bold text-slate-400 hover:bg-slate-100 rounded-2xl">Cerrar</button>
+                    <button onClick={handleManualClose} type="button" className="btn btn-ghost px-8 font-bold text-slate-400 hover:bg-slate-100 rounded-2xl">Cerrar</button>
                     <button type="submit" form="form-cita" className="btn btn-primary px-12 text-white shadow-xl shadow-blue-200 font-bold rounded-2xl" disabled={guardando}>
                         {guardando ? 'Guardando...' : (citaEditar ? 'Sincronizar Cambios' : 'Agendar Cita')}
                     </button>

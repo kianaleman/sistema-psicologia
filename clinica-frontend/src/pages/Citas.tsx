@@ -204,11 +204,23 @@ export default function Citas() {
             // 🟢 Variable utilizada para aplicar estilos de borde adicionales si el estado es "no procesada"
             const esNoProcesada = nombreEstado.toLowerCase().includes("no procesada");
 
-            // 🟡 Lógica de Advertencia (Warning): Más de 2 horas de retraso y sigue pendiente
-            const horaCita = new Date(cita.HoraCita);
+            // 🟡 Lógica de Advertencia (Warning) Corregida: 
+            // 1. Debe ser Hoy. 2. Debe estar Pendiente. 3. Deben haber pasado >= 2 horas.
             const ahora = new Date();
+            const fechaCita = new Date(cita.FechaCita);
+            const horaCita = new Date(cita.HoraCita);
+
+            // Validamos que la fecha sea estrictamente hoy (Ignorando horas para la comparación de día)
+            const esHoy = 
+              fechaCita.getUTCDate() === ahora.getDate() &&
+              fechaCita.getUTCMonth() === ahora.getMonth() &&
+              fechaCita.getUTCFullYear() === ahora.getFullYear();
+
+            // Diferencia en horas basada en el objeto Date completo de horaCita
             const diferenciaHoras = (ahora.getTime() - horaCita.getTime()) / (1000 * 60 * 60);
-            const esAlerta = esProgramada && diferenciaHoras >= 2;
+            
+            // La alerta solo se activa si es HOY, está pendiente y ya pasaron 2 horas
+            const esAlerta = esHoy && esProgramada && diferenciaHoras >= 2;
 
             return (
               <div 
@@ -263,7 +275,15 @@ export default function Citas() {
                       <>
                         <button className="btn btn-ghost btn-xs text-slate-400 hover:text-red-500" onClick={() => setIdCancelar(cita.ID_Cita)}>✕</button>
                         <button className="btn btn-outline btn-xs" onClick={() => openModal("create", cita)}>Editar</button>
-                        <button className="btn btn-primary btn-sm text-white shadow-sm px-4" onClick={() => openModal("session", cita)}>Iniciar</button>
+                        {/* 🟢 BOTÓN INICIAR RESTRINGIDO POR FECHA */}
+                        <button 
+                          className={`btn btn-sm text-white shadow-sm px-4 ${esHoy ? 'btn-primary' : 'btn-disabled bg-slate-200 text-slate-400 border-none'}`} 
+                          onClick={() => esHoy && openModal("session", cita)}
+                          disabled={!esHoy}
+                          title={!esHoy ? "Disponible solo el día de la cita" : ""}
+                        >
+                          Iniciar
+                        </button>
                       </>
                     ) : (
                       <button className="btn btn-outline btn-info btn-sm w-full" onClick={() => openModal("view", cita)}>📄 Ver Expediente</button>

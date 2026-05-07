@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom'; // 🟢 Importación para el Portal
 import { toast } from 'sonner';
 import type { PsicologoCompleto } from '../../hooks/usePsicologos';
@@ -10,6 +10,27 @@ interface Props {
     psicologoEditar: PsicologoCompleto | null;
     catalogos: any;
 }
+
+// 🟢 DATA ESTRUCTURADA DE NICARAGUA
+const DIVISION_TERRITORIAL: Record<string, string[]> = {
+    "Boaco": ["Boaco", "Camoapa", "San José de los Remates", "San Lorenzo", "Santa Lucía", "Teustepe"],
+    "Carazo": ["Diriamba", "Dolores", "El Rosario", "Jinotepe", "La Conquista", "La Paz de Carazo", "San Marcos", "Santa Teresa"],
+    "Chinandega": ["Chichigalpa", "Chinandega", "Cinco Pinos", "Corinto", "El Realejo", "El Viejo", "Posoltega", "Puerto Morazán", "San Francisco del Norte", "San Pedro del Norte", "Santo Tomás del Norte", "Somotillo", "Villanueva"],
+    "Chontales": ["Acoyapa", "Comalapa", "Cuapa", "El Coral", "Juigalpa", "La Libertad", "San Francisco de Cuapa", "San Pedro de Lóvago", "Santo Domingo", "Santo Tomás", "Villa Sandino"],
+    "Estelí": ["Condega", "Estelí", "La Trinidad", "Pueblo Nuevo", "San Juan de Limay", "San Nicolás"],
+    "Granada": ["Diriá", "Diriomo", "Granada", "Nandaime"],
+    "Jinotega": ["El Cuá", "Jinotega", "La Concordia", "San José de Bocay", "San Rafael del Norte", "San Sebastián de Yalí", "Santa María de Pantasma", "Wiwilí de Jinotega"],
+    "León": ["Achuapa", "El Jicaral", "El Sauce", "La Paz Centro", "Larreynaga", "León", "Nagarote", "Quezalguaque", "Santa Rosa del Peñón", "Telica"],
+    "Madriz": ["Las Sabanas", "Palacagüina", "San José de Cusmapa", "San Juan de Río Coco", "San Lucas", "Somoto", "Telpaneca", "Totogalpa"],
+    "Managua": ["Ciudad Sandino", "El Crucero", "Managua", "Mateare", "San Francisco Libre", "San Rafael del Sur", "Ticuantepe", "Tipitapa", "Villa El Carmen"],
+    "Masaya": ["Catarina", "La Concepción", "Masatepe", "Masaya", "Nandasmo", "Nindirí", "Niquinohomo", "San Juan de Oriente", "Tisma"],
+    "Matagalpa": ["Ciudad Darío", "El Tuma - La Dalia", "Esquipulas", "Matagalpa", "Matiguás", "Muy Muy", "Rancho Grande", "Río Blanco", "San Dionisio", "San Isidro", "San Ramón", "Sébaco", "Terrabona"],
+    "Nueva Segovia": ["Ciudad Antigua", "Dipilto", "El Jícaro", "Jalapa", "Macuelizo", "Mozonte", "Murra", "Ocotal", "Quilalí", "San Fernando", "Santa María", "Wiwilí"],
+    "Río San Juan": ["El Almendro", "El Castillo", "Morrito", "San Carlos", "San Juan del Norte", "San Miguelito"],
+    "Rivas": ["Altagracia", "Belén", "Buenos Aires", "Cárdenas", "Moyogalpa", "Potosí", "Rivas", "San Jorge", "San Juan del Sur", "Tola"],
+    "RACCN": ["Bonanza", "Mulukukú", "Prinzapolka", "Puerto Cabezas", "Rosita", "Siuna", "Waslala", "Waspam"],
+    "RACCS": ["Bluefields", "Corn Island", "Desembocadura de Río Grande", "El Ayote", "El Rama", "El Tortuguero", "Kukra Hill", "La Cruz de Río Grande", "Laguna de Perlas", "Muelle de los Bueyes", "Nueva Guinea", "Paiwas"]
+};
 
 const Icons = {
     User: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>,
@@ -35,14 +56,23 @@ export default function PsicologoFormModal({ isOpen, onClose, onSubmit, psicolog
     const [formData, setFormData] = useState(initialForm);
     const [guardando, setGuardando] = useState(false);
 
+    // 🟢 ESTADOS PARA LISTAS FLOTANTES
+    const [busquedaDepto, setBusquedaDepto] = useState('');
+    const [busquedaCiudad, setBusquedaCiudad] = useState('');
+    const [showListaDepto, setShowListaDepto] = useState(false);
+    const [showListaCiudad, setShowListaCiudad] = useState(false);
+
+    // 🟢 MODIFICACIÓN: Reset de búsquedas al cambiar psicologoEditar o isOpen
     useEffect(() => {
+        setBusquedaDepto('');  // Limpiar campo de texto de departamento
+        setBusquedaCiudad(''); // Limpiar campo de texto de ciudad
+        
         if (psicologoEditar) {
              setFormData({
                  nombre: psicologoEditar.Nombre,
                  apellido: psicologoEditar.Apellido,
                  codigoMinsa: psicologoEditar.CodigoMinsa,
                  telefono: psicologoEditar.No_Telefono,
-                 // 🟢 CORRECCIÓN: Se asegura el acceso al Email del Usuario vinculado
                  email: psicologoEditar.Usuario?.Email || '', 
                  activo: psicologoEditar.Activo ?? true,
                  direccion: {
@@ -58,6 +88,29 @@ export default function PsicologoFormModal({ isOpen, onClose, onSubmit, psicolog
         }
     }, [psicologoEditar, isOpen]);
 
+    // 🟢 EFECTO PARA CERRAR LISTAS AL HACER CLIC FUERA
+    useEffect(() => {
+        const cerrar = () => {
+            setShowListaDepto(false);
+            setShowListaCiudad(false);
+        };
+        window.addEventListener('click', cerrar);
+        return () => window.removeEventListener('click', cerrar);
+    }, []);
+
+    // 🟢 FILTRADO DE DEPTOS Y CIUDADES
+    const deptosFiltrados = useMemo(() => {
+        const term = busquedaDepto.toLowerCase().trim();
+        return Object.keys(DIVISION_TERRITORIAL).filter(d => d.toLowerCase().includes(term));
+    }, [busquedaDepto]);
+
+    const ciudadesFiltradas = useMemo(() => {
+        const depto = formData.direccion.departamento;
+        const lista = DIVISION_TERRITORIAL[depto] || [];
+        const term = busquedaCiudad.toLowerCase().trim();
+        return lista.filter(c => c.toLowerCase().includes(term));
+    }, [busquedaCiudad, formData.direccion.departamento]);
+
     const handleEspecialidadChange = (id: string) => {
         setFormData(prev => {
             const exists = prev.especialidadIds.includes(id);
@@ -70,21 +123,25 @@ export default function PsicologoFormModal({ isOpen, onClose, onSubmit, psicolog
         });
     };
 
+    // 🟢 FUNCIÓN DE CIERRE PERSONALIZADA PARA LIMPIAR TODO
+    const handleManualClose = () => {
+        setBusquedaDepto('');
+        setBusquedaCiudad('');
+        onClose();
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
-        // 1. Validar Teléfono
         if (!esTelefonoValido(formData.telefono)) {
             return toast.error('El teléfono debe ser de 8 dígitos (empezar con 2, 5, 7 u 8)');
         }
 
-        // 🟢 2. VALIDACIÓN ESTRICTA DE GMAIL
         const emailLower = formData.email.toLowerCase().trim();
         if (!emailLower.endsWith('@gmail.com')) {
             return toast.error('El sistema solo permite correos de Google (@gmail.com) para crear la cuenta de acceso');
         }
 
-        // 3. Validar Especialidades
         if (formData.especialidadIds.length === 0) {
             return toast.error('Debe seleccionar al menos una especialidad');
         }
@@ -93,12 +150,12 @@ export default function PsicologoFormModal({ isOpen, onClose, onSubmit, psicolog
         try {
             const payload = { 
                 ...formData, 
-                email: emailLower, // 🟢 Enviamos el correo normalizado
+                email: emailLower, 
                 especialidadIds: formData.especialidadIds.map(Number),
                 idRol: 2 
             };
             await onSubmit(payload, !!psicologoEditar);
-            onClose();
+            handleManualClose(); // Usar el cierre limpio
         } catch (error) {
             console.error(error);
         } finally {
@@ -121,7 +178,7 @@ export default function PsicologoFormModal({ isOpen, onClose, onSubmit, psicolog
                             Gestión de credenciales y cuenta de acceso
                         </p>
                     </div>
-                    <button type="button" className="btn btn-sm btn-circle btn-ghost text-slate-400" onClick={onClose} disabled={guardando}>✕</button>
+                    <button type="button" className="btn btn-sm btn-circle btn-ghost text-slate-400" onClick={handleManualClose} disabled={guardando}>✕</button>
                 </div>
                 
                 <div className="overflow-y-auto flex-1 bg-slate-50/50 p-10">
@@ -160,8 +217,7 @@ export default function PsicologoFormModal({ isOpen, onClose, onSubmit, psicolog
                                                 <input 
                                                     required 
                                                     type="email" 
-                                                    placeholder="ejemplo@clinica.com" 
-                                                    // 🟢 BLOQUEO DE SEGURIDAD EN EDICIÓN
+                                                    placeholder="ejemplo@gmail.com" 
                                                     disabled={!!psicologoEditar}
                                                     className={`input input-bordered pl-10 w-full bg-slate-50 border-slate-200 rounded-xl ${psicologoEditar ? 'opacity-60 cursor-not-allowed' : ''}`} 
                                                     value={formData.email} 
@@ -190,8 +246,82 @@ export default function PsicologoFormModal({ isOpen, onClose, onSubmit, psicolog
                                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Icons.MapPin /> Ubicación</h4>
                                     <div className="space-y-4">
                                         <div className="grid grid-cols-2 gap-3">
-                                            <input placeholder="Departamento" className="input input-sm input-bordered bg-slate-50 border-slate-200 rounded-lg" value={formData.direccion.departamento} onChange={e => setFormData({...formData, direccion: {...formData.direccion, departamento: e.target.value}})} />
-                                            <input placeholder="Ciudad" className="input input-sm input-bordered bg-slate-50 border-slate-200 rounded-lg" value={formData.direccion.ciudad} onChange={e => setFormData({...formData, direccion: {...formData.direccion, ciudad: e.target.value}})} />
+                                            {/* 🟢 DEPARTAMENTO BUSCADOR */}
+                                            <div className="relative" onClick={e => e.stopPropagation()}>
+                                                <input 
+                                                    placeholder="Depto..." 
+                                                    className="input input-bordered input-sm w-full bg-white" 
+                                                    value={busquedaDepto} 
+                                                    onFocus={() => setShowListaDepto(true)}
+                                                    onChange={e => { setBusquedaDepto(e.target.value); setShowListaDepto(true); }}
+                                                />
+                                                {showListaDepto && busquedaDepto.length > 0 && (
+                                                    <div className="absolute z-[110] w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto animate-fade-in">
+                                                        {deptosFiltrados.map(d => (
+                                                            <div key={d} className="px-4 py-2 hover:bg-blue-50 cursor-pointer text-[10px] font-bold border-b border-slate-50 last:border-none"
+                                                                onClick={() => {
+                                                                    setFormData(prev => ({ ...prev, direccion: { ...prev.direccion, departamento: d, ciudad: '' } }));
+                                                                    setBusquedaDepto('');
+                                                                    setBusquedaCiudad('');
+                                                                    setShowListaDepto(false);
+                                                                }}>
+                                                                {d.toUpperCase()}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <select 
+                                                    required
+                                                    className="select select-bordered select-sm w-full bg-slate-50 mt-1 text-[10px]"
+                                                    value={formData.direccion.departamento}
+                                                    onChange={e => {
+                                                        setFormData(prev => ({ ...prev, direccion: { ...prev.direccion, departamento: e.target.value, ciudad: '' } }));
+                                                        setBusquedaDepto('');
+                                                    }}
+                                                >
+                                                    <option value="">-- Depto ({deptosFiltrados.length}) --</option>
+                                                    {Object.keys(DIVISION_TERRITORIAL).map(d => <option key={d} value={d}>{d}</option>)}
+                                                </select>
+                                            </div>
+
+                                            {/* 🟢 CIUDAD BUSCADOR */}
+                                            <div className="relative" onClick={e => e.stopPropagation()}>
+                                                <input 
+                                                    placeholder="Ciudad..." 
+                                                    className="input input-bordered input-sm w-full bg-white disabled:bg-slate-100 font-medium" 
+                                                    value={busquedaCiudad}
+                                                    disabled={!formData.direccion.departamento}
+                                                    onFocus={() => setShowListaCiudad(true)}
+                                                    onChange={e => { setBusquedaCiudad(e.target.value); setShowListaCiudad(true); }}
+                                                />
+                                                {showListaCiudad && busquedaCiudad.length > 0 && (
+                                                    <div className="absolute z-[110] w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto animate-fade-in">
+                                                        {ciudadesFiltradas.map(c => (
+                                                            <div key={c} className="px-4 py-2 hover:bg-blue-50 cursor-pointer text-[10px] font-bold border-b border-slate-50 last:border-none"
+                                                                onClick={() => {
+                                                                    setFormData(prev => ({ ...prev, direccion: { ...prev.direccion, ciudad: c } }));
+                                                                    setBusquedaCiudad('');
+                                                                    setShowListaCiudad(false);
+                                                                }}>
+                                                                {c.toUpperCase()}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <select 
+                                                    required
+                                                    className="select select-bordered select-sm w-full bg-slate-50 mt-1 text-[10px]"
+                                                    disabled={!formData.direccion.departamento}
+                                                    value={formData.direccion.ciudad}
+                                                    onChange={e => {
+                                                        setFormData(prev => ({ ...prev, direccion: { ...prev.direccion, ciudad: e.target.value } }));
+                                                        setBusquedaCiudad('');
+                                                    }}
+                                                >
+                                                    <option value="">-- Ciudad ({ciudadesFiltradas.length}) --</option>
+                                                    {(DIVISION_TERRITORIAL[formData.direccion.departamento] || []).map(c => <option key={c} value={c}>{c}</option>)}
+                                                </select>
+                                            </div>
                                         </div>
                                         <input placeholder="Barrio" className="input input-sm input-bordered w-full bg-slate-50 border-slate-200 rounded-lg" value={formData.direccion.barrio} onChange={e => setFormData({...formData, direccion: {...formData.direccion, barrio: e.target.value}})} />
                                         <textarea placeholder="Referencia exacta" className="textarea textarea-bordered bg-slate-50 w-full h-24 resize-none text-sm border-slate-200 rounded-xl" value={formData.direccion.calle} onChange={e => setFormData({...formData, direccion: {...formData.direccion, calle: e.target.value}})} />
@@ -230,7 +360,7 @@ export default function PsicologoFormModal({ isOpen, onClose, onSubmit, psicolog
                 </div>
 
                 <div className="bg-white px-10 py-7 border-t border-slate-100 flex justify-end gap-4 shrink-0">
-                    <button type="button" className="btn btn-ghost px-8 font-bold text-slate-400" onClick={onClose} disabled={guardando}>Cancelar</button>
+                    <button type="button" className="btn btn-ghost px-8 font-bold text-slate-400" onClick={handleManualClose} disabled={guardando}>Cancelar</button>
                     <button type="submit" form="psicologo-form" className="btn bg-slate-900 hover:bg-slate-800 text-white px-12 rounded-2xl font-bold shadow-xl shadow-slate-200 transition-all" disabled={guardando}>
                         {guardando ? <span className="loading loading-spinner loading-xs"></span> : 'Guardar Perfil Profesional'}
                     </button>
