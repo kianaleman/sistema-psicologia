@@ -1,4 +1,4 @@
-import { PrismaClient, type Cita, type Factura } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -10,13 +10,14 @@ interface CreateCitaDTO {
   pacienteId: number;
   psicologoId: number;
   precio: number;
+  divisaId: number; // Nuevo requerimiento financiero
   metodoPagoId: number;
+  bancoId?: number; // Opcional, requerido si no es efectivo
+  numeroReferencia?: string; // Opcional, requerido si no es efectivo
   direccion: {
-    pais?: string;
-    departamento: string;
-    ciudad: string;
+    municipioId: number; // Catálogo geográfico
     barrio: string;
-    calle: string;
+    calle?: string;
   };
 }
 
@@ -29,20 +30,23 @@ const verificarDisponibilidad = async (
   horaUTC: Date, 
   citaIdExcluir?: number
 ) => {
-  const citasDelDia = await prisma.cita.findMany({
-    where: {
-      ID_Psicologo: psicologoId,
-      FechaCita: fecha, 
-      ID_EstadoCita: { not: 3 }, 
-      ID_Cita: citaIdExcluir ? { not: citaIdExcluir } : undefined
-    }
-  });
+  // Construimos el objeto dinámicamente
+  const whereClause: any = {
+    ID_Psicologo: psicologoId,
+    FechaCita: fecha, 
+    ID_EstadoCita: { not: 3 }
+  };
+
+  if (citaIdExcluir) {
+    whereClause.ID_Cita = { not: citaIdExcluir };
+  }
+
+  const citasDelDia = await prisma.cita.findMany({ where: whereClause });
 
   const conflicto = citasDelDia.find(c => {
     const horaDb = new Date(c.HoraCita); 
     const horaNueva = new Date(horaUTC);
     
-    // Comparamos las horas UTC que es como se guardan y leen de la BD
     return horaDb.getUTCHours() === horaNueva.getUTCHours() &&
            horaDb.getUTCMinutes() === horaNueva.getUTCMinutes();
   });
@@ -61,9 +65,10 @@ export const CitaService = {
         Psicologo: true,
         TipoDeCita: true,
         EstadoCita: true,
-        Factura: true,
-        DireccionCita: true,
-        MotivoCancelacion: true
+        Recibo: { include: { MetodoPago: true, Divisa: true, Banco: true } }, // Nueva estructura financiera
+        Direccion: { include: { Municipio: { include: { Departamento: true } } } }, // Nueva estructura geográfica
+        MotivoCancelacion: true,
+        Sesion: true // Agregado para saber fácilmente si ya tiene sesión iniciada
       },
       orderBy: [
         { FechaCita: 'asc' }, 
@@ -88,40 +93,49 @@ export const CitaService = {
   },
 
   getCatalogos: async () => {
-    const [tiposCita, estadosCita, metodosPago] = await Promise.all([
+    const [tiposCita, estadosCita, metodosPago, bancos, divisas] = await Promise.all([
       prisma.tipoDeCita.findMany(),
       prisma.estadoCita.findMany(),
-      prisma.metodoPago.findMany()
+      prisma.metodoPago.findMany(),
+      prisma.banco.findMany({ where: { Activo: true } }), // Solo bancos activos
+      prisma.divisa.findMany()
     ]);
-    return { tiposCita, estadosCita, metodosPago };
+    return { tiposCita, estadosCita, metodosPago, bancos, divisas };
   },
 
   create: async (data: CreateCitaDTO) => {
-    // 1. Validaciones de Entidad (Paciente/Psicologo)
+    // 1. Validaciones de Entidad
     const pacienteCheck = await prisma.paciente.findUnique({
       where: { ID_Paciente: data.pacienteId },
-      select: { ID_EstadoDeActividad: true, Nombre: true, Apellido: true }
+      select: { Activo: true, Nombre: true, Apellido: true }
     });
     if (!pacienteCheck) throw new Error('El paciente seleccionado no existe.');
-    if (pacienteCheck.ID_EstadoDeActividad !== 1) {
+    if (!pacienteCheck.Activo) {
       throw new Error(`No se puede agendar: El paciente ${pacienteCheck.Nombre} ${pacienteCheck.Apellido} está INACTIVO.`);
     }
 
     const psicologoCheck = await prisma.psicologo.findUnique({
       where: { ID_Psicologo: data.psicologoId },
-      select: { ID_EstadoDeActividad: true, Nombre: true, Apellido: true }
+      select: { Activo: true, Nombre: true, Apellido: true }
     });
     if (!psicologoCheck) throw new Error('Psicólogo no encontrado.');
-    if (psicologoCheck.ID_EstadoDeActividad !== 1) {
+    if (!psicologoCheck.Activo) {
       throw new Error(`No disponible: El Dr. ${psicologoCheck.Apellido} está marcado como INACTIVO.`);
     }
 
-    const [horas, minutos] = data.hora.split(':').map(Number);
+    // Validación Financiera: Si no es efectivo (ID = 1), exige banco y referencia
+    if (data.metodoPagoId !== 1 && (!data.bancoId || !data.numeroReferencia)) {
+        throw new Error('Para transferencias o pagos con tarjeta, debe seleccionar un Banco e ingresar el Número de Referencia.');
+    }
+
+    // Se extrae y se garantiza que sea un número (con fallback a 0)
+    const timeParts = data.hora.split(':').map(Number);
+    const horas = timeParts[0] ?? 0;
+    const minutos = timeParts[1] ?? 0;
+    
     if (isNaN(horas) || isNaN(minutos)) throw new Error('Hora inválida');
 
-    // 2. LÓGICA DE FECHAS (AQUÍ ESTÁ LA CORRECCIÓN)
-    
-    // A) Fecha para VALIDAR (Usamos la zona horaria real de Nicaragua)
+    // 2. Lógica de Fechas
     const fechaIsoString = `${data.fecha}T${data.hora}:00-06:00`; 
     const fechaValidacion = new Date(fechaIsoString);
     const ahora = new Date();
@@ -130,12 +144,8 @@ export const CitaService = {
         throw new Error("No es posible agendar citas en una fecha u hora que ya pasó.");
     }
 
-    // B) Fecha para GUARDAR (Forzamos UTC para que SQL Server reciba el número literal)
-    // Si el usuario puso 20:09, creamos una fecha donde getUTCHours() sea 20.
     const fechaParaGuardar = new Date(data.fecha);
     fechaParaGuardar.setUTCHours(horas, minutos, 0, 0);
-    
-    // Objeto fecha pura (sin hora) para la columna FechaCita
     const fechaSoloDia = new Date(data.fecha);
 
     // 3. Disponibilidad
@@ -145,60 +155,69 @@ export const CitaService = {
     const horaPagoNica = new Date(fechaHoraActual.getTime() - (6 * 60 * 60 * 1000));
 
     return await prisma.$transaction(async (tx) => {
-      const direccionClinica = await tx.direccionCita.create({
+      // 1. Crear Dirección (con catálogo de municipios)
+      const direccionClinica = await tx.direccion.create({
         data: { 
-          Pais: data.direccion.pais || 'Nicaragua', 
-          Departamento: data.direccion.departamento, 
-          Ciudad: data.direccion.ciudad, 
+          Pais: 'Nicaragua', // Asumimos país fijo por ahora
+          ID_Municipio: data.direccion.municipioId,
           Barrio: data.direccion.barrio, 
-          Calle: data.direccion.calle 
+          Calle: data.direccion.calle || null
         }
       });
 
+      // 2. Crear Cita
       const citaCreada = await tx.cita.create({
         data: {
           FechaCita: fechaSoloDia,
-          HoraCita: fechaParaGuardar, // Enviamos la hora "forzada" en UTC
+          HoraCita: fechaParaGuardar,
           MotivoConsulta: data.motivo,
           ID_TipoCita: data.tipoCitaId,
           ID_EstadoCita: 1, 
           ID_Paciente: data.pacienteId,
           ID_Psicologo: data.psicologoId,
-          ID_DireccionCita: direccionClinica.ID_DireccionCita
+          ID_Direccion: direccionClinica.ID_Direccion // Atributo renombrado en DB
         }
       });
 
-      const facturaCreada = await tx.factura.create({
+      // 3. Crear Recibo (Reemplaza a Factura y DetalleFactura)
+      // 3. Crear Recibo
+      const reciboCreado = await tx.recibo.create({
         data: {
           ID_Cita: citaCreada.ID_Cita,
-          FechaFactura: fechaSoloDia,
-          MontoTotal: data.precio
-        }
-      });
-
-      await tx.detalleFactura.create({
-        data: {
-          Cod_Factura: facturaCreada.Cod_Factura,
+          ID_Divisa: data.divisaId,
           ID_MetodoPago: data.metodoPagoId,
-          PrecioDeCita: data.precio,
           FechaDePago: fechaHoraActual,
           HoraDePago: horaPagoNica,
-          Observacion: 'Pago registrado al agendar cita'
+          MontoTotal: data.precio,
+          Observacion: 'Pago registrado al agendar cita',
+          Tasa_Cambio: 1.0000,
+          // Usamos ?? null para garantizar que si viene undefined, se pase a null
+          ID_Banco: data.metodoPagoId !== 1 ? (data.bancoId ?? null) : null,
+          Numero_Referencia: data.metodoPagoId !== 1 ? (data.numeroReferencia ?? null) : null
         }
       });
       
-      return { cita: citaCreada, factura: facturaCreada };
+      return { cita: citaCreada, recibo: reciboCreado };
     });
   },
 
   update: async (id: number, data: UpdateCitaDTO) => {
-    const pacienteCheck = await prisma.paciente.findUnique({ where: { ID_Paciente: data.pacienteId }, select: { ID_EstadoDeActividad: true } });
-    if (pacienteCheck && pacienteCheck.ID_EstadoDeActividad !== 1) throw new Error('No se puede asignar esta cita a un paciente INACTIVO.');
+    const pacienteCheck = await prisma.paciente.findUnique({ where: { ID_Paciente: data.pacienteId }, select: { Activo: true } });
+    if (pacienteCheck && !pacienteCheck.Activo) throw new Error('No se puede asignar esta cita a un paciente INACTIVO.');
 
-    const psicologoCheck = await prisma.psicologo.findUnique({ where: { ID_Psicologo: data.psicologoId }, select: { ID_EstadoDeActividad: true } });
-    if (psicologoCheck && psicologoCheck.ID_EstadoDeActividad !== 1) throw new Error('El psicólogo seleccionado está INACTIVO.');
+    const psicologoCheck = await prisma.psicologo.findUnique({ where: { ID_Psicologo: data.psicologoId }, select: { Activo: true } });
+    if (psicologoCheck && !psicologoCheck.Activo) throw new Error('El psicólogo seleccionado está INACTIVO.');
 
-    const [horas, minutos] = data.hora.split(':').map(Number);
+    if (data.metodoPagoId !== 1 && (!data.bancoId || !data.numeroReferencia)) {
+        throw new Error('Para transferencias o pagos con tarjeta, debe seleccionar un Banco e ingresar el Número de Referencia.');
+    }
+
+    // Se extrae y se garantiza que sea un número (con fallback a 0)
+    const timeParts = data.hora.split(':').map(Number);
+    const horas = timeParts[0] ?? 0;
+    const minutos = timeParts[1] ?? 0;
+    
+    if (isNaN(horas) || isNaN(minutos)) throw new Error('Hora inválida');
     if (isNaN(horas) || isNaN(minutos)) throw new Error('Hora inválida');
 
     const fechaIsoString = `${data.fecha}T${data.hora}:00-06:00`;
@@ -216,27 +235,25 @@ export const CitaService = {
     await verificarDisponibilidad(data.psicologoId, fechaSoloDia, fechaParaGuardar, id);
 
     await prisma.$transaction(async (tx) => {
-      // 1. OBTENER LA CITA ACTUAL PARA SABER SU ID DE DIRECCIÓN
+      // 1. OBTENER LA CITA ACTUAL
       const citaActual = await tx.cita.findUnique({
           where: { ID_Cita: id },
-          select: { ID_DireccionCita: true }
+          select: { ID_Direccion: true }
       });
 
-      // 2. ACTUALIZAR DIRECCIÓN (Si existe la cita y vienen datos)
+      // 2. ACTUALIZAR DIRECCIÓN
       if (citaActual && data.direccion) {
-          await tx.direccionCita.update({
-              where: { ID_DireccionCita: citaActual.ID_DireccionCita },
+          await tx.direccion.update({
+              where: { ID_Direccion: citaActual.ID_Direccion },
               data: {
-                  Pais: data.direccion.pais || 'Nicaragua',
-                  Departamento: data.direccion.departamento,
-                  Ciudad: data.direccion.ciudad,
+                  ID_Municipio: data.direccion.municipioId,
                   Barrio: data.direccion.barrio,
-                  Calle: data.direccion.calle
+                  Calle: data.direccion.calle || null
               }
           });
       }
 
-      // 3. ACTUALIZAR DATOS DE LA CITA
+      // 3. ACTUALIZAR CITA
       await tx.cita.update({
         where: { ID_Cita: id },
         data: {
@@ -249,23 +266,18 @@ export const CitaService = {
         }
       });
 
-      // 4. ACTUALIZAR FACTURA
-      const factura = await tx.factura.findFirst({ where: { ID_Cita: id } });
-      if (factura) {
-        await tx.factura.update({
-          where: { Cod_Factura: factura.Cod_Factura },
+      // 4. ACTUALIZAR RECIBO
+      const recibo = await tx.recibo.findFirst({ where: { ID_Cita: id } });
+      if (recibo) {
+        await tx.recibo.update({
+          where: { Cod_Recibo: recibo.Cod_Recibo },
           data: { 
-            FechaFactura: fechaSoloDia,
-            MontoTotal: data.precio
+            MontoTotal: data.precio,
+            ID_Divisa: data.divisaId,
+            ID_MetodoPago: data.metodoPagoId,
+            ID_Banco: data.metodoPagoId !== 1 ? (data.bancoId ?? null) : null,
+            Numero_Referencia: data.metodoPagoId !== 1 ? (data.numeroReferencia ?? null) : null
           }
-        });
-        
-        await tx.detalleFactura.updateMany({
-           where: { Cod_Factura: factura.Cod_Factura },
-           data: { 
-             ID_MetodoPago: data.metodoPagoId,
-             PrecioDeCita: data.precio 
-           }
         });
       }
     });
@@ -277,7 +289,7 @@ export const CitaService = {
       where: { ID_Cita: id },
       data: { 
         ID_EstadoCita: 3, 
-        ID_Motivo: Number(motivoId), 
+        ID_MotivoCancelacion: Number(motivoId), // Atributo renombrado en DB
         NotasCancelacion: notas     
       } 
     });
@@ -298,31 +310,10 @@ export const CitaService = {
         const fechaCompleta = new Date(cita.FechaCita);
         const hora = new Date(cita.HoraCita);
         
-        // Reconstruimos usando UTC para leer lo que guardamos literalmente
         fechaCompleta.setUTCHours(hora.getUTCHours(), hora.getUTCMinutes(), 0, 0);
         
-        // OJO: Aquí asumimos que lo guardado en BD es "hora nica" pero en UTC.
-        // Para comparar con "ahora" (que es UTC real), necesitamos ajustar el offset
-        // O simplemente, si guardamos 20:00 como 20:00 UTC, y ahora son las 21:00 UTC, la resta funciona directa.
-        
         const tiempoLimite = new Date(fechaCompleta.getTime() + (toleranciaMinutos * 60000));
-
-        // Sin embargo, 'ahora' es UTC real. Si son las 20:00 en Nica, 'ahora' es las 02:00 del día siguiente.
-        // Y 'tiempoLimite' tiene 20:00 UTC.
-        // 02:00 > 20:00 ? No (es del día siguiente). Hay un desfase.
-        
-        // AJUSTE CRÍTICO PARA CRON: 
-        // Convertimos 'ahora' a la "hora visual nica" pero en objeto UTC para poder comparar manzanas con manzanas.
-        const ahoraNica = new Date(ahora.toLocaleString('en-US', { timeZone: 'America/Managua' }));
-        // Parseamos eso de nuevo a un objeto Date simple
-        const ahoraNicaComparable = new Date(ahoraNica); 
-
-        // NOTA: Esto es complejo. Simplificamos:
-        // Si guardamos 20:00 UTC para representar 20:00 Nica.
-        // Y son las 21:00 Nica. El servidor (UTC) dice que son las 03:00.
-        // 03:00 (server) - 6 horas = 21:00 (Nica).
-        
-        const ahoraAjustado = new Date(ahora.getTime() - (6 * 60 * 60 * 1000)); // UTC-6 manual
+        const ahoraAjustado = new Date(ahora.getTime() - (6 * 60 * 60 * 1000)); 
 
         if (ahoraAjustado > tiempoLimite) {
             idsParaActualizar.push(cita.ID_Cita);
@@ -335,7 +326,7 @@ export const CitaService = {
         where: { ID_Cita: { in: idsParaActualizar } },
         data: {
             ID_EstadoCita: 4, 
-            ID_Motivo: 4,
+            ID_MotivoCancelacion: 5, // 5 = Inasistencia sin Aviso (Basado en tu script inicial)
             NotasCancelacion: 'Cierre automático: El paciente no se presentó a la hora agendada.'
         }
     });

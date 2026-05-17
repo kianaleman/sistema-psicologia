@@ -6,16 +6,13 @@ interface UpdateTutorDTO {
   Nombre: string;
   Apellido: string;
   No_Cedula: string;
+  codigoTelefonoId: number; // Nuevo requerimiento del catálogo
   No_Telefono: string;
-  ID_Parentesco: number;
-  ID_Ocupacion: number;
-  ID_EstadoCivil: number;
-  DireccionTutor: {
-    Departamento: string;
-    Ciudad: string;
-    Barrio: string;
-    Calle: string;
-  };
+  ocupacionId: number;
+  estadoCivilId: number;
+  
+  // ❌ ID_Parentesco se eliminó: Ahora pertenece a la tabla intermedia (Tutor_PacienteMenor)
+  // ❌ DireccionTutor se eliminó: Ya no existe en el esquema de BD para Tutor
 }
 
 const validarFormatoCedula = (cedula: string) => {
@@ -40,8 +37,19 @@ export const TutorService = {
   getAll: async () => {
     return await prisma.tutor.findMany({
       include: {
-        DireccionTutor: true, Ocupacion: true, EstadoCivil: true, Parentesco: true,
-        PacienteMenor: { include: { Paciente: true } }
+        // Relaciones directas (Nota: Si Prisma marca error en Ocupacion, verifica en tu schema 
+        // si lo nombró distinto al coincidir la columna y la tabla, ej: Ocupacion_relation)
+        CodigoTelefonoPais: true, 
+        
+        // La navegación hacia el paciente menor ahora se hace a través de la tabla intermedia
+        Tutor_PacienteMenor: { 
+          include: { 
+            Parentesco: true,
+            Paciente_Menor: { 
+                include: { Paciente: true } 
+            } 
+          } 
+        }
       },
       orderBy: { Nombre: 'asc' }
     });
@@ -49,15 +57,16 @@ export const TutorService = {
 
   update: async (id: number, data: UpdateTutorDTO) => {
     validarFormatoCedula(data.No_Cedula);
-    
-    // Validamos y limpiamos el teléfono antes de usarlo
     const telefonoLimpio = validarTelefonoNica(data.No_Telefono);
 
+    // Validación dinámica para evitar el error de "undefined" de TypeScript
+    const whereClause: any = { No_Cedula: data.No_Cedula };
+    if (id) {
+        whereClause.ID_Tutor = { not: id };
+    }
+
     const cedulaDuplicada = await prisma.tutor.findFirst({
-        where: {
-            No_Cedula: data.No_Cedula,
-            ID_Tutor: { not: id }
-        }
+        where: whereClause
     });
 
     if (cedulaDuplicada) {
@@ -73,18 +82,11 @@ export const TutorService = {
         Nombre: data.Nombre,
         Apellido: data.Apellido,
         No_Cedula: data.No_Cedula,
-        No_Telefono: telefonoLimpio, // Usamos el limpio
-        Parentesco: { connect: { ID_Parentesco: Number(data.ID_Parentesco) } },
-        Ocupacion: { connect: { ID_Ocupacion: Number(data.ID_Ocupacion) } },
-        EstadoCivil: { connect: { ID_EstadoCivil: Number(data.ID_EstadoCivil) } },
-        DireccionTutor: {
-          update: {
-            Departamento: data.DireccionTutor.Departamento,
-            Ciudad: data.DireccionTutor.Ciudad,
-            Barrio: data.DireccionTutor.Barrio,
-            Calle: data.DireccionTutor.Calle
-          }
-        }
+        ID_CodigoTelefono: data.codigoTelefonoId,
+        No_Telefono: telefonoLimpio,
+        // Al actualizar, pasamos directamente los números a las columnas foráneas
+        Ocupacion: data.ocupacionId,
+        EstadoCivil: data.estadoCivilId
       }
     });
   }

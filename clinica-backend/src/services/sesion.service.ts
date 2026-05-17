@@ -17,8 +17,6 @@ interface TratamientoInput {
 
 interface CreateSesionDTO {
   citaId: number;
-  pacienteId: number;
-  psicologoId: number;
   observaciones: string;
   diagnostico: string;
   criterios?: string;
@@ -33,61 +31,60 @@ export const SesionService = {
   create: async (data: CreateSesionDTO) => {
     return await prisma.$transaction(async (tx) => {
       
-      // 1. Buscar o Crear Expediente (Lógica de Negocio)
-      const sesionPrevia = await tx.sesion.findFirst({ 
-        where: { ID_Paciente: data.pacienteId } 
+      // 0. Obtener la información del paciente a través de la Cita
+      const citaActual = await tx.cita.findUnique({
+        where: { ID_Cita: data.citaId },
+        select: { ID_Paciente: true, ID_Psicologo: true }
+      });
+
+      if (!citaActual) {
+          throw new Error("La cita proporcionada no existe.");
+      }
+
+      // 1. Buscar o Crear Expediente (Viajando por las relaciones)
+      const pacienteActual = await tx.paciente.findUnique({
+        where: { ID_Paciente: citaActual.ID_Paciente },
+        include: { Expediente: true }
       });
       
-      let expedienteId = sesionPrevia?.ID_Expediente;
+      // En la nueva BD, un paciente tiene un arreglo de expedientes (aunque en la práctica sea uno).
+      // Tomamos el primero si existe.
+      let expedienteId = pacienteActual?.Expediente?.ID_Expediente;
 
       if (!expedienteId) {
         const nuevoExp = await tx.expediente.create({
           data: { 
-            No_Expediente: `EXP-${Date.now()}`, // Generación automática
-            FechaIngreso: new Date() 
+            No_Expediente: `EXP-${Date.now()}`, 
+            FechaIngreso: new Date(),
+            ID_Paciente: citaActual.ID_Paciente // El expediente sí está vinculado al paciente
           }
         });
         expedienteId = nuevoExp.ID_Expediente;
       }
 
-    //   // 2. Manejo de Horas (UTC vs Local)
-    //   // Asumimos que 'horaInicio' viene como "HH:MM:SS" o "HH:MM"
-    //   // Creamos una fecha base UTC (Epoch) + Hora
-    //   const horaInicioParts = data.horaInicio.split(':');
-    //   const fechaInicio = new Date(0); // 1970-01-01
-    //   fechaInicio.setUTCHours(parseInt(horaInicioParts[0]), parseInt(horaInicioParts[1]));
-
-    //   // Hora Final (Ahora mismo)
-    //   const ahora = new Date();
-    //   // Ajuste a formato TIME compatible con SQL Server (usando UTC)
-    //   const fechaFinal = new Date(0);
-    // 2. Manejo de Horas (CORREGIDO)
+      // 2. Manejo de Horas (CORREGIDO)
       const horaInicioParts = data.horaInicio.split(':');
-      
-      // ANTES: const fechaInicio = new Date(0);  <-- ESTO CAUSABA EL 1970
-      
-      // AHORA: Usamos la fecha actual
       const fechaInicio = new Date(); 
       
-      // Ajustamos la hora sobre la fecha de hoy. 
-      // Usamos setHours (local) porque la hora viene del frontend en formato local.
-      fechaInicio.setHours(parseInt(horaInicioParts[0]), parseInt(horaInicioParts[1]), 0, 0);
+      // Extraemos y aseguramos que siempre sea string para el parseInt
+      const horaStr = horaInicioParts[0] ?? '0';
+      const minStr = horaInicioParts[1] ?? '0';
 
-      // Hora Final (Ahora mismo)
+      fechaInicio.setHours(parseInt(horaStr), parseInt(minStr), 0, 0);
+
       const fechaFinal = new Date();
       fechaFinal.setUTCHours(fechaFinal.getHours(), fechaFinal.getMinutes());
 
-      // 3. Crear la Sesión Base
+      // 3. Crear la Sesión Base (La magia del 1:1)
       const nuevaSesion = await tx.sesion.create({
         data: {
+          ID_Cita: data.citaId, // Vínculo directo a la cita (1:1)
           HoraDeInicio: fechaInicio,
           HoraFinal: fechaFinal,
           Observaciones: data.observaciones,
           DiagnosticoDiferencial: data.diagnostico,
-          CriteriosDeDiagnostico: data.criterios || 'DSM-5',
-          HistorialDevolucion: data.historial || 'Evolución estándar',
-          ID_Paciente: data.pacienteId,
-          ID_Psicologo: data.psicologoId,
+          Criterios_DeDiagnostico: data.criterios || 'DSM-5', // Renombrado
+          HistorialDeEvolucion: data.historial || 'Evolución estándar', // Renombrado
           ID_Expediente: expedienteId
         }
       });
@@ -100,27 +97,28 @@ export const SesionService = {
             data: {
               ID_Sesion: nuevaSesion.ID_Sesion,
               FechaInicio: new Date(),
-              Frecuencia: t.frecuencia || 'Según indicación'
+              Frecuencia: t.frecuencia || 'Según indicación',
+              ID_Psicologo_Firma: citaActual.ID_Psicologo // Se firma con el psicólogo de la cita
             }
           });
 
           // Crear Tratamiento Hijo según Tipo
           if (t.tipo === 'farmacologico') {
-            if (!t.medicamento || !t.dosis || !t.viaAdminId) continue; // Skip invalid
-            await tx.tratamientoFarmaceutico.create({
+            if (!t.medicamento || !t.dosis || !t.viaAdminId) continue; 
+            await tx.tratamiento_Farmaceutico.create({ // Renombrado
               data: {
-                ID_TratamientoFarmaceutico: tratamientoBase.ID_Tratamiento,
+                ID_Tratamiento_Farmaceutico: tratamientoBase.ID_Tratamiento, // Renombrado
                 ID_ViaAdministracion: Number(t.viaAdminId),
-                NombreMedicamento: t.medicamento,
+                Nombre_Medicamento: t.medicamento, // Renombrado
                 Dosis: t.dosis
               }
             });
           } else if (t.tipo === 'terapeutico') {
-            if (!t.tipoTerapiaId || !t.objetivo) continue; // Skip invalid
-            await tx.tratamientoTerapeutico.create({
+            if (!t.tipoTerapiaId || !t.objetivo) continue; 
+            await tx.tratamiento_Terapeutico.create({ // Renombrado
               data: {
                 ID_TratamientoTerapeutico: tratamientoBase.ID_Tratamiento,
-                ID_TipoTerapia: Number(t.tipoTerapiaId),
+                ID_Tipo_Terapia: Number(t.tipoTerapiaId), // Renombrado
                 Objetivo: t.objetivo
               }
             });
@@ -143,7 +141,7 @@ export const SesionService = {
       // 6. Actualizar Estado de la Cita (Cerrarla)
       await tx.cita.update({
         where: { ID_Cita: data.citaId },
-        data: { ID_EstadoCita: 2 } // 2 = Completada
+        data: { ID_EstadoCita: 2 } // 2 = Realizada
       });
 
       return nuevaSesion;
@@ -152,13 +150,22 @@ export const SesionService = {
 
   // Búsqueda simple para historial
   findByParams: async (pacienteId: number, psicologoId: number) => {
-    return await prisma.sesion.findFirst({
+    // Al no tener paciente/psicólogo en la sesión, buscamos la cita que los tenga
+    // y devolvemos su sesión vinculada.
+    const cita = await prisma.cita.findFirst({
       where: { 
         ID_Paciente: pacienteId, 
-        ID_Psicologo: psicologoId 
+        ID_Psicologo: psicologoId,
+        ID_EstadoCita: 2 // Buscamos solo en citas completadas
       },
-      orderBy: { ID_Sesion: 'desc' },
-      include: { Expediente: true }
+      orderBy: { FechaCita: 'desc' },
+      include: { 
+        Sesion: {
+            include: { Expediente: true }
+        } 
+      }
     });
+
+    return cita ? cita.Sesion : null;
   }
 };

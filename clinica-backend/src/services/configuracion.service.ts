@@ -9,18 +9,20 @@ interface ModelConfig {
   nameField: string;
 }
 
-// 1. Mapeo centralizado de Modelos
+// 1. Mapeo centralizado de Modelos (Actualizado al nuevo esquema de BD)
 const MODEL_MAP: Record<string, ModelConfig> = {
-  ocupacion: { model: prisma.ocupacion, idField: 'ID_Ocupacion', nameField: 'NombreDeOcupacion' },
-  estadocivil: { model: prisma.estadoCivil, idField: 'ID_EstadoCivil', nameField: 'NombreEstadoCivil' },
-  parentesco: { model: prisma.parentesco, idField: 'ID_Parentesco', nameField: 'NombreDeParentesco' },
-  especialidad: { model: prisma.especialidadPsicologo, idField: 'ID_Especialidad', nameField: 'NombreEspecialidad' },
-  exploracion: { model: prisma.exploracionPsicologica, idField: 'ID_ExploracionPsicologica', nameField: 'NombreDeExploracionPsicologica' },
-  terapia: { model: prisma.tipoDeTerapia, idField: 'ID_TipoTerapia', nameField: 'NombreDeTerapia' },
-  via: { model: prisma.viaAdministracion, idField: 'ID_ViaAdministracion', nameField: 'NombreDePresentacion' },
-  metodo: { model: prisma.metodoPago, idField: 'ID_MetodoPago', nameField: 'NombreMetodo' },
-  // Agregamos el nuevo catálogo
-  motivo: { model: prisma.motivoCancelacion, idField: 'ID_Motivo', nameField: 'Categoria' }
+  ocupacion: { model: prisma.ocupacion, idField: 'ID_Ocupacion', nameField: 'Nombre_DeOcupacion' },
+  estadocivil: { model: prisma.estadoCivil, idField: 'ID_EstadoCivil', nameField: 'Nombre_EstadoCivil' },
+  parentesco: { model: prisma.parentesco, idField: 'ID_Parentesco', nameField: 'Nombre_De_Parentesco' },
+  especialidad: { model: prisma.especialidadPsicologo, idField: 'ID_Especialidad', nameField: 'Nombre_Especialidad' },
+  exploracion: { model: prisma.exploracionPsicologica, idField: 'ID_ExploracionPsicologica', nameField: 'Nombre_De_ExploracionPsicologica' },
+  terapia: { model: prisma.tipoDe_Terapia, idField: 'ID_Tipo_Terapia', nameField: 'Nombre_De_Terapia' },
+  via: { model: prisma.viaAdministracion, idField: 'ID_ViaAdministracion', nameField: 'Nombre_De_Presentacion' },
+  metodo: { model: prisma.metodoPago, idField: 'ID_Metodo_Pago', nameField: 'Nombre_Metodo' },
+  motivo: { model: prisma.motivoCancelacion, idField: 'ID_MotivoCancelacion', nameField: 'Motivo' },
+  // 🌟 Nuevos catálogos agregados
+  banco: { model: prisma.banco, idField: 'ID_Banco', nameField: 'Nombre_Banco' },
+  pais: { model: prisma.pais, idField: 'ID_Pais', nameField: 'Nombre_Pais' }
 };
 
 // 2. Definición de Dependencias (Validación de Integridad)
@@ -29,14 +31,14 @@ const MODEL_MAP: Record<string, ModelConfig> = {
 const DEPENDENCIAS: Record<string, { table: string, fk: string }[]> = {
   ocupacion: [
     { table: 'pacienteAdulto', fk: 'ID_Ocupacion' },
-    { table: 'tutor', fk: 'ID_Ocupacion' }
+    { table: 'tutor', fk: 'Ocupacion' } // En la BD quedó como 'Ocupacion'
   ],
   estadocivil: [
     { table: 'pacienteAdulto', fk: 'ID_EstadoCivil' },
-    { table: 'tutor', fk: 'ID_EstadoCivil' }
+    { table: 'tutor', fk: 'EstadoCivil' } // En la BD quedó como 'EstadoCivil'
   ],
   parentesco: [
-    { table: 'tutor', fk: 'ID_Parentesco' }
+    { table: 'tutor_PacienteMenor', fk: 'ID_Parentesco' } // Apunta a la tabla intermedia
   ],
   especialidad: [
     { table: 'psicologo_EspecialidadPsicologo', fk: 'ID_Especialidad' }
@@ -45,16 +47,23 @@ const DEPENDENCIAS: Record<string, { table: string, fk: string }[]> = {
     { table: 'sesion_ExploracionPsicologica', fk: 'ID_ExploracionPsicologica' }
   ],
   terapia: [
-    { table: 'tratamientoTerapeutico', fk: 'ID_TipoTerapia' }
+    { table: 'tratamiento_Terapeutico', fk: 'ID_Tipo_Terapia' } // Nombres actualizados
   ],
   via: [
-    { table: 'tratamientoFarmaceutico', fk: 'ID_ViaAdministracion' }
+    { table: 'tratamiento_Farmaceutico', fk: 'ID_ViaAdministracion' } // Nombres actualizados
   ],
   metodo: [
-    { table: 'detalleFactura', fk: 'ID_MetodoPago' }
+    { table: 'recibo', fk: 'ID_MetodoPago' } // Cambiado a Recibo
   ],
   motivo: [
-    { table: 'cita', fk: 'ID_Motivo' }
+    { table: 'cita', fk: 'ID_MotivoCancelacion' } // Cambiado a ID_MotivoCancelacion
+  ],
+  banco: [
+    { table: 'recibo', fk: 'ID_Banco' }
+  ],
+  pais: [
+    { table: 'paciente', fk: 'ID_Pais' },
+    { table: 'codigoTelefonoPais', fk: 'ID_Pais' }
   ]
 };
 
@@ -96,7 +105,7 @@ export const ConfiguracionService = {
 
     for (const regla of reglas) {
         // Accedemos dinámicamente al modelo de prisma (ej: prisma.pacienteAdulto)
-        // @ts-ignore: Prisma Client dinámico
+        // @ts-ignore: Prisma Client dinámico (Mantenido para flexibilidad)
         const count = await prisma[regla.table].count({
             where: { [regla.fk]: id }
         });

@@ -4,7 +4,7 @@ const prisma = new PrismaClient();
 
 export const GeneralService = {
 
-  // 1. Catálogos Generales (CORREGIDO: Incluye Pacientes y Psicólogos)
+  // 1. Catálogos Generales
   getCatalogos: async () => {
     const [
       ocupaciones, 
@@ -12,50 +12,64 @@ export const GeneralService = {
       parentescos, 
       tutores, 
       especialidades, 
-      estadosActividad,
       viasAdministracion,
       tiposTerapia,
       exploraciones,
       tiposCita,
       estadosCita,
-      metodosPago
+      metodosPago,
+      paises,
+      municipios,
+      bancos,
+      divisas,
+      codigosTelefono // Nuevos catálogos agregados para el frontend
     ] = await Promise.all([
       prisma.ocupacion.findMany(),
       prisma.estadoCivil.findMany(),
       prisma.parentesco.findMany(),
-      prisma.tutor.findMany({ include: { Parentesco: true } }),
+      prisma.tutor.findMany({ 
+          // Ajustado a la tabla intermedia
+          include: { Tutor_PacienteMenor: { include: { Parentesco: true } } } 
+      }),
       prisma.especialidadPsicologo.findMany(),
-      prisma.estadoDeActividad.findMany(),
+      // prisma.estadoDeActividad.findMany(), <-- Eliminado, ahora usamos booleano 'Activo'
       prisma.viaAdministracion.findMany(),
-      prisma.tipoDeTerapia.findMany(),
+      prisma.tipoDe_Terapia.findMany(), // Renombrado
       prisma.exploracionPsicologica.findMany(),
       prisma.tipoDeCita.findMany(),
       prisma.estadoCita.findMany(),
-      prisma.metodoPago.findMany()
+      prisma.metodoPago.findMany(),
+      prisma.pais.findMany(),
+      prisma.municipio.findMany({ include: { Departamento: true } }),
+      prisma.banco.findMany({ where: { Activo: true } }),
+      prisma.divisa.findMany(),
+      prisma.codigoTelefonoPais.findMany()
     ]);
 
     // --- LÓGICA AGREGADA PARA CITA FORM MODAL ---
     const [pacientes, psicologos] = await Promise.all([
         prisma.paciente.findMany({ 
-            where: { ID_EstadoDeActividad: 1 }, // Solo activos
-            select: { ID_Paciente: true, Nombre: true, Apellido: true, PacienteAdulto: { select: { No_Cedula: true } }, ID_EstadoDeActividad: true, DireccionPaciente: true } 
+            where: { Activo: true }, // Renombrado
+            select: { 
+                ID_Paciente: true, Nombre: true, Apellido: true, 
+                PacienteAdulto: { select: { No_Cedula: true } }, 
+                Activo: true, 
+                Direccion: { include: { Municipio: true } } // Renombrado
+            } 
         }),
         prisma.psicologo.findMany({ 
-            where: { ID_EstadoDeActividad: 1 }, // Solo activos
-            select: { ID_Psicologo: true, Nombre: true, Apellido: true, ID_EstadoDeActividad: true } 
+            where: { Activo: true }, // Renombrado
+            select: { ID_Psicologo: true, Nombre: true, Apellido: true, Activo: true } 
         })
     ]);
     // --------------------------------------------
 
     return { 
       ocupaciones, estadosCiviles, parentescos, tutores, especialidades, 
-      estadosActividad, viasAdministracion, tiposTerapia, exploraciones,
-      tiposCita,
-      estadosCita,
-      metodosPago,
-      // Retornamos también estos para que el hook useCitas los reciba
-      pacientes, 
-      psicologos
+      viasAdministracion, tiposTerapia, exploraciones,
+      tiposCita, estadosCita, metodosPago, 
+      paises, municipios, bancos, divisas, codigosTelefono,
+      pacientes, psicologos
     };
   },
 
@@ -67,10 +81,10 @@ export const GeneralService = {
     const finDia = new Date(hoyNica); finDia.setHours(23, 59, 59, 999);
 
     const [totalPacientes, psicologosActivos, citasHoy, ingresosTotales] = await Promise.all([
-      prisma.paciente.count({ where: { ID_EstadoDeActividad: 1 } }),
-      prisma.psicologo.count({ where: { ID_EstadoDeActividad: 1 } }),
+      prisma.paciente.count({ where: { Activo: true } }), // Renombrado
+      prisma.psicologo.count({ where: { Activo: true } }), // Renombrado
       prisma.cita.count({ where: { ID_EstadoCita: 1, FechaCita: { gte: inicioDia, lte: finDia } } }),
-      prisma.factura.aggregate({ _sum: { MontoTotal: true } })
+      prisma.recibo.aggregate({ _sum: { MontoTotal: true } }) // Cambiado a tabla Recibo
     ]);
 
     return { 
@@ -83,37 +97,32 @@ export const GeneralService = {
 
   // 3. Historial General Combinado
   getHistorialGeneral: async () => {
-    const sesiones = await prisma.sesion.findMany({
-      include: { Paciente: true, Psicologo: true, Expediente: true },
-      orderBy: { ID_Sesion: 'desc' }
-    });
-    
-    const citas = await prisma.cita.findMany({
-       where: { ID_EstadoCita: 2 }, // Solo completadas
-       include: { TipoDeCita: true },
+    // Adiós al algoritmo de emparejamiento manual. Prisma hace el JOIN directo.
+    const citasCompletadas = await prisma.cita.findMany({
+       where: { ID_EstadoCita: 2 }, // Solo completadas (que deberían tener sesión)
+       include: { 
+           TipoDeCita: true,
+           Paciente: true,
+           Psicologo: true,
+           Sesion: { include: { Expediente: true } } // Traemos la sesión directamente
+       },
        orderBy: { ID_Cita: 'desc' }
     });
 
-    // Algoritmo de emparejamiento en memoria (Preservado de tu código original)
-    const mapaCitas: Record<string, typeof citas> = {};
-    citas.forEach(c => {
-      const key = `${c.ID_Paciente}-${c.ID_Psicologo}`;
-      if (!mapaCitas[key]) mapaCitas[key] = [];
-      mapaCitas[key].push(c);
-    });
-
-    const historialCombinado = sesiones.map(sesion => {
-       const key = `${sesion.ID_Paciente}-${sesion.ID_Psicologo}`;
-       const citaMatch = mapaCitas[key]?.shift();
-       return {
-          ...sesion,
-          FechaReal: citaMatch ? citaMatch.FechaCita : null, 
-          DatosCita: {
-             Motivo: citaMatch?.MotivoConsulta || 'Sin registro de cita vinculado',
-             Tipo: citaMatch?.TipoDeCita?.NombreDeCita || 'N/A'
-          }
-       };
-    });
+    const historialCombinado = citasCompletadas
+      .filter(c => c.Sesion !== null) // Solo las que realmente tienen una sesión guardada
+      .map(cita => {
+        return {
+           ...cita.Sesion, // Exponemos la sesión en la raíz para mantener compatibilidad con el front
+           Paciente: cita.Paciente,
+           Psicologo: cita.Psicologo,
+           FechaReal: cita.FechaCita, 
+           DatosCita: {
+               Motivo: cita.MotivoConsulta || 'Sin registro',
+               Tipo: cita.TipoDeCita?.Nombre_DeCita || 'N/A' // Renombrado
+           }
+        };
+      });
 
     return historialCombinado;
   },
@@ -125,43 +134,52 @@ export const GeneralService = {
     const fechaFin = finStr ? new Date(finStr) : hoy;
     
     let fechaInicio = inicioStr ? new Date(inicioStr) : new Date();
-    if (!inicioStr) fechaInicio.setMonth(fechaInicio.getMonth() - 1); // Default: último mes
+    if (!inicioStr) fechaInicio.setMonth(fechaInicio.getMonth() - 1); 
     
     fechaInicio.setHours(0,0,0,0);
     fechaFin.setHours(23,59,59,999);
 
-    // A. Ingresos agrupados por día
-    const facturas = await prisma.factura.groupBy({
-      by: ['FechaFactura'],
-      where: { FechaFactura: { gte: fechaInicio, lte: fechaFin } },
+    // A. Ingresos agrupados por día (Cambiado a tabla Recibo)
+    const recibos = await prisma.recibo.groupBy({
+      by: ['FechaDePago'], // Renombrado
+      where: { FechaDePago: { gte: fechaInicio, lte: fechaFin } },
       _sum: { MontoTotal: true },
-      orderBy: { FechaFactura: 'asc' }
+      orderBy: { FechaDePago: 'asc' }
     });
 
-    const dataIngresos = facturas.map(f => ({
-      fecha: f.FechaFactura.toISOString().split('T')[0],
-      monto: f._sum.MontoTotal || 0
+    const dataIngresos = recibos.map(r => ({
+      // Verificamos que FechaDePago exista. Si no, ponemos un string por defecto.
+      fecha: r.FechaDePago ? r.FechaDePago.toISOString().split('T')[0] : 'Desconocida',
+      monto: r._sum.MontoTotal || 0
     }));
 
     // B. Distribución Demográfica (Género y Edad)
     const pacientes = await prisma.paciente.findMany({
-      where: { ID_EstadoDeActividad: 1 },
-      select: { Genero: true, Fecha_Nac: true }
+      where: { Activo: true }, // Renombrado
+      select: { Genero: true, Fecha_Nacimiento: true } // Renombrado
     });
 
-    const generos: Record<string, number> = { Masculino: 0, Femenino: 0 };
+    // Al quitar el Record, TypeScript sabe que este objeto SIEMPRE 
+    // tendrá estas dos llaves y que SIEMPRE serán números.
+    const generos = { Masculino: 0, Femenino: 0 };
     const edades = { Ninos: 0, Adolescentes: 0, Adultos: 0, Mayores: 0 };
 
     pacientes.forEach(p => {
-      // Género
-      if (generos[p.Genero] !== undefined) generos[p.Genero]++;
+      // 1. Género (Evaluación estricta para evitar undefined)
+      if (p.Genero === 'Masculino') {
+          generos.Masculino++;
+      } else if (p.Genero === 'Femenino') {
+          generos.Femenino++;
+      }
       
-      // Edad
-      const edad = new Date().getFullYear() - new Date(p.Fecha_Nac).getFullYear();
-      if (edad < 12) edades.Ninos++;
-      else if (edad < 18) edades.Adolescentes++;
-      else if (edad < 60) edades.Adultos++;
-      else edades.Mayores++;
+      // 2. Edad (Protegemos por si Fecha_Nacimiento viene nula)
+      if (p.Fecha_Nacimiento) {
+          const edad = new Date().getFullYear() - new Date(p.Fecha_Nacimiento).getFullYear();
+          if (edad < 12) edades.Ninos++;
+          else if (edad < 18) edades.Adolescentes++;
+          else if (edad < 60) edades.Adultos++;
+          else edades.Mayores++;
+      }
     });
 
     return {
