@@ -390,6 +390,7 @@ model Usuario {
   Verificado       Boolean       @default(false)
   Psicologo        Psicologo?
   Usuario_Rol      Usuario_Rol[]
+  RequiereCambioPassword  Boolean  @default(true)
 }
 
 model Usuario_Rol {

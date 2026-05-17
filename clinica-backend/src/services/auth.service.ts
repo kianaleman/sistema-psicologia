@@ -1,10 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto'; // Módulo nativo de Node.js para criptografía
 
 const prisma = new PrismaClient();
 
-// Es buena práctica lanzar un error claro si falta la variable de entorno
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   throw new Error('Falta la variable de entorno JWT_SECRET');
@@ -12,9 +12,8 @@ if (!JWT_SECRET) {
 
 interface RegisterDTO {
   email: string;
-  passwordRaw: string;
-  rolId: number; // Ej: 1 = Administrador, 2 = Psicologo, 3 = Recepcionista
-  psicologoId?: number; // Opcional, si este usuario pertenece a un psicólogo existente
+  rolId: number;       // 1 = Administrador, 2 = Psicologo, 3 = Recepcionista
+  psicologoId?: number; // Opcional, si está enlazado a un psicólogo
 }
 
 interface LoginDTO {
@@ -22,27 +21,35 @@ interface LoginDTO {
   passwordRaw: string;
 }
 
+interface CambiarPasswordDTO {
+  idUsuario: number;
+  passwordNuevaRaw: string;
+}
+
 export const AuthService = {
   
+  // 1. Registro de Trabajadores con Contraseña Temporal Automática
   register: async (data: RegisterDTO) => {
-    // 1. Verificar si el correo ya existe
     const existeUser = await prisma.usuario.findUnique({
       where: { Email: data.email }
     });
     if (existeUser) throw new Error('Este correo electrónico ya está registrado.');
 
-    // 2. Encriptar la contraseña (Cost Factor: 10 es el estándar seguro y rápido)
-    const saltRounds = 10;
-    const passwordHash = await bcrypt.hash(data.passwordRaw, saltRounds);
+    // Generamos una clave aleatoria de 10 caracteres alfanuméricos (ej: aB3x9ZqW1p)
+    const passwordTemporal = crypto.randomBytes(5).toString('hex');
 
-    // 3. Crear el Usuario y asignarle su Rol de forma transaccional
+    // Encriptamos la contraseña temporal para guardarla en la BD
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(passwordTemporal, saltRounds);
+
     return await prisma.$transaction(async (tx) => {
       const nuevoUsuario = await tx.usuario.create({
         data: {
           Email: data.email,
           PasswordHash: passwordHash,
           Activo: true,
-          // Si el usuario es un psicólogo, lo vinculamos directamente
+          RequiereCambioPassword: true, // Forzamos el cambio en su primer login
+          // Vinculación opcional con la entidad psicólogo
           ID_Psicologo: data.psicologoId || null 
         }
       });
@@ -55,48 +62,52 @@ export const AuthService = {
         }
       });
 
-      // Retornamos los datos seguros (sin el hash de la contraseña)
-      const { PasswordHash, ...usuarioSeguro } = nuevoUsuario;
-      return usuarioSeguro;
+      // Retornamos los datos del usuario junto a la contraseña temporal en TEXTO PLANO
+      // ¡Es crucial para que el administrador la pueda ver en pantalla una única vez!
+      return {
+        id: nuevoUsuario.ID_Usuario,
+        email: nuevoUsuario.Email,
+        passwordTemporal // El administrador copiará esto para dárselo al empleado
+      };
     });
   },
 
+  // 2. Login Interceptado por Semáforo de Seguridad
   login: async (data: LoginDTO) => {
-    // 1. Buscar al usuario con sus roles
     const usuario = await prisma.usuario.findUnique({
       where: { Email: data.email },
       include: {
         Usuario_Rol: { include: { Rol: true } },
-        Psicologo: { select: { Nombre: true, Apellido: true } } // Traemos su info si es psicólogo
+        Psicologo: { select: { Nombre: true, Apellido: true } }
       }
     });
 
     if (!usuario) throw new Error('Credenciales inválidas');
     if (!usuario.Activo) throw new Error('Esta cuenta ha sido desactivada');
 
-    // 2. Comparar la contraseña enviada con el Hash de la base de datos
     const passwordValida = await bcrypt.compare(data.passwordRaw, usuario.PasswordHash);
     if (!passwordValida) throw new Error('Credenciales inválidas');
 
-    // 3. Extraer los roles para el Token
     const roles = usuario.Usuario_Rol.map(ur => ur.Rol.Nombre_Rol);
 
-    // 4. Crear el Payload (Los datos que irán dentro del JWT)
+    // Creamos el payload clásico del JWT
     const payload = {
       idUsuario: usuario.ID_Usuario,
       email: usuario.Email,
       roles: roles,
-      idPsicologo: usuario.ID_Usuario // Útil para filtrar las citas del psicólogo logueado
+      idPsicologo: usuario.ID_Usuario,
+      requiereCambioPassword: usuario.RequiereCambioPassword // Viaja en el token para validación en backend
     };
 
-    // 5. Firmar el Token
     const token = jwt.sign(payload, JWT_SECRET, { 
-      expiresIn: (process.env.JWT_EXPIRES_IN || '8h') as any // Puedes configurar el tiempo de expiración desde las variables de entorno 
+      expiresIn: (process.env.JWT_EXPIRES_IN || '8h') as any
     });
 
-    // 6. Retornar el token y la info útil
+    // Enviamos el flag 'requiereCambioPassword' en la raíz de la respuesta.
+    // El Frontend leerá esto y sabrá si debe dejarlo entrar al Dashboard o mandarlo al formulario de cambio.
     return {
       token,
+      requiereCambioPassword: usuario.RequiereCambioPassword,
       usuario: {
         id: usuario.ID_Usuario,
         email: usuario.Email,
@@ -106,5 +117,27 @@ export const AuthService = {
           : 'Administrador/Recepcionista'
       }
     };
+  },
+
+  // 3. Método para actualizar la Contraseña Temporal por la Definitiva
+  cambiarPasswordForzado: async (data: CambiarPasswordDTO) => {
+    // Validamos que la nueva clave no esté vacía y cumpla con un mínimo de seguridad
+    if (!data.passwordNuevaRaw || data.passwordNuevaRaw.trim().length < 6) {
+      throw new Error('La nueva contraseña debe tener al menos 6 caracteres.');
+    }
+
+    const saltRounds = 10;
+    const nuevoHash = await bcrypt.hash(data.passwordNuevaRaw, saltRounds);
+
+    // Actualizamos la contraseña y apagamos el semáforo de cambio obligatorio
+    await prisma.usuario.update({
+      where: { ID_Usuario: data.idUsuario },
+      data: {
+        PasswordHash: nuevoHash,
+        RequiereCambioPassword: false // ¡Clave definitiva guardada con éxito!
+      }
+    });
+
+    return { message: 'Contraseña actualizada correctamente. Ya puede utilizar el sistema.' };
   }
 };
