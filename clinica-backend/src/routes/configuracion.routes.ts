@@ -1,9 +1,12 @@
 import { Router } from 'express';
-import { getCatalogoItems, createCatalogoItem, updateCatalogoItem, deleteCatalogoItem } from '../controllers/configuracion.controller';
+import { getCatalogoItems, createCatalogoItem, updateCatalogoItem, deleteCatalogoItem } from '../controllers/configuracion.controller.js';
+import { verificarToken } from '../middlewares/auth.middleware.js';
 
-const router = Router();
 
-// :modelo será 'ocupacion', 'parentesco', etc.
+const router: Router = Router();
+
+router.use(verificarToken);
+
 router.get('/:modelo', getCatalogoItems);
 router.post('/:modelo', createCatalogoItem);
 router.put('/:modelo/:id', updateCatalogoItem);

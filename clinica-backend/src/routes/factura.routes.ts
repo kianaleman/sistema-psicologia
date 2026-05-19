@@ -1,7 +1,10 @@
 import { Router } from 'express';
-import { getFacturas } from '../controllers/factura.controller';
+import { getFacturas } from '../controllers/factura.controller.js';
+import { verificarToken } from '../middlewares/auth.middleware.js'; 
 
-const router = Router();
+const router: Router = Router();
+
+router.use(verificarToken);
 
 router.get('/', getFacturas);
 
