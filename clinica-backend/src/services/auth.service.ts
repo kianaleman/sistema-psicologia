@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto'; // Módulo nativo de Node.js para criptografía
+import nodemailer from 'nodemailer';
 
 const prisma = new PrismaClient();
 
@@ -9,6 +10,15 @@ const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   throw new Error('Falta la variable de entorno JWT_SECRET');
 }
+
+// Configuración del Transporter para Nodemailer (El Cartero)
+const transporter = nodemailer.createTransport({
+  service: 'gmail', // Puedes usar 'outlook' u otro dependiendo de tu correo
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 
 interface RegisterDTO {
   email: string;
@@ -139,5 +149,89 @@ export const AuthService = {
     });
 
     return { message: 'Contraseña actualizada correctamente. Ya puede utilizar el sistema.' };
+  },
+
+  // 4. Solicitar recuperación (Genera token y envía correo)
+  forgotPassword: async (email: string) => {
+    // A. Buscamos al usuario
+    const usuario = await prisma.usuario.findUnique({ where: { Email: email } });
+    if (!usuario) {
+      // Por seguridad, no decimos "El correo no existe", simplemente decimos que se envió el link
+      return { message: 'Si el correo existe en nuestro sistema, recibirá un enlace de recuperación.' };
+    }
+
+    // B. Generamos un token criptográfico seguro (ej. 4b8f1... 64 caracteres)
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    
+    // C. Guardamos el token en la BD y definimos que expira en 15 minutos
+    const expiracion = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos desde ahora
+
+    await prisma.usuario.update({
+      where: { ID_Usuario: usuario.ID_Usuario },
+      data: {
+        ResetToken: resetToken,
+        ResetTokenExpire: expiracion
+      }
+    });
+
+    // D. Enviamos el correo con el enlace
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
+
+    const mailOptions = {
+      from: `"Clínica Resiliencia" <${process.env.EMAIL_USER}>`,
+      to: usuario.Email,
+      subject: 'Recuperación de Contraseña - Clínica Resiliencia',
+      html: `
+        <h2>Recuperación de Contraseña</h2>
+        <p>Has solicitado restablecer tu contraseña en el sistema de la Clínica Resiliencia.</p>
+        <p>Haz clic en el siguiente enlace para crear una nueva contraseña. <b>Este enlace expirará en 15 minutos.</b></p>
+        <a href="${resetLink}" style="padding: 10px 15px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 5px;">Restablecer mi contraseña</a>
+        <br><br>
+        <p>Si no solicitaste este cambio, puedes ignorar este correo con seguridad.</p>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    return { message: 'Si el correo existe en nuestro sistema, recibirá un enlace de recuperación.' };
+  },
+
+  // 5. Validar token y Guardar nueva contraseña
+  resetPassword: async (token: string, passwordNuevaRaw: string) => {
+    if (!passwordNuevaRaw || passwordNuevaRaw.trim().length < 6) {
+      throw new Error('La nueva contraseña debe tener al menos 6 caracteres.');
+    }
+
+    // A. Buscamos al usuario que tenga ESE token Y que NO haya expirado
+    const usuario = await prisma.usuario.findFirst({
+      where: {
+        ResetToken: token,
+        ResetTokenExpire: {
+          gt: new Date() // El token debe ser mayor a la fecha/hora actual (no ha expirado)
+        }
+      }
+    });
+
+    if (!usuario) {
+      throw new Error('El enlace de recuperación es inválido o ya ha expirado.');
+    }
+
+    // B. Encriptamos la nueva contraseña
+    const saltRounds = 10;
+    const nuevoHash = await bcrypt.hash(passwordNuevaRaw, saltRounds);
+
+    // C. Actualizamos la BD: Guardamos la clave, y BORRAMOS los tokens por seguridad
+    await prisma.usuario.update({
+      where: { ID_Usuario: usuario.ID_Usuario },
+      data: {
+        PasswordHash: nuevoHash,
+        ResetToken: null,
+        ResetTokenExpire: null,
+        RequiereCambioPassword: false // Ya la cambió, no es necesario forzarlo
+      }
+    });
+
+    return { message: 'Tu contraseña ha sido restablecida exitosamente. Ya puedes iniciar sesión.' };
   }
 };

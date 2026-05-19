@@ -51,3 +51,38 @@ export const cambiarPasswordForzado = async (req: Request, res: Response): Promi
     res.status(400).json({ error: error.message || 'Error al cambiar la contraseña' });
   }
 };
+
+// Solicitar correo de recuperación
+export const forgotPassword = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      res.status(400).json({ error: 'Debe proporcionar un correo electrónico' });
+      return;
+    }
+
+    const result = await AuthService.forgotPassword(email);
+    res.json(result);
+  } catch (error: any) {
+    // Usamos 500 porque si falla aquí, suele ser un problema con Nodemailer / SMTP
+    res.status(500).json({ error: 'Hubo un problema al intentar enviar el correo' });
+  }
+};
+
+// Guardar nueva contraseña usando el token del correo
+export const resetPassword = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token, passwordNuevaRaw } = req.body;
+
+    if (!token || !passwordNuevaRaw) {
+      res.status(400).json({ error: 'Faltan datos requeridos (token o contraseña)' });
+      return;
+    }
+
+    const result = await AuthService.resetPassword(token, passwordNuevaRaw);
+    res.json(result);
+  } catch (error: any) {
+    // Si el token expiró o es inválido, el servicio tira error
+    res.status(400).json({ error: error.message || 'Error al restablecer contraseña' });
+  }
+};
