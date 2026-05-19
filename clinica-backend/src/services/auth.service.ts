@@ -134,7 +134,7 @@ export const AuthService = {
       where: { ID_Usuario: data.idUsuario },
       data: {
         PasswordHash: nuevoHash,
-        RequiereCambioPassword: false // ¡Clave definitiva guardada con éxito!
+        RequiereCambioPassword: false 
       }
     });
 
