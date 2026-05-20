@@ -113,6 +113,27 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
         );
     }, [busquedaPsicologo, catalogos?.psicologos]);
 
+    // 🟢 LÓGICA DE DISPONIBILIDAD DINÁMICA
+    const disponibilidadEspecialista = useMemo(() => {
+        if (!formData.psicologoId || !formData.fecha || !catalogos.citas) return [];
+        const citasDelDia = catalogos.citas.filter((c: any) => 
+            c.ID_Psicologo.toString() === formData.psicologoId &&
+            c.FechaCita.split('T')[0] === formData.fecha &&
+            c.EstadoCita?.NombreEstado.toLowerCase() !== 'cancelada' &&
+            c.ID_Cita !== citaEditar?.ID_Cita
+        );
+        const bloques = [];
+        for (let h = 8; h <= 18; h++) {
+            const horaStr = `${h.toString().padStart(2, '0')}:00`;
+            const ocupado = citasDelDia.some((c: any) => {
+                const fechaHora = new Date(c.HoraCita);
+                return fechaHora.getUTCHours() === h;
+            });
+            bloques.push({ hora: horaStr, hourVal: h, ocupado });
+        }
+        return bloques;
+    }, [formData.psicologoId, formData.fecha, catalogos.citas, citaEditar]);
+
     // 🟢 FUNCIÓN DE CIERRE PERSONALIZADA PARA LIMPIAR TODO
     const handleManualClose = () => {
         setBusquedaDepto('');
@@ -156,17 +177,6 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
         if (fechaElegida < hoy) {
             toast.warning("La fecha que estás ingresando ya pasó", {
                 description: "Por favor, selecciona una fecha actual o futura.",
-                duration: 7000
-            });
-        }
-    };
-
-    const validarHoraInmediata = (horaSeleccionada: string) => {
-        if (!horaSeleccionada) return;
-        const [horas] = horaSeleccionada.split(':').map(Number);
-        if (horas < 8 || horas >= 19) {
-            toast.warning("Horario no disponible", {
-                description: "La clínica atiende únicamente de 8:00 AM a 7:00 PM.",
                 duration: 7000
             });
         }
@@ -255,7 +265,7 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
     const handleLocalSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
-        if (!formData.pacienteId || !formData.psicologoId || !formData.tipoCitaId) {
+        if (!formData.pacienteId || !formData.psicologoId || !formData.tipoCitaId || !formData.hora) {
             return toast.error("Por favor complete los campos obligatorios");
         }
 
@@ -267,13 +277,6 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
         if (!citaEditar && fechaCitaCompleta < ahora) {
             return toast.error("La fecha que estás ingresando ya pasó", {
                 description: "No puedes agendar una cita para un horario que ya pasó.",
-                duration: 5000
-            });
-        }
-
-        if (horas < 8 || horas >= 19) {
-            return toast.warning("Horario no disponible", {
-                description: "La clínica atiende de 8:00 AM a 7:00 PM.",
                 duration: 5000
             });
         }
@@ -448,16 +451,29 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                                     onBlur={(e) => validarFechaInmediata(e.target.value)} 
                                 />
                             </div>
-                            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">🕒 Hora de Encuentro</label>
-                                <input 
-                                    required 
-                                    type="time" 
-                                    className="input input-bordered w-full bg-white font-bold text-slate-700" 
-                                    value={formData.hora} 
-                                    onChange={e => setFormData({ ...formData, hora: e.target.value })}
-                                    onBlur={(e) => validarHoraInmediata(e.target.value)} 
-                                />
+                            {/* 🟢 MATRIZ DE HORARIOS DINÁMICA */}
+                            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 block">🕒 Disponibilidad horaria</label>
+                                <div className="grid grid-cols-3 gap-2 overflow-y-auto max-h-40 p-1">
+                                    {disponibilidadEspecialista.map((bloque) => (
+                                        <button
+                                            key={bloque.hora}
+                                            type="button"
+                                            disabled={bloque.ocupado}
+                                            onClick={() => setFormData({ ...formData, hora: bloque.hora })}
+                                            className={`py-2 rounded-xl border text-[10px] font-bold transition-all ${
+                                                bloque.ocupado 
+                                                ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-50' 
+                                                : formData.hora === bloque.hora
+                                                    ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
+                                                    : 'bg-white text-slate-600 border-slate-200 hover:border-blue-400'
+                                            }`}
+                                        >
+                                            {bloque.hora}
+                                        </button>
+                                    ))}
+                                </div>
+                                {!formData.fecha && <p className="text-[10px] text-slate-400 italic text-center mt-2">Seleccione una fecha primero</p>}
                             </div>
                         </div>
 

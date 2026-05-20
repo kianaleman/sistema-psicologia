@@ -87,14 +87,23 @@ const validarCedulaUnica = async (cedula: string, idExcluir?: number) => {
   }
 };
 
+//  green: SE MODIFICÓ ESTA FUNCIÓN PARA PERMITIR PREFIJOS INTERNACIONALES DE CENTROAMÉRICA
 const validarTelefonoNica = (telefono: string, contexto: string) => {
-  const limpio = String(telefono || '').replace(/[\s-]/g, '');
+  // Quitamos espacios, guiones y el símbolo '+' temporalmente para validar limpiamente la estructura
+  const limpio = String(telefono || '').replace(/[\s\-\+]/g, '');
 
-  if (!/^[2578]\d{7}$/.test(limpio)) {
-    throw new Error(`Teléfono de ${contexto} inválido.`);
+  // Valida formatos con códigos regionales o números puros locales:
+  // Nicaragua: 505 + 8 dígitos (iniciados con 2,5,7,8) o solo 8 dígitos directos
+  // Costa Rica (506), El Salvador (503), Guatemala (502), Honduras (504): Código + 8 dígitos
+  // Panamá (507): Código + 7 u 8 dígitos
+  const regexRegional = /^(505[2578]\d{7}|[2578]\d{7}|506\d{8}|503\d{8}|502\d{8}|504\d{8}|507\d{7,8})$/;
+
+  if (!regexRegional.test(limpio)) {
+    throw new Error(`Teléfono de ${contexto} inválido o no corresponde a Centroamérica.`);
   }
 
-  return limpio;
+  // Retornamos la cadena original unificada de espacios para guardarse junto con el código
+  return String(telefono || '').trim().replace(/\s+/g, ' ');
 };
 
 export const PacienteService = {
@@ -236,7 +245,6 @@ export const PacienteService = {
     });
   },
 
-  // 🟢 NUEVO: Filtrar pacientes vinculados al psicólogo a través de sus citas
   getPacientesByPsicologo: async (psicologoId: number) => {
     return await prisma.paciente.findMany({
       where: {
@@ -332,7 +340,7 @@ export const PacienteService = {
           where: { ID_PacienteAdulto: id },
           data: {
             No_Cedula: (data.datosAdulto.cedula || '').trim(),
-            No_Telefono: data.datosAdulto.telefono,
+            No_Telefono: validarTelefonoNica(data.datosAdulto.telefono, 'Adulto'),
             ID_Ocupacion: Number(data.datosAdulto.ocupacionId),
             ID_EstadoCivil: Number(data.datosAdulto.estadoCivilId)
           }
@@ -357,7 +365,19 @@ export const PacienteService = {
         Cita: {
           include: {
             Psicologo: true,
-            TipoDeCita: true
+            TipoDeCita: true,
+            Paciente: {
+              include: {
+                Direccion: true,
+                PacienteAdulto: {
+                  include: {
+                    Ocupacion: true,
+                    EstadoCivil: true
+                  }
+                },
+                Paciente_Menor: true
+              }
+            }
           }
         },
         Tratamiento: {
@@ -371,7 +391,7 @@ export const PacienteService = {
           }
         }
       },
-      orderBy: { ID_Sesion: 'desc' }
+      orderBy: { ID_Sesion: 'asc' }
     });
   }
 };

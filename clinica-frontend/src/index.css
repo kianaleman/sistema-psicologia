@@ -111,3 +111,4 @@ body {
   max-height: calc(100vh - 5em);
   overflow-y: auto; /* Permite scroll dentro del formulario si es muy largo */
 }
+

@@ -65,7 +65,17 @@ const formatearCedula = (valor: string) => {
 };
 
 const esCedulaValida = (cedula: string) => /^\d{3}-\d{6}-\d{4}[A-Z]$/.test(cedula);
-const esTelefonoValido = (tel: string) => /^[2578]\d{7}$/.test(tel.replace(/[\s-]/g, ''));
+const esTelefonoValido = (tel: string) => /^[2578]\d{7}$/.test(tel.replace(/[^0-9]/g, '')); // 🟢 Optimizado para evaluar solo dígitos puros
+
+// 🟢 LISTA DE CÓDIGOS DE PAÍSES DE CENTROAMÉRICA
+const CODIGOS_PAISES = [
+  { codigo: '+505', label: '🇳🇮 +505' },
+  { codigo: '+506', label: '🇨🇷 +506' },
+  { codigo: '+503', label: '🇸🇻 +503' },
+  { codigo: '+502', label: '🇬🇹 +502' },
+  { codigo: '+504', label: '🇭🇳 +504' },
+  { codigo: '+507', label: '🇵🇦 +507' }
+];
 
 export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteEditar, catalogos }: Props) {
   const [formData, setFormData] = useState(initialState);
@@ -74,6 +84,10 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
   const [busquedaTutor, setBusquedaTutor] = useState('');
   const [guardando, setGuardando] = useState(false);
   
+  // 🟢 ESTADOS PARA CÓDIGOS TELEFÓNICOS SELECCIONADOS
+  const [codigoPaisAdulto, setCodigoPaisAdulto] = useState('+505');
+  const [codigoPaisTutor, setCodigoPaisTutor] = useState('+505');
+
   // 🟢 ESTADOS PARA LISTAS FLOTANTES
   const [showListaTutores, setShowListaTutores] = useState(false);
   const [busquedaDepto, setBusquedaDepto] = useState('');
@@ -93,6 +107,17 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
 
     if (pacienteEditar && isOpen) {
       setEsAdulto(!!pacienteEditar.PacienteAdulto);
+      
+      // 🟢 DETECTAR PREFIJO TELEFÓNICO EN EDICIÓN DE ADULTO
+      let telAdultoBase = pacienteEditar.PacienteAdulto?.No_Telefono || '';
+      const prefijoAdultoMatch = CODIGOS_PAISES.find(p => telAdultoBase.startsWith(p.codigo));
+      if (prefijoAdultoMatch) {
+        setCodigoPaisAdulto(prefijoAdultoMatch.codigo);
+        telAdultoBase = telAdultoBase.replace(prefijoAdultoMatch.codigo, '').trim();
+      } else {
+        setCodigoPaisAdulto('+505');
+      }
+
       setFormData({
         ...initialState,
         nombre: pacienteEditar.Nombre || '',
@@ -108,7 +133,7 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
         },
         datosAdulto: {
           cedula: pacienteEditar.PacienteAdulto?.No_Cedula || '',
-          telefono: pacienteEditar.PacienteAdulto?.No_Telefono || '',
+          telefono: telAdultoBase,
           ocupacionId: pacienteEditar.PacienteAdulto?.ID_Ocupacion?.toString() || '',
           estadoCivilId: pacienteEditar.PacienteAdulto?.ID_EstadoCivil?.toString() || ''
         },
@@ -122,6 +147,8 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
     } else if (isOpen) {
       setFormData(initialState);
       setEsAdulto(true);
+      setCodigoPaisAdulto('+505');
+      setCodigoPaisTutor('+505');
     }
   }, [pacienteEditar, isOpen]);
 
@@ -170,10 +197,8 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
 
     if (edad >= 18) {
         setEsAdulto(true);
-        toast.info(`Perfil Adulto (${edad} años)`);
     } else {
         setEsAdulto(false);
-        toast.info(`Perfil Menor (${edad} años)`);
     }
   };
 
@@ -195,6 +220,32 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
     const pApellido = (formData.apellido || '').trim();
     if (!pNombre || !pApellido) return toast.error("Datos del paciente incompletos.");
 
+    // 🟢 LIMPIEZA DE ENTRADAS ANTES DE VALIDAR PARA EVITAR TEXTOS CORRUPTOS
+    const numeroAdultoPlano = formData.datosAdulto.telefono.replace(/[^0-9]/g, '').trim();
+    const numeroTutorPlano = formData.datosMenor.nuevoTutor.telefono.replace(/[^0-9]/g, '').trim();
+
+    // 🟢 CONCATENACIÓN DE CÓDIGOS DE ÁREA ANTES DEL PAYLOAD
+    const telefonoAdultoCompleto = `${codigoPaisAdulto} ${numeroAdultoPlano}`.trim();
+    const telefonoTutorCompleto = `${codigoPaisTutor} ${numeroTutorPlano}`.trim();
+
+    // 🟢 VALIDACIÓN CORREGIDA PARA EL PACIENTE ADULTO
+    if (esAdulto && !esTelefonoValido(numeroAdultoPlano)) {
+        return toast.error("Número de teléfono de paciente inválido.");
+    }
+
+    // 🟢 VALIDACIONES CORREGIDAS PARA EL TUTOR NUEVO
+    if (!esAdulto && modoTutor === 'nuevo') {
+        if (!formData.datosMenor.nuevoTutor.noCedula || !esCedulaValida(formData.datosMenor.nuevoTutor.noCedula)) {
+            return toast.error("La cédula del tutor es obligatoria y debe ser válida.");
+        }
+        if (!formData.datosMenor.nuevoTutor.nombre.trim() || !formData.datosMenor.nuevoTutor.apellido.trim()) {
+            return toast.error("El nombre y apellido del tutor son obligatorios.");
+        }
+        if (!esTelefonoValido(numeroTutorPlano)) {
+            return toast.error("Número de teléfono del tutor inválido.");
+        }
+    }
+
     const payload: CreatePacienteDTO = {
       nombre: pNombre,
       apellido: pApellido,
@@ -205,7 +256,7 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
       esAdulto,
       datosAdulto: esAdulto ? {
         cedula: formData.datosAdulto.cedula,
-        telefono: formData.datosAdulto.telefono,
+        telefono: telefonoAdultoCompleto,
         ocupacionId: parseInt(formData.datosAdulto.ocupacionId) || 0,
         estadoCivilId: parseInt(formData.datosAdulto.estadoCivilId) || 0
       } : undefined,
@@ -216,7 +267,10 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
         tutorId: modoTutor === 'existente' ? parseInt(formData.datosMenor.tutorId) : undefined,
         parentescoId: modoTutor === 'nuevo' ? parseInt(formData.datosMenor.nuevoTutor.parentescoId) : 0,
         nuevoTutor: modoTutor === 'nuevo' ? {
-          ...formData.datosMenor.nuevoTutor,
+          nombre: formData.datosMenor.nuevoTutor.nombre.trim(),
+          apellido: formData.datosMenor.nuevoTutor.apellido.trim(),
+          noCedula: formData.datosMenor.nuevoTutor.noCedula,
+          telefono: telefonoTutorCompleto,
           parentescoId: parseInt(formData.datosMenor.nuevoTutor.parentescoId) || 0,
           ocupacionId: parseInt(formData.datosMenor.nuevoTutor.ocupacionId) || 0,
           estadoCivilId: parseInt(formData.datosMenor.nuevoTutor.estadoCivilId) || 0,
@@ -226,19 +280,10 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
     };
 
     if (esAdulto && !esCedulaValida(payload.datosAdulto!.cedula)) return toast.error("Cédula de paciente inválida.");
-    
-    if (!esAdulto && modoTutor === 'nuevo') {
-        if (!payload.datosMenor?.nuevoTutor?.noCedula || !esCedulaValida(payload.datosMenor.nuevoTutor.noCedula)) {
-            return toast.error("La cédula del tutor es obligatoria y debe ser válida.");
-        }
-        if (!payload.datosMenor?.nuevoTutor?.nombre || !esTelefonoValido(payload.datosMenor.nuevoTutor.telefono)) {
-            return toast.error("Verifique los datos del tutor y su teléfono.");
-        }
-    }
 
     setGuardando(true);
     const success = await onSubmit(payload, !!pacienteEditar);
-    if (success) handleManualClose(); // Usar función de cierre que limpia
+    if (success) handleManualClose(); 
     setGuardando(false);
   };
 
@@ -256,7 +301,7 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-white w-full max-w-5xl rounded-[2rem] shadow-2xl flex flex-col max-h-[92vh] border border-slate-200 overflow-hidden animate-fade-in-up">
+      <div className="bg-white w-full max-w-5xl rounded-[2rem] shadow-2xl flex flex-col max-h-[92vh] border border-slate-200 overflow-hidden">
 
         <div className="bg-slate-900 text-white px-8 py-5 flex justify-between items-center shrink-0">
           <h3 className="font-bold text-xl font-serif">
@@ -318,7 +363,6 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
                 <div className="bg-white p-7 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                   <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Icons.MapPin /> Domicilio</h4>
                   <div className="grid grid-cols-2 gap-3">
-                    {/* 🟢 DEPARTAMENTO BUSCADOR */}
                     <div className="relative" onClick={e => e.stopPropagation()}>
                         <input 
                             placeholder="Depto..." 
@@ -328,7 +372,7 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
                             onChange={e => { setBusquedaDepto(e.target.value); setShowListaDepto(true); }}
                         />
                         {showListaDepto && busquedaDepto.length > 0 && (
-                            <div className="absolute z-[110] w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto animate-fade-in">
+                            <div className="absolute z-[110] w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto">
                                 {deptosFiltrados.map(d => (
                                     <div key={d} className="px-4 py-2 hover:bg-blue-50 cursor-pointer text-[10px] font-bold border-b border-slate-50 last:border-none"
                                         onClick={() => {
@@ -356,7 +400,6 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
                         </select>
                     </div>
 
-                    {/* 🟢 CIUDAD BUSCADOR */}
                     <div className="relative" onClick={e => e.stopPropagation()}>
                         <input 
                             placeholder="Ciudad..." 
@@ -367,7 +410,7 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
                             onChange={e => { setBusquedaCiudad(e.target.value); setShowListaCiudad(true); }}
                         />
                         {showListaCiudad && busquedaCiudad.length > 0 && (
-                            <div className="absolute z-[110] w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto animate-fade-in">
+                            <div className="absolute z-[110] w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto">
                                 {ciudadesFiltradas.map(c => (
                                     <div key={c} className="px-4 py-2 hover:bg-blue-50 cursor-pointer text-[10px] font-bold border-b border-slate-50 last:border-none"
                                         onClick={() => {
@@ -402,10 +445,25 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
 
               <div className={`lg:col-span-7 p-8 rounded-2xl border-2 bg-white transition-colors duration-500 ${esAdulto ? 'border-blue-50' : 'border-amber-50'}`}>
                 {esAdulto ? (
-                  <div className="space-y-6 animate-fade-in">
+                  <div className="space-y-6">
                     <h4 className="text-blue-600 font-black text-[10px] uppercase">Perfil de Adulto</h4>
                     <input required placeholder="Cédula" className="input input-bordered w-full font-mono bg-slate-50" value={formData.datosAdulto.cedula} onChange={e => setFormData(prev => ({ ...prev, datosAdulto: { ...prev.datosAdulto, cedula: formatearCedula(e.target.value) } }))} />
-                    <input required placeholder="Teléfono" className="input input-bordered w-full bg-white font-bold" value={formData.datosAdulto.telefono} onChange={e => setFormData(prev => ({ ...prev, datosAdulto: { ...prev.datosAdulto, telefono: e.target.value } }))} maxLength={8} />
+                    
+                    <div className="form-control w-full">
+                      <div className="flex gap-2">
+                        <select 
+                          className="select select-bordered bg-white text-slate-800 font-bold max-w-[120px]"
+                          value={codigoPaisAdulto}
+                          onChange={e => setCodigoPaisAdulto(e.target.value)}
+                        >
+                          {CODIGOS_PAISES.map(p => (
+                            <option key={p.codigo} value={p.codigo}>{p.label}</option>
+                          ))}
+                        </select>
+                        <input required placeholder="Teléfono" className="input input-bordered flex-1 bg-white font-bold" value={formData.datosAdulto.telefono} onChange={e => setFormData(prev => ({ ...prev, datosAdulto: { ...prev.datosAdulto, telefono: e.target.value } }))} maxLength={8} />
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                       <select required className="select select-bordered bg-white" value={formData.datosAdulto.ocupacionId} onChange={e => setFormData(prev => ({ ...prev, datosAdulto: { ...prev.datosAdulto, ocupacionId: e.target.value } }))}>
                         <option value="">Ocupación...</option>
@@ -418,7 +476,7 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-6 animate-fade-in">
+                  <div className="space-y-6">
                     <h4 className="text-amber-600 font-black text-[10px] uppercase">Detalles del Menor</h4>
                     <div className="grid grid-cols-2 gap-4">
                       <input required placeholder="Partida Nacimiento" className="input input-bordered input-sm bg-slate-50" value={formData.datosMenor.partNacimiento} onChange={e => setFormData(prev => ({ ...prev, datosMenor: { ...prev.datosMenor, partNacimiento: e.target.value } }))} />
@@ -448,7 +506,7 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
                           />
 
                           {showListaTutores && busquedaTutor.length > 0 && (
-                            <div className="absolute z-[100] w-full mt-1 bg-white border border-amber-200 rounded-xl shadow-xl max-h-40 overflow-y-auto animate-fade-in">
+                            <div className="absolute z-[100] w-full mt-1 bg-white border border-amber-200 rounded-xl shadow-xl max-h-40 overflow-y-auto">
                                 {tutoresFiltrados.length > 0 ? (
                                     tutoresFiltrados.map((t: any) => (
                                         <div 
@@ -456,7 +514,7 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
                                             className="px-4 py-2 hover:bg-amber-50 cursor-pointer text-sm border-b border-slate-50 last:border-none"
                                             onClick={() => {
                                                 setFormData(prev => ({ ...prev, datosMenor: { ...prev.datosMenor, tutorId: t.ID_Tutor.toString() } }));
-                                                setBusquedaTutor(''); // Limpia al seleccionar
+                                                setBusquedaTutor('');
                                                 setShowListaTutores(false);
                                             }}
                                         >
@@ -484,7 +542,7 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
                           </select>
                         </div>
                       ) : (
-                        <div className="space-y-3 animate-fade-in">
+                        <div className="space-y-3">
                           <input 
                             required 
                             placeholder="Cédula del Tutor (001-000000-0000X)" 
@@ -502,7 +560,22 @@ export default function PacienteFormModal({ isOpen, onClose, onSubmit, pacienteE
                             <input required placeholder="Nombre Tutor" className="input input-bordered input-sm bg-white" value={formData.datosMenor.nuevoTutor.nombre} onChange={e => setFormData(prev => ({ ...prev, datosMenor: { ...prev.datosMenor, nuevoTutor: { ...prev.datosMenor.nuevoTutor, nombre: e.target.value } } }))} />
                             <input required placeholder="Apellido Tutor" className="input input-bordered input-sm bg-white" value={formData.datosMenor.nuevoTutor.apellido} onChange={e => setFormData(prev => ({ ...prev, datosMenor: { ...prev.datosMenor, nuevoTutor: { ...prev.datosMenor.nuevoTutor, apellido: e.target.value } } }))} />
                           </div>
-                          <input required placeholder="Teléfono" className="input input-bordered input-sm bg-white font-bold" value={formData.datosMenor.nuevoTutor.telefono} onChange={e => setFormData(prev => ({ ...prev, datosMenor: { ...prev.datosMenor, nuevoTutor: { ...prev.datosMenor.nuevoTutor, telefono: e.target.value } } }))} maxLength={8} />
+                          
+                          <div className="form-control w-full">
+                            <div className="flex gap-2">
+                              <select 
+                                className="select select-bordered select-sm bg-white text-slate-800 font-bold max-w-[110px]"
+                                value={codigoPaisTutor}
+                                onChange={e => setCodigoPaisTutor(e.target.value)}
+                              >
+                                {CODIGOS_PAISES.map(p => (
+                                  <option key={p.codigo} value={p.codigo}>{p.label}</option>
+                                ))}
+                              </select>
+                              <input required placeholder="Teléfono" className="input input-bordered input-sm flex-1 bg-white font-bold" value={formData.datosMenor.nuevoTutor.telefono} onChange={e => setFormData(prev => ({ ...prev, datosMenor: { ...prev.datosMenor, nuevoTutor: { ...prev.datosMenor.nuevoTutor, telefono: e.target.value } } }))} maxLength={8} />
+                            </div>
+                          </div>
+
                           <select required className="select select-bordered select-sm bg-white" value={formData.datosMenor.nuevoTutor.parentescoId} onChange={e => setFormData(prev => ({ ...prev, datosMenor: { ...prev.datosMenor, nuevoTutor: { ...prev.datosMenor.nuevoTutor, parentescoId: e.target.value } } }))}>
                             <option value="">¿Relación con menor?</option>
                             {catalogos.parentescos?.map((p: any) => <option key={p.ID_Parentesco} value={p.ID_Parentesco}>{p.Nombre_De_Parentesco}</option>)}

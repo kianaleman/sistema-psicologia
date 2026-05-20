@@ -1,7 +1,7 @@
-import { useState } from "react";
-//import { toast } from "sonner";
+import { useEffect, useState } from "react"; 
+import { toast } from "sonner"; 
 import { useCitas } from "../hooks/useCitas";
-import { usePacientes } from "../hooks/usePacientes"; // 🟢 Importación agregada
+import { usePacientes } from "../hooks/usePacientes"; 
 import type { Cita } from "../types";
 
 import CitaFormModal from "../components/citas/CitaFormModal";
@@ -23,13 +23,51 @@ export default function Citas() {
   const { citas, loading, filtros, setFiltro, catalogos, acciones } = useCitas();
   const { acciones: accionesPacientes } = usePacientes(); 
 
+  const userRole = Number(localStorage.getItem('user_role'));
+  const esAdmin = userRole === 1;
+  const [notificado, setNotificado] = useState(false);
+
   const [modalOpen, setModalOpen] = useState<"create" | "session" | "view" | "paciente" | null>(null); 
   const [selectedCita, setSelectedCita] = useState<Cita | null>(null);
   const [idCancelar, setIdCancelar] = useState<number | null>(null);
-  // 🟢 ESTADO PARA DATOS PRECARGADOS DE SEGUIMIENTO
   const [seguimientoData, setSeguimientoData] = useState<any>(null);
-  // 🟢 ESTADO INDEPENDIENTE PARA NO CERRAR EL MODAL DE SESIÓN
   const [isSeguimientoOpen, setIsSeguimientoOpen] = useState(false);
+
+  useEffect(() => {
+    if (loading || citas.length === 0 || notificado) return;
+
+    const noProcesadas = citas.filter(c => 
+      c.EstadoCita?.NombreEstado.toLowerCase().includes("no procesada")
+    );
+
+    if (noProcesadas.length > 0) {
+      if (!esAdmin) {
+        toast.error(`⚠️ Atención: Tienes ${noProcesadas.length} citas sin procesar`, {
+          description: "Existen registros de hoy que no han sido finalizados ni cancelados. Por favor, regularice su agenda.",
+          duration: 10000,
+        });
+      } else {
+        const pendientesPorProfe = noProcesadas.reduce((acc: any, cita: any) => {
+          const nombre = `Dr. ${cita.Psicologo?.Apellido}`;
+          acc[nombre] = (acc[nombre] || 0) + 1;
+          return acc;
+        }, {});
+
+        Object.entries(pendientesPorProfe).forEach(([doctor, cantidad]) => {
+          toast.error(`⚠️ Atención: El ${doctor} tiene ${cantidad} citas sin procesar`, {
+            description: "Existen registros que no han sido finalizados ni cancelados. Por favor, solicite la regularización de la agenda.",
+            duration: 10000,
+            style: { borderLeft: '5px solid #ef4444' }
+          });
+        });
+      }
+      setNotificado(true);
+    }
+  }, [citas, loading, esAdmin, notificado]);
+
+  useEffect(() => {
+    setNotificado(false);
+  }, [filtros.periodo]);
 
   const openModal = (type: "create" | "session" | "view" | "paciente", cita?: Cita) => { 
     setSelectedCita(cita || null);
@@ -45,7 +83,6 @@ export default function Citas() {
       success = await acciones.crearCita(data);
     }
     if (success) {
-      // 🟢 Si el éxito viene de un seguimiento, cerramos su estado específico
       if (isSeguimientoOpen) {
         setIsSeguimientoOpen(false);
         setSeguimientoData(null);
@@ -57,18 +94,15 @@ export default function Citas() {
     return success;
   };
 
-  // 🟢 Función para abrir el modal de citas sin desmontar SesionModal
   const handleAbrirSeguimiento = (datos: any) => {
     setSeguimientoData(datos);
-    setIsSeguimientoOpen(true); // Abrimos en un estado paralelo
+    setIsSeguimientoOpen(true); 
   };
 
   const handleCreatePaciente = async (data: any) => {
     const success = await accionesPacientes.crearPaciente(data);
     if (success) {
-      // Refrescamos los catálogos para que el nuevo paciente aparezca en el select de citas
       await acciones.reloadCatalogos?.();
-      // Regresamos al modal de la cita
       setModalOpen("create");
     }
     return success;
@@ -112,7 +146,6 @@ export default function Citas() {
     if (s.includes("programada") || s.includes("pendiente")) return "bg-blue-100 text-blue-700";
     if (s.includes("completada") || s.includes("realizada")) return "bg-emerald-100 text-emerald-700";
     if (s.includes("cancelada") || s.includes("no asistió")) return "bg-rose-100 text-rose-700";
-    // 🟡 Resaltado para el nuevo estado propuesto
     if (s.includes("no procesada")) return "bg-amber-100 text-amber-700 border border-amber-200";
     return "bg-slate-100 text-slate-700";
   };
@@ -201,26 +234,31 @@ export default function Citas() {
             const nombreEstado = cita.EstadoCita?.NombreEstado || "";
             const esProgramada = nombreEstado.toLowerCase().includes("programada") || nombreEstado.toLowerCase().includes("pendiente");
             const esCancelada = nombreEstado.toLowerCase().includes("cancelada") || nombreEstado.toLowerCase().includes("no asistió");
-            // 🟢 Variable utilizada para aplicar estilos de borde adicionales si el estado es "no procesada"
             const esNoProcesada = nombreEstado.toLowerCase().includes("no procesada");
 
-            // 🟡 Lógica de Advertencia (Warning) Corregida: 
-            // 1. Debe ser Hoy. 2. Debe estar Pendiente. 3. Deben haber pasado >= 2 horas.
             const ahora = new Date();
             const fechaCita = new Date(cita.FechaCita);
-            const horaCita = new Date(cita.HoraCita);
+            
+            // 🟢 CORRECCIÓN: Reconstruimos el momento exacto combinando Fecha y Hora
+            const momentoCita = new Date(cita.HoraCita);
+            momentoCita.setFullYear(fechaCita.getUTCFullYear());
+            momentoCita.setMonth(fechaCita.getUTCMonth());
+            momentoCita.setUTCDate(fechaCita.getUTCDate());
 
-            // Validamos que la fecha sea estrictamente hoy (Ignorando horas para la comparación de día)
             const esHoy = 
               fechaCita.getUTCDate() === ahora.getDate() &&
               fechaCita.getUTCMonth() === ahora.getMonth() &&
               fechaCita.getUTCFullYear() === ahora.getFullYear();
 
-            // Diferencia en horas basada en el objeto Date completo de horaCita
-            const diferenciaHoras = (ahora.getTime() - horaCita.getTime()) / (1000 * 60 * 60);
-            
-            // La alerta solo se activa si es HOY, está pendiente y ya pasaron 2 horas
-            const esAlerta = esHoy && esProgramada && diferenciaHoras >= 2;
+            // Diferencia en horas respecto a la hora actual
+            const diferenciaHoras = (ahora.getTime() - momentoCita.getTime()) / (1000 * 60 * 60);
+
+            // 🟢 ALERTA: Solo si es hoy, está programada y han pasado más de 45 minutos (0.75h)
+            const esAlerta = esHoy && esProgramada && diferenciaHoras >= 0.75;
+
+            // 🟢 GESTIÓN: Permitir iniciar si faltan 15 min (-0.25h) o si ya es hora (siempre que sea hoy)
+            const yaEsHora = esHoy && diferenciaHoras >= -0.25;
+            const puedeGestionar = yaEsHora || esNoProcesada;
 
             return (
               <div 
@@ -230,9 +268,8 @@ export default function Citas() {
                   ${esAlerta ? "border-amber-400 bg-amber-50/50 shadow-md ring-1 ring-amber-200" : "border-slate-200"}
                   ${esNoProcesada ? "border-dashed border-2 border-amber-300 shadow-inner" : ""}`}
               >
-                {/* Banner de alerta para citas olvidadas */}
                 {esAlerta && (
-                  <div className="bg-amber-500 text-white text-[9px] font-black uppercase py-1 px-3 text-center rounded-t-xl">
+                  <div className="bg-amber-500 text-white text-[9px] font-black uppercase py-1 px-3 text-center rounded-t-xl animate-pulse">
                     ⚠️ ATENCIÓN: SESIÓN SIN FINALIZAR
                   </div>
                 )}
@@ -271,18 +308,17 @@ export default function Citas() {
                 <div className="px-6 py-3 bg-white border-t border-slate-100 flex justify-between items-center mt-auto">
                   <div className="flex-1 text-xs text-slate-400 italic truncate mr-4">"{cita.MotivoConsulta}"</div>
                   <div className="flex gap-2">
-                    {esProgramada ? (
+                    {(esProgramada || esNoProcesada) ? (
                       <>
                         <button className="btn btn-ghost btn-xs text-slate-400 hover:text-red-500" onClick={() => setIdCancelar(cita.ID_Cita)}>✕</button>
                         <button className="btn btn-outline btn-xs" onClick={() => openModal("create", cita)}>Editar</button>
-                        {/* 🟢 BOTÓN INICIAR RESTRINGIDO POR FECHA */}
                         <button 
-                          className={`btn btn-sm text-white shadow-sm px-4 ${esHoy ? 'btn-primary' : 'btn-disabled bg-slate-200 text-slate-400 border-none'}`} 
-                          onClick={() => esHoy && openModal("session", cita)}
-                          disabled={!esHoy}
-                          title={!esHoy ? "Disponible solo el día de la cita" : ""}
+                          className={`btn btn-sm text-white shadow-sm px-4 ${puedeGestionar ? 'btn-primary' : 'btn-disabled bg-slate-100 text-slate-300 border-none'}`} 
+                          onClick={() => puedeGestionar && openModal("session", cita)}
+                          disabled={!puedeGestionar}
+                          title={!puedeGestionar ? `Disponible a partir de las ${formatearHora(cita.HoraCita)}` : ""}
                         >
-                          Iniciar
+                          {esNoProcesada ? "Regularizar" : "Iniciar"}
                         </button>
                       </>
                     ) : (
@@ -296,23 +332,21 @@ export default function Citas() {
         </div>
       )}
 
-      {/* 🟢 MODAL DE CREACIÓN/EDICIÓN NORMAL */}
       <CitaFormModal 
         isOpen={modalOpen === "create"} 
         onClose={() => { setModalOpen(null); setSeguimientoData(null); }} 
         onSubmit={handleCreateOrUpdate} 
         citaEditar={selectedCita} 
-        catalogos={catalogos} 
+        catalogos={{ ...catalogos, citas }} // 🟢 PASAMOS LA LISTA DE CITAS PARA VALIDAR DISPONIBILIDAD
         onOpenAddPaciente={() => setModalOpen("paciente")}
       />
 
-      {/* 🟢 MODAL PARA SEGUIMIENTO (INSTANCIA PARALELA PARA NO DESMONTAR LA SESIÓN) */}
       <CitaFormModal 
         isOpen={isSeguimientoOpen} 
         onClose={() => { setIsSeguimientoOpen(false); setSeguimientoData(null); }} 
         onSubmit={handleCreateOrUpdate} 
         citaEditar={null} 
-        catalogos={catalogos} 
+        catalogos={{ ...catalogos, citas }} // 🟢 PASAMOS LA LISTA DE CITAS PARA VALIDAR DISPONIBILIDAD
         datosSeguimiento={seguimientoData} 
       />
 
@@ -324,7 +358,6 @@ export default function Citas() {
         pacienteEditar={null}
       />
 
-      {/* SesionModal permanece "viviendo" debajo de Seguimiento si isSeguimientoOpen es true */}
       <SesionModal 
         isOpen={modalOpen === "session"} 
         onClose={() => setModalOpen(null)} 
