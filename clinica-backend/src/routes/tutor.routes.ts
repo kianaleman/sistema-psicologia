@@ -1,20 +1,20 @@
 import { Router } from 'express';
-import { getTutores, updateTutor } from '../controllers/tutor.controller.js';
+// Importamos la nueva función createTutor
+import { getTutores, updateTutor, createTutor } from '../controllers/tutor.controller.js';
 import { verificarToken } from '../middlewares/auth.middleware.js';
+import { validateSchema } from '../middlewares/validator.middleware.js';
+// Importamos el nuevo esquema
+import { updateTutorSchema, createTutorSchema } from '../schemas/tutor.schema.js';
 
-// Agregamos el tipado explícito para pnpm
 const router: Router = Router();
 
-// ==========================================
-// MIDDLEWARE DE SEGURIDAD GLOBAL
-// ==========================================
-// Protegemos el acceso a los datos de los responsables/tutores
 router.use(verificarToken);
 
-// ==========================================
-// RUTAS PROTEGIDAS
-// ==========================================
 router.get('/', getTutores);
-router.put('/:id', updateTutor);
+
+// NUEVA RUTA: Creación de tutor
+router.post('/', validateSchema(createTutorSchema), createTutor);
+
+router.put('/:id', validateSchema(updateTutorSchema), updateTutor);
 
 export default router;

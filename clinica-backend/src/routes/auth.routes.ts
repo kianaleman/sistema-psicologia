@@ -14,7 +14,7 @@ import {
   cambiarPasswordSchema,
   forgotPasswordSchema,
   resetPasswordSchema
-} from '../schemas/auth.schemas.js';
+} from '../schemas/auth.schema.js';
 
 // Agregamos el tipado explícito para evitar el error de pnpm
 const router: Router = Router();

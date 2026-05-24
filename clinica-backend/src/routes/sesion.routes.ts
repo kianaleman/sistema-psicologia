@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { createSesion, searchSesion } from '../controllers/sesion.controller.js';
 import { verificarToken } from '../middlewares/auth.middleware.js';
+import { validateSchema } from '../middlewares/validator.middleware.js';
+import { createSesionSchema, searchSesionSchema } from '../schemas/sesion.schema.js';
 
 // Agregamos el tipado explícito para pnpm
 const router: Router = Router();
@@ -12,9 +14,13 @@ const router: Router = Router();
 router.use(verificarToken);
 
 // ==========================================
-// RUTAS PROTEGIDAS
+// RUTAS PROTEGIDAS Y VALIDADAS
 // ==========================================
-router.get('/buscar', searchSesion);
-router.post('/', createSesion);
+
+// Búsqueda de sesiones (Valida los parámetros de consulta / query params)
+router.get('/buscar', validateSchema(searchSesionSchema), searchSesion);
+
+// Registro de nueva sesión clínica (Valida el body estrictamente)
+router.post('/', validateSchema(createSesionSchema), createSesion);
 
 export default router;

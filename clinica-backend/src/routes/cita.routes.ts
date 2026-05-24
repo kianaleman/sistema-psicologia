@@ -7,6 +7,8 @@ import {
   getCatalogosCitas 
 } from '../controllers/cita.controller.js';
 import { verificarToken } from '../middlewares/auth.middleware.js';
+import { validateSchema } from '../middlewares/validator.middleware.js';
+import { createCitaSchema, updateCitaSchema, cancelCitaSchema } from '../schemas/cita.schema.js';
 
 // Agregamos el tipado explícito para pnpm
 const router: Router = Router();
@@ -18,18 +20,21 @@ const router: Router = Router();
 router.use(verificarToken);
 
 // ==========================================
-// RUTAS PROTEGIDAS
+// RUTAS PROTEGIDAS Y VALIDADAS
 // ==========================================
 
-// 1. RUTAS ESTÁTICAS (Siempre deben ir primero para evitar colisiones con los params)
+// 1. RUTAS ESTÁTICAS
 router.get('/catalogos', getCatalogosCitas);
 
 // 2. RUTAS GENERALES
 router.get('/', getCitas);
-router.post('/', createCita);
+// Validamos el body al crear
+router.post('/', validateSchema(createCitaSchema), createCita);
 
 // 3. RUTAS CON PARÁMETROS (Dinámicas)
-router.put('/:id', updateCita);
-router.patch('/:id/cancelar', cancelCita);
+// Validamos el ID de la URL y los datos del body al actualizar
+router.put('/:id', validateSchema(updateCitaSchema), updateCita);
+// Validamos el ID de la URL al cancelar
+router.patch('/:id/cancelar', validateSchema(cancelCitaSchema), cancelCita);
 
 export default router;

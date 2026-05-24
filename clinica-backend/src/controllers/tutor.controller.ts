@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { TutorService } from '../services/tutor.service.js';
+import { TutorService, createTutorService } from '../services/tutor.service.js';
 
 // GET: Tutores con pacientes
 export const getTutores = async (req: Request, res: Response): Promise<void> => {
@@ -9,6 +9,28 @@ export const getTutores = async (req: Request, res: Response): Promise<void> => 
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: 'Error al obtener tutores' });
+  }
+};
+
+export const createTutor = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Delegamos la lógica al servicio
+    const nuevoTutor = await createTutorService(req.body);
+
+    res.status(201).json({
+      mensaje: 'Tutor registrado exitosamente',
+      tutor: nuevoTutor
+    });
+  } catch (error: any) {
+    console.error('Error al crear tutor:', error);
+    
+    // Manejo del error de constraint UNIQUE de Prisma (ej. Cédula duplicada)
+    if (error.code === 'P2002') {
+      res.status(400).json({ error: 'Ya existe un tutor registrado con este número de cédula' });
+      return;
+    }
+    
+    res.status(500).json({ error: 'Error interno al crear el tutor' });
   }
 };
 

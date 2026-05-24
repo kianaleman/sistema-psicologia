@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { getPsicologos, createPsicologo, updatePsicologo } from '../controllers/psicologo.controller.js';
 import { verificarToken } from '../middlewares/auth.middleware.js';
+import { validateSchema } from '../middlewares/validator.middleware.js';
+import { createPsicologoSchema, updatePsicologoSchema } from '../schemas/psicologo.schema.js';
 
 // Agregamos el tipado explícito para pnpm
 const router: Router = Router();
@@ -12,10 +14,15 @@ const router: Router = Router();
 router.use(verificarToken);
 
 // ==========================================
-// RUTAS PROTEGIDAS
+// RUTAS PROTEGIDAS Y VALIDADAS
 // ==========================================
+// Consulta general
 router.get('/', getPsicologos);
-router.post('/', createPsicologo);
-router.put('/:id', updatePsicologo);
+
+// Creación (Valida el body)
+router.post('/', validateSchema(createPsicologoSchema), createPsicologo);
+
+// Actualización (Valida el ID de la URL y el body)
+router.put('/:id', validateSchema(updatePsicologoSchema), updatePsicologo);
 
 export default router;

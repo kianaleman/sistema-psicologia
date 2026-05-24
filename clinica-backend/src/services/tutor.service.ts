@@ -91,3 +91,11 @@ export const TutorService = {
     });
   }
 };
+
+export const createTutorService = async (tutorData: any) => {
+  const nuevoTutor = await prisma.tutor.create({
+    data: tutorData
+  });
+  
+  return nuevoTutor;
+};
