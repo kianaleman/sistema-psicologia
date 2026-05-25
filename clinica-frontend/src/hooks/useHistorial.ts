@@ -1,16 +1,27 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
-import type { Sesion, Paciente, Psicologo, Expediente } from '../types';
+import type { Sesion } from '../types';
 
-// Definimos el tipo específico para este reporte aquí (o en types)
+// Definimos el DTO específico para el reporte del historial.
+// Extendemos de Sesion (para heredar Observaciones, DiagnosticoDiferencial, etc.)
+// y añadimos los campos relacionales que el backend formatea para esta vista.
 export interface RegistroHistorial extends Sesion {
-  Paciente: Paciente;
-  Psicologo: Psicologo;
-  Expediente: Expediente;
-  FechaReal: string; 
-  DatosCita: { 
-    Motivo: string; 
-    Tipo: string 
+  FechaReal?: string; 
+  // Hacemos las relaciones opcionales para evitar crasheos si el backend envía un null
+  Paciente?: {
+    Nombre: string;
+    Apellido: string;
+  };
+  Psicologo?: {
+    Nombre: string;
+    Apellido: string;
+  };
+  Expediente?: {
+    No_Expediente: string;
+  };
+  DatosCita?: { 
+    Motivo?: string; 
+    Tipo?: string 
   };
 }
 
@@ -19,29 +30,36 @@ export function useHistorial() {
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState('');
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    setLoading(true);
     try {
-      // Usamos el servicio centralizado
-      const data = await api.general.historialCompleto();
-      // @ts-ignore
+      // Usamos el servicio centralizado y casteamos de forma segura 
+      const data = await api.general.historialCompleto() as RegistroHistorial[];
       setRegistros(data);
-    } catch (error) {
-      console.error("Error cargando historial:", error);
+    } catch (error: unknown) {
+      console.error("Error cargando historial completo:", error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   // --- LÓGICA DE FILTRADO MEMOIZADA ---
   const registrosFiltrados = useMemo(() => {
-    return registros.filter(r => 
-      `${r.Paciente.Nombre} ${r.Paciente.Apellido}`.toLowerCase().includes(busqueda.toLowerCase()) ||
-      r.Expediente?.No_Expediente.toLowerCase().includes(busqueda.toLowerCase())
-    );
+    if (!busqueda.trim()) return registros;
+    
+    const term = busqueda.toLowerCase();
+    
+    return registros.filter(r => {
+      // Usamos Optional Chaining (?.) para protegernos si r.Paciente o r.Expediente son null
+      const nombreCompleto = `${r.Paciente?.Nombre || ''} ${r.Paciente?.Apellido || ''}`.toLowerCase();
+      const numExpediente = r.Expediente?.No_Expediente?.toLowerCase() || '';
+      
+      return nombreCompleto.includes(term) || numExpediente.includes(term);
+    });
   }, [registros, busqueda]);
 
   return {

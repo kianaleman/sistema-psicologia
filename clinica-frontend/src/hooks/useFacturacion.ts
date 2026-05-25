@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
-import type { Factura } from '../types';
+import type { Recibo } from '../types';
 
 export const useFacturacion = () => {
-  const [facturas, setFacturas] = useState<Factura[]>([]);
+  // Cambiamos el tipo Factura por Recibo según nuestro types/index.ts
+  const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Filtros locales
@@ -13,27 +14,28 @@ export const useFacturacion = () => {
     fechaFin: ''
   });
 
-  const fetchFacturas = async () => {
+  const fetchFacturas = useCallback(async () => {
     setLoading(true);
     try {
       const data = await api.facturas.getAll();
-      setFacturas(data);
-    } catch (error) {
-      console.error(error);
+      setRecibos(data);
+    } catch (error: unknown) {
+      console.error("Error al cargar recibos/facturas:", error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchFacturas();
-  }, []);
+  }, [fetchFacturas]);
 
   // --- LÓGICA DE FILTRADO AVANZADA ---
   const facturasFiltradas = useMemo(() => {
-    return facturas.filter(f => {
-      // 1. Filtro de Fechas
-      const fechaFac = f.FechaFactura.split('T')[0];
+    return recibos.filter(f => {
+      // 1. Filtro de Fechas (Ahora usamos f.FechaRecibo)
+      const fechaFac = f.FechaRecibo ? f.FechaRecibo.toString().split('T')[0] : '';
+      
       if (filtros.fechaInicio && fechaFac < filtros.fechaInicio) return false;
       if (filtros.fechaFin && fechaFac > filtros.fechaFin) return false;
 
@@ -42,17 +44,24 @@ export const useFacturacion = () => {
 
       const term = filtros.busqueda.toLowerCase();
       
-      // Datos Paciente
-      const pacienteNombre = `${f.Cita.Paciente.Nombre} ${f.Cita.Paciente.Apellido}`.toLowerCase();
-      const cedulaPaciente = f.Cita.Paciente.PacienteAdulto?.No_Cedula?.toLowerCase() || '';
-      const partidaNacimiento = f.Cita.Paciente.PacienteMenor?.PartNacimiento?.toLowerCase() || '';
+      // Datos Paciente (Usamos Optional Chaining para evitar crasheos)
+      const pacienteNombre = f.Cita?.Paciente 
+        ? `${f.Cita.Paciente.Nombre} ${f.Cita.Paciente.Apellido}`.toLowerCase() 
+        : '';
+      const cedulaPaciente = f.Cita?.Paciente?.PacienteAdulto?.No_Cedula?.toLowerCase() || '';
+      
+      // Ajustado a Paciente_Menor y PartidaDeNacimiento según la BD actual
+      const partidaNacimiento = f.Cita?.Paciente?.Paciente_Menor?.PartidaDeNacimiento?.toLowerCase() || '';
 
       // Datos Doctor
-      const doctorNombre = `${f.Cita.Psicologo.Nombre} ${f.Cita.Psicologo.Apellido}`.toLowerCase();
-      const codigoMinsa = f.Cita.Psicologo.CodigoDeMinsa?.toLowerCase() || ''; // Asumiendo que el backend lo envía en el include
+      const doctorNombre = f.Cita?.Psicologo 
+        ? `${f.Cita.Psicologo.Nombre} ${f.Cita.Psicologo.Apellido}`.toLowerCase() 
+        : '';
+      // Ajustado a CodigoMinsa
+      const codigoMinsa = f.Cita?.Psicologo?.CodigoMinsa?.toLowerCase() || ''; 
 
-      // Datos Factura
-      const numFactura = f.Cod_Factura.toString();
+      // Datos Factura (Ajustado a Cod_Recibo)
+      const numFactura = f.Cod_Recibo.toString();
 
       // Verificamos coincidencias
       return (
@@ -64,18 +73,19 @@ export const useFacturacion = () => {
         numFactura.includes(term)
       );
     });
-  }, [facturas, filtros]);
+  }, [recibos, filtros]);
 
   // --- CÁLCULO DE TOTALES (KPIs) ---
   const totales = useMemo(() => {
-    const ingresos = facturasFiltradas.reduce((acc, curr) => acc + Number(curr.MontoTotal), 0);
+    // MontoTotal ahora es opcional en la BD, nos aseguramos de que sea un número válido
+    const ingresos = facturasFiltradas.reduce((acc, curr) => acc + Number(curr.MontoTotal || 0), 0);
     const transacciones = facturasFiltradas.length;
     const ticketPromedio = transacciones > 0 ? ingresos / transacciones : 0;
 
     return { ingresos, transacciones, ticketPromedio };
   }, [facturasFiltradas]);
 
-  const setFiltro = (key: string, value: string) => {
+  const setFiltro = (key: keyof typeof filtros, value: string) => {
     setFiltros(prev => ({ ...prev, [key]: value }));
   };
 
@@ -84,6 +94,8 @@ export const useFacturacion = () => {
   };
 
   return {
+    // Exportamos 'facturas' en el objeto para no romper tu UI (Facturacion.tsx)
+    // aunque internamente ahora estamos manejando 'recibos'
     facturas: facturasFiltradas,
     loading,
     filtros,

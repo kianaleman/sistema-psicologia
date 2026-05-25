@@ -1,7 +1,14 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
 import { toast } from 'sonner';
-import type { Paciente, Tutor, Ocupacion, EstadoCivil, Parentesco, CreatePacienteDTO } from '../types';
+import type { 
+  Paciente, 
+  Tutor, 
+  Ocupacion, 
+  EstadoCivil, 
+  Parentesco, 
+  CreatePacienteDTO 
+} from '../types';
 
 export function usePacientes() {
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
@@ -35,7 +42,7 @@ export function usePacientes() {
 
       setPacientes(dataPacientes);
       
-      // Asignación segura
+      // Asignación segura con los catálogos fuertemente tipados
       if (dataCatalogos) {
           setOcupaciones(dataCatalogos.ocupaciones || []);
           setEstadosCiviles(dataCatalogos.estadosCiviles || []);
@@ -43,9 +50,10 @@ export function usePacientes() {
           setListaTutores(dataCatalogos.tutores || []);
       }
       
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error cargando datos:", err);
-      setError(err.message);
+      const msg = err instanceof Error ? err.message : "Error desconocido";
+      setError(msg);
       toast.error("No se pudieron cargar los datos. Verifica tu conexión.");
     } finally {
       setLoading(false);
@@ -57,7 +65,7 @@ export function usePacientes() {
     loadData();
   }, [loadData]);
 
-  // --- LÓGICA DE FILTRADO (Optimizada) ---
+  // --- LÓGICA DE FILTRADO (Optimizada a la nueva Base de Datos) ---
   const pacientesFiltrados = useMemo(() => {
     if (!pacientes) return [];
 
@@ -69,8 +77,9 @@ export function usePacientes() {
       if (term) {
         const nombreCompleto = `${p.Nombre} ${p.Apellido}`.toLowerCase();
         const cedula = p.PacienteAdulto?.No_Cedula?.toLowerCase() || '';
-        // Manejo seguro de null en PacienteMenor
-        const partida = p.PacienteMenor?.PartNacimiento?.toLowerCase() || '';
+        
+        // CORRECCIÓN: Actualizado a Paciente_Menor y PartidaDeNacimiento
+        const partida = p.Paciente_Menor?.PartidaDeNacimiento?.toLowerCase() || '';
         
         matchTexto = nombreCompleto.includes(term) || cedula.includes(term) || partida.includes(term);
       }
@@ -78,15 +87,13 @@ export function usePacientes() {
       // 2. Filtro Tipo
       let matchTipo = true;
       if (filtros.tipo === 'adultos') matchTipo = p.PacienteAdulto !== null && p.PacienteAdulto !== undefined;
-      if (filtros.tipo === 'menores') matchTipo = p.PacienteMenor !== null && p.PacienteMenor !== undefined;
+      // CORRECCIÓN: Actualizado a Paciente_Menor
+      if (filtros.tipo === 'menores') matchTipo = p.Paciente_Menor !== null && p.Paciente_Menor !== undefined;
 
-      // 3. Filtro Actividad
+      // 3. Filtro Actividad (CORRECCIÓN: Ahora es un booleano, no un objeto)
       let matchActividad = true;
-      const estadoNombre = p.EstadoDeActividad?.NombreEstadoActividad?.toLowerCase();
-      
-      // Mapeo seguro de estados (asumiendo que tu BD usa "Activo" e "Inactivo")
-      if (filtros.actividad === 'activos') matchActividad = estadoNombre === 'activo';
-      if (filtros.actividad === 'inactivos') matchActividad = estadoNombre === 'inactivo';
+      if (filtros.actividad === 'activos') matchActividad = p.Activo === true;
+      if (filtros.actividad === 'inactivos') matchActividad = p.Activo === false;
 
       return matchTexto && matchTipo && matchActividad;
     });
@@ -96,32 +103,31 @@ export function usePacientes() {
     setFiltros(prev => ({ ...prev, [campo]: valor }));
   };
 
-  // Acciones CRUD con manejo de UI Optimista (Opcional, por ahora simple)
+  // Acciones CRUD
   const crearPaciente = async (data: CreatePacienteDTO) => {
     try {
         await api.pacientes.create(data);
         toast.success("Paciente registrado exitosamente");
-        await loadData(); // Recargamos para ver el nuevo paciente
-        return true; // Retornamos éxito
-    } catch (e: any) {
+        await loadData(); 
+        return true; 
+    } catch (e: unknown) {
         console.error(e);
-      // CORRECCIÓN: Leemos el mensaje que manda el Backend (paciente.service.ts)
-      const msg = e.response?.data?.error || 'Error desconocido al registrar paciente';
-      toast.error(msg);
+        // Simplificado: el interceptor en api.ts ya extrae el error exacto
+        const msg = e instanceof Error ? e.message : 'Error al registrar paciente';
+        toast.error(msg);
         return false;
     }
   };
 
-  const actualizarPaciente = async (id: number, data: any) => {
+  const actualizarPaciente = async (id: number, data: Partial<CreatePacienteDTO>) => {
     try {
         await api.pacientes.update(id, data);
         toast.success("Paciente actualizado correctamente");
         await loadData();
         return true;
-    } catch (e: any) {
-        // CORRECCIÓN: Leemos el mensaje que manda el Backend (paciente.service.ts)
-      const msg = e.response?.data?.error || 'Error desconocido al registrar paciente';
-      toast.error(msg);
+    } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'Error al actualizar paciente';
+        toast.error(msg);
         return false;
     }
   };

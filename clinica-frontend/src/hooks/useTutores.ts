@@ -1,27 +1,48 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
 import { toast } from 'sonner';
-import type { Tutor } from '../types';
+import type { 
+  Tutor, 
+  Ocupacion, 
+  EstadoCivil, 
+  Parentesco, 
+  Direccion 
+} from '../types';
 
-// Interface extendida para incluir datos anidados necesarios en esta vista
+// Interface extendida sincronizada con los nombres de la BD
 export interface TutorCompleto extends Tutor {
-  No_Telefono: string;
-  ID_Parentesco: number;
-  ID_Ocupacion: number;
-  ID_EstadoCivil: number;
-  Ocupacion: { NombreDeOcupacion: string };
-  DireccionTutor: { Departamento: string, Ciudad: string, Barrio: string, Calle: string };
-  PacienteMenor: { 
-    PartNacimiento: string; 
-    GradoEscolar: string;
-    Paciente: { Nombre: string, Apellido: string } 
+  // Opcional en caso de que lo traigas anidado, si no, se usa el Ocupacion_Tutor de types/index.ts
+  ID_Parentesco?: number;
+  Direccion?: Direccion;
+  Paciente_Menor?: { 
+    PartidaDeNacimiento: string; 
+    Grado_Escolar?: string;
+    Paciente?: { Nombre: string, Apellido: string } 
   }[];
 }
 
-const initialState = {
-  Nombre: '', Apellido: '', No_Cedula: '', No_Telefono: '',
-  ID_Parentesco: 0, ID_Ocupacion: 0, ID_EstadoCivil: 0,
-  DireccionTutor: { Departamento: '', Ciudad: '', Barrio: '', Calle: '' }
+// Tipo estricto para proteger el formulario (¡Adiós any!)
+export interface TutorFormData {
+  Nombre: string;
+  Apellido: string;
+  No_Cedula: string;
+  No_Telefono: string;
+  ID_Parentesco: number;
+  Ocupacion: number;    // ID_Ocupacion
+  EstadoCivil: number;  // ID_EstadoCivil
+  Direccion: Partial<Direccion>;
+}
+
+const initialState: TutorFormData = {
+  Nombre: '', 
+  Apellido: '', 
+  No_Cedula: '', 
+  No_Telefono: '',
+  ID_Parentesco: 0, 
+  Ocupacion: 0, 
+  EstadoCivil: 0,
+  // Ajustado a la interfaz Direccion de tu types/index.ts
+  Direccion: { Pais: '', Barrio: '', Calle: '', ID_Municipio: 0 }
 };
 
 export function useTutores() {
@@ -29,45 +50,60 @@ export function useTutores() {
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   
-  // Catálogos
-  const [ocupaciones, setOcupaciones] = useState<any[]>([]);
-  const [estadosCiviles, setEstadosCiviles] = useState<any[]>([]);
-  const [parentescos, setParentescos] = useState<any[]>([]);
+  // Catálogos fuertemente tipados
+  const [ocupaciones, setOcupaciones] = useState<Ocupacion[]>([]);
+  const [estadosCiviles, setEstadosCiviles] = useState<EstadoCivil[]>([]);
+  const [parentescos, setParentescos] = useState<Parentesco[]>([]);
 
   // Estado de Edición
   const [tutorSeleccionado, setTutorSeleccionado] = useState<TutorCompleto | null>(null);
-  const [formData, setFormData] = useState<any>(initialState);
+  const [formData, setFormData] = useState<TutorFormData>(initialState);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const [dataTutores, dataCatalogos] = await Promise.all([
         api.tutores.getAll(),
         api.general.catalogos()
       ]);
-      // @ts-ignore
-      setTutores(dataTutores);
-      setOcupaciones(dataCatalogos.ocupaciones);
-      setEstadosCiviles(dataCatalogos.estadosCiviles);
-      setParentescos(dataCatalogos.parentescos);
-    } catch (error) {
+      
+      // Casteo seguro de los tutores
+      setTutores(dataTutores as TutorCompleto[]);
+      
+      // Puente seguro con unknown para extraer los catálogos sin error de firmas
+      const catalogos = dataCatalogos as unknown as { 
+        ocupaciones?: Ocupacion[];
+        estadosCiviles?: EstadoCivil[];
+        parentescos?: Parentesco[];
+      };
+      
+      setOcupaciones(catalogos.ocupaciones || []);
+      setEstadosCiviles(catalogos.estadosCiviles || []);
+      setParentescos(catalogos.parentescos || []);
+      
+    } catch (error: unknown) {
       console.error(error);
       toast.error("Error al cargar la lista de tutores");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   // Lógica de Filtrado Memoizada
   const tutoresFiltrados = useMemo(() => {
+    if (!busqueda.trim()) return tutores;
+
     return tutores.filter(t => {
-      const busquedaLower = busqueda.toLowerCase();
+      const busquedaLower = busqueda.toLowerCase().trim();
       const nombreCompleto = `${t.Nombre} ${t.Apellido}`.toLowerCase();
-      return nombreCompleto.includes(busquedaLower) || t.No_Cedula.includes(busquedaLower);
+      // Protección contra tutores antiguos sin cédula
+      const cedula = t.No_Cedula?.toLowerCase() || '';
+      
+      return nombreCompleto.includes(busquedaLower) || cedula.includes(busquedaLower);
     });
   }, [tutores, busqueda]);
 
@@ -77,20 +113,30 @@ export function useTutores() {
     setFormData({
       Nombre: tutor.Nombre,
       Apellido: tutor.Apellido,
-      No_Cedula: tutor.No_Cedula,
-      No_Telefono: tutor.No_Telefono,
-      ID_Parentesco: tutor.ID_Parentesco,
-      ID_Ocupacion: tutor.ID_Ocupacion,
-      ID_EstadoCivil: tutor.ID_EstadoCivil,
-      DireccionTutor: tutor.DireccionTutor || initialState.DireccionTutor
+      No_Cedula: tutor.No_Cedula || '',
+      No_Telefono: tutor.No_Telefono || '',
+      ID_Parentesco: tutor.ID_Parentesco || 0,
+      Ocupacion: tutor.Ocupacion || 0,
+      EstadoCivil: tutor.EstadoCivil || 0,
+      // Usamos el fallback a initialState si la dirección viene nula
+      Direccion: tutor.Direccion || initialState.Direccion
     });
   };
 
-  // Guardar cambios
+  // Guardar cambios con manejo de errores de Zod
   const saveTutor = async () => {
-    if (!tutorSeleccionado) return;
-    await api.tutores.update(tutorSeleccionado.ID_Tutor, formData);
-    await loadData();
+    if (!tutorSeleccionado) return false;
+    
+    try {
+      await api.tutores.update(tutorSeleccionado.ID_Tutor, formData);
+      toast.success("Tutor actualizado exitosamente");
+      await loadData();
+      return true; // Retornamos éxito para poder cerrar el modal
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Error al actualizar tutor";
+      toast.error(msg);
+      return false; // Retornamos falso para mantener el modal abierto si hay errores
+    }
   };
 
   return {

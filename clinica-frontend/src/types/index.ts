@@ -160,11 +160,13 @@ export interface Cita {
       Nombre: string; 
       Apellido: string; 
       PacienteAdulto?: { No_Cedula: string }; 
+      Paciente_Menor?: { PartidaDeNacimiento: string };
   };
   Psicologo?: { 
       ID_Psicologo: number; 
       Nombre: string; 
       Apellido: string; 
+      CodigoMinsa: string;
   };
   TipoDeCita?: { Nombre_DeCita: string };
   EstadoCita?: { NombreEstado: string };
