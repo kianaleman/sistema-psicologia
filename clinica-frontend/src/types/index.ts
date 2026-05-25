@@ -1,51 +1,51 @@
 // ==========================================
-// CATALOGOS GENERALES
+// CATÁLOGOS GENERALES
 // ==========================================
 export interface Ocupacion {
   ID_Ocupacion: number;
-  NombreDeOcupacion: string;
+  Nombre_DeOcupacion: string;
 }
 
 export interface EstadoCivil {
   ID_EstadoCivil: number;
-  NombreEstadoCivil: string;
+  Nombre_EstadoCivil: string;
 }
 
 export interface Parentesco {
   ID_Parentesco: number;
-  NombreDeParentesco: string;
+  Nombre_De_Parentesco: string;
 }
 
 export interface Direccion {
-  ID_Direccion?: number;
-  Pais?: string;
-  Departamento: string;
-  Ciudad: string;
+  ID_Direccion: number;
+  Pais: string;
   Barrio: string;
-  Calle: string;
+  Calle?: string;
+  ID_Municipio: number;
 }
 
-export interface EstadoActividad {
-  ID_EstadoDeActividad: number;
-  NombreEstadoActividad: string;
+export interface Pais {
+  ID_Pais: number;
+  Nombre_Pais: string;
+  Nacionalidad: string;
 }
 
 // ==========================================
-// CATÁLOGOS CLÍNICOS (Faltaban estos)
+// CATÁLOGOS CLÍNICOS
 // ==========================================
 export interface ViaAdministracion {
   ID_ViaAdministracion: number;
-  NombreDePresentacion: string;
+  Nombre_De_Presentacion: string;
 }
 
 export interface TipoDeTerapia {
-  ID_TipoTerapia: number;
-  NombreDeTerapia: string;
+  ID_Tipo_Terapia: number;
+  Nombre_De_Terapia: string;
 }
 
-export interface Exploracion {
+export interface ExploracionPsicologica {
   ID_ExploracionPsicologica: number;
-  NombreDeExploracionPsicologica: string;
+  Nombre_De_ExploracionPsicologica: string;
 }
 
 // ==========================================
@@ -53,14 +53,15 @@ export interface Exploracion {
 // ==========================================
 export interface Psicologo {
   ID_Psicologo: number;
+  CodigoMinsa: string;
   Nombre: string;
   Apellido: string;
-  CodigoDeMinsa: string;
   No_Telefono: string;
-  Email: string;
-  ID_DireccionPsicologo?: number;
-  ID_EstadoDeActividad?: number;
-  EstadoDeActividad?: EstadoActividad;
+  ID_Direccion: number;
+  ID_Usuario?: number;
+  ID_CodigoTelefono?: number;
+  Activo: boolean;
+  Direccion?: Direccion;
 }
 
 // ==========================================
@@ -68,92 +69,71 @@ export interface Psicologo {
 // ==========================================
 export interface Tutor {
   ID_Tutor: number;
+  No_Cedula?: string;
   Nombre: string;
   Apellido: string;
-  No_Cedula: string;
-  No_Telefono?: string;
-  Parentesco?: Parentesco;
-  Ocupacion?: Ocupacion;
-  EstadoCivil?: EstadoCivil;
-  DireccionTutor?: Direccion; 
+  No_Telefono: string;
+  Ocupacion: number; // ID
+  EstadoCivil: number; // ID
+  ID_CodigoTelefono?: number;
+  Ocupacion_Tutor?: Ocupacion; // Relaciones para mostrar en UI
+  EstadoCivil_Tutor?: EstadoCivil;
 }
 
 export interface PacienteAdultoDetalle {
-  ID_PacienteAdulto: number;
+  ID_PacienteAdulto: number; // Es el mismo ID_Paciente
   No_Cedula: string;
   No_Telefono: string;
   ID_Ocupacion: number;
   ID_EstadoCivil: number;
+  ID_CodigoTelefono?: number;
   Ocupacion?: Ocupacion;
   EstadoCivil?: EstadoCivil;
 }
 
 export interface PacienteMenorDetalle {
-  ID_PacienteMenor: number;
-  PartNacimiento: string;
-  GradoEscolar: string;
-  ID_Tutor: number;
-  Tutor?: Tutor;
+  ID_Paciente_Menor: number; // Es el mismo ID_Paciente
+  PartidaDeNacimiento: string;
+  Grado_Escolar?: string;
 }
 
 export interface Paciente {
   ID_Paciente: number;
   Nombre: string;
   Apellido: string;
-  Fecha_Nac: string;
+  Fecha_Nacimiento: string;
   Genero: string;
-  Nacionalidad: string;
-  ID_DireccionPaciente: number;
-  ID_EstadoDeActividad: number;
-  DireccionPaciente?: Direccion;
-  EstadoDeActividad?: EstadoActividad;
+  ID_Direccion: number;
+  ID_Pais?: number;
+  Activo: boolean;
+  Direccion?: Direccion;
+  Pais?: Pais;
   PacienteAdulto?: PacienteAdultoDetalle | null;
-  PacienteMenor?: PacienteMenorDetalle | null;
+  Paciente_Menor?: PacienteMenorDetalle | null;
 }
 
-// DTO para crear/editar paciente
+// DTO estricto mapeado con Zod para el PacienteFormModal
 export interface CreatePacienteDTO {
-  nombre: string;
-  apellido: string;
-  fechaNac: string;
-  genero: string;
-  nacionalidad: string;
-  direccion: {
-    pais?: string;
-    departamento: string;
-    ciudad: string;
-    barrio: string;
-    calle: string;
-  };
-  esAdulto: boolean;
-  datosAdulto?: {
-    cedula: string;
-    telefono: string;
-    ocupacionId: string | number;
-    estadoCivilId: string | number;
-  };
-  datosMenor?: {
-    partNacimiento: string;
-    grado: string;
-    modoTutor: 'existente' | 'nuevo';
-    tutorId?: string | number;
-    nuevoTutor?: any;
-  };
+  Nombre: string;
+  Apellido: string;
+  Fecha_Nacimiento: string; // Formato YYYY-MM-DD esperado
+  Genero: string;
+  ID_Direccion: number;
+  ID_Pais?: number;
+  Activo?: boolean;
 }
 
 // ==========================================
 // CITAS
 // ==========================================
-
-// Catálogos específicos de Citas (Para evitar 'any')
 export interface TipoCitaCatalogo {
   ID_TipoCita: number;
-  NombreDeCita: string;
+  Nombre_DeCita: string;
 }
 
 export interface MotivoCancelacion {
-  ID_Motivo: number;
-  Categoria: string;
+  ID_MotivoCancelacion: number;
+  Motivo: string;
 }
 
 export interface EstadoCitaCatalogo {
@@ -163,128 +143,127 @@ export interface EstadoCitaCatalogo {
 
 export interface Cita {
   ID_Cita: number;
-  FechaCita: string;
-  HoraCita: string;
-  MotivoConsulta: string;
+  FechaCita: string; // DateTime
+  HoraCita: string;  // DateTime
+  MotivoConsulta?: string;
+  NotasCancelacion?: string;
+  ID_TipoCita: number;
+  ID_Direccion: number;
   ID_EstadoCita: number;
   ID_Paciente: number;
   ID_Psicologo: number;
-  ID_TipoCita: number;
-  ID_Motivo?: number;
-  NotasCancelacion?: string;
+  ID_MotivoCancelacion?: number;
 
-  MotivoCancelacion? : {
-      D_Motivo: number;
-      Categoria: string;
-  };
-  
-  // CORRECCIÓN IMPORTANTE:
-  // Prisma devuelve el objeto completo cuando usamos 'include'.
-  // Necesitamos los IDs aquí para que SesionModal pueda leerlos.
+  // Relaciones anidadas devueltas por Prisma (include)
   Paciente?: { 
       ID_Paciente: number; 
       Nombre: string; 
       Apellido: string; 
-      PacienteAdulto?: { No_Cedula: string }; // Opcional, útil para visualización
+      PacienteAdulto?: { No_Cedula: string }; 
   };
   Psicologo?: { 
       ID_Psicologo: number; 
       Nombre: string; 
       Apellido: string; 
   };
-  
-  TipoDeCita?: { NombreDeCita: string };
+  TipoDeCita?: { Nombre_DeCita: string };
   EstadoCita?: { NombreEstado: string };
-  
-  NumeroSesion?: number;
-  Factura?: { MontoTotal: number }[];
-
-  DireccionCita?: {
-    ID_DireccionCita: number;
-    Pais: string;
-    Departamento: string;
-    Ciudad: string;
-    Barrio: string;
-    Calle: string;
-  };
+  Direccion?: Direccion;
+  MotivoCancelacion?: MotivoCancelacion;
 }
 
-// DTO para crear Cita (Faltaba esto)
+// DTO estricto mapeado con Zod para el CitaFormModal
 export interface CreateCitaDTO {
-  fecha: string;
-  hora: string;
-  motivo: string;
-  tipoCitaId: number;
-  pacienteId: number;
-  psicologoId: number;
-  precio: number;
-  metodoPagoId: number;
-  // --- NUEVO CAMPO ---
-  direccion: {
-    pais?: string;
-    departamento: string;
-    ciudad: string;
-    barrio: string;
-    calle: string;
-  };
+  ID_Paciente: number;
+  ID_Psicologo: number;
+  ID_TipoCita: number;
+  ID_Direccion: number;
+  ID_EstadoCita: number;
+  FechaCita: string;
+  HoraCita: string;
+  MotivoConsulta?: string;
 }
 
 // ==========================================
-// FACTURACIÓN
+// FACTURACIÓN (RECIBOS)
 // ==========================================
 export interface MetodoPago {
-  ID_MetodoPago: number;
-  NombreMetodo: string;
+  ID_Metodo_Pago: number;
+  Nombre_Metodo: string;
 }
 
-export interface DetalleFactura {
-  ID_DetalleFactura: number;
-  PrecioDeCita: number;
-  FechaDePago: string;
-  HoraDePago: string;
-  Observacion: string | null;
-  MetodoPago: MetodoPago;
+export interface Banco {
+  ID_Banco: number;
+  Nombre_Banco: string;
+  Activo: boolean;
 }
 
-export interface Factura {
-  Cod_Factura: number;
-  FechaFactura: string;
-  MontoTotal: number;
-  ID_Cita: number;
+// En la BD actual, facturas es la tabla Recibo
+export interface Recibo {
+  Cod_Recibo: number;
+  ID_Cita?: number;
+  ID_Divisa?: number;
+  ID_MetodoPago?: number;
+  FechaRecibo: string;
+  FechaDePago?: string;
+  HoraDePago?: string;
+  MontoTotal?: number;
+  Tasa_Cambio?: number;
+  Observacion?: string;
+  ID_Banco?: number;
+  Numero_Referencia?: string;
+  
   Cita?: Cita;
-  DetalleFactura?: DetalleFactura[];
+  MetodoPago?: MetodoPago;
+  Banco?: Banco;
 }
 
 // ==========================================
-// SESIONES (ACTUALIZADO)
+// SESIONES CLÍNICAS
 // ==========================================
-
-// ESTA ES LA INTERFAZ QUE FALTABA para el Modal de Sesiones
-export interface TratamientoLocal {
-  id: number; // ID temporal para la lista visual (timestamp)
-  tipo: 'farmacologico' | 'terapeutico';
+// DTO para la UI de tratamientos dentro de la sesión
+export interface TratamientoUI {
+  idTemporal: string | number;
+  tipo: 'farmaceutico' | 'terapeutico';
   frecuencia: string;
-  // Farmacológico
-  medicamento?: string;
-  dosis?: string;
-  viaAdminId?: string | number;
+  
+  // Farmacéutico
+  Nombre_Medicamento?: string;
+  Dosis?: string;
+  ID_ViaAdministracion?: number;
+  
   // Terapéutico
-  objetivo?: string;
-  tipoTerapiaId?: string | number;
+  Objetivo?: string;
+  ID_Tipo_Terapia?: number;
 }
 
 export interface Sesion {
   ID_Sesion: number;
-  HoraDeInicio: string;
-  HoraFinal: string;
+  ID_Cita?: number;
+  HoraDeInicio?: string;
+  HoraFinal?: string;
   Observaciones: string;
   DiagnosticoDiferencial: string;
-  HistorialDevolucion: string;
-  CriteriosDeDiagnostico: string;
-  FechaReal?: string; 
+  HistorialDeEvolucion: string;
+  Criterios_DeDiagnostico: string;
+  ID_Expediente?: number;
+  
+  Cita?: Cita;
   Expediente?: { No_Expediente: string };
-  Psicologo?: { Nombre: string; Apellido: string };
 }
+
+// DTO estricto mapeado con Zod para registrar nueva sesión
+export interface CreateSesionDTO {
+  ID_Cita?: number;
+  ID_Expediente?: number;
+  HoraDeInicio?: string;
+  HoraFinal?: string;
+  Observaciones: string;
+  DiagnosticoDiferencial: string;
+  HistorialDeEvolucion: string;
+  Criterios_DeDiagnostico: string;
+}
+
 // ==========================================
 // DASHBOARD / GENERAL
 // ==========================================
