@@ -1,86 +1,22 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { toast } from 'sonner';
-import { api } from '../services/api';
+import { Link } from 'react-router-dom';
+import { useLogin } from '../hooks/useLogin';
+import { useReloj } from '../hooks/useReloj';
+import { formatearFechaLarga, formatearHoraConSegundos } from '../utils/formatters';
 
 // --- IMPORTACIÓN DE LA IMAGEN ---
 import logoClinica from '../assets/logo-clinica.png';
 
-export default function Login() {
-  const navigate = useNavigate();
+export default function Presentacion() {
+  // 1. Invocamos la lógica de autenticación desde nuestro Custom Hook
+  const { email, setEmail, password, setPassword, loading, handleLogin } = useLogin();
   
-  // Estado para el reloj
-  const [fechaHora, setFechaHora] = useState(new Date());
-  
-  // Estados para el formulario
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  // 2. Obtenemos el estado del tiempo en tiempo real
+  const fechaHora = useReloj();
 
-  // Reloj en tiempo real
-  useEffect(() => {
-    const timer = setInterval(() => setFechaHora(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+  // 3. Formateamos usando nuestras funciones puras de utilería
+  const fechaFormatoLargo = formatearFechaLarga(fechaHora);
+  const horaFormato = formatearHoraConSegundos(fechaHora);
 
-  // Formatos de fecha y hora
-  const fechaFormatoLargo = fechaHora.toLocaleDateString('es-ES', { 
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' 
-  });
-  const horaFormato = fechaHora.toLocaleTimeString('en-US', { 
-    hour: '2-digit', minute: '2-digit', second: '2-digit' 
-  });
-
-  // Interfaz temporal para depurar sin que ESLint se queje
-  interface LoginResponse {
-    token?: string;
-    data?: { token?: string };
-    body?: { token?: string };
-    [key: string]: unknown; // Permite que vengan otras propiedades que aún no conocemos
-  }
-
-  // Lógica de Autenticación
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!email.trim() || !password.trim()) {
-      toast.warning('Por favor, complete todos los campos');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // 1. Ponemos 'any' temporalmente para ver qué nos manda realmente el backend
-      const response = await api.post<LoginResponse>('/auth/login', { 
-        email : email, 
-        passwordRaw : password 
-      });
-
-      // 2. IMPRIMIMOS LA RESPUESTA EN CONSOLA PARA INVESTIGAR
-      console.log("Respuesta del servidor:", response);
-
-      // 3. Intentamos atrapar el token en las estructuras más comunes de Express
-      const tokenRecibido = response.token || response.data?.token || response.body?.token;
-
-      // 4. Si el token no existe, detenemos todo y avisamos
-      if (!tokenRecibido) {
-        toast.error("Error estructural: El servidor respondió, pero no encontramos el Token.");
-        console.error("No se encontró el token. Revisa el objeto impreso arriba.");
-        return; // Detiene la ejecución para que no te expulse App.tsx
-      }
-
-      // 5. Si todo está bien, guardamos e ingresamos
-      localStorage.setItem('token', tokenRecibido);
-      toast.success('Acceso autorizado. Bienvenido.');
-      navigate('/dashboard');
-      
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Credenciales inválidas';
-      toast.error(msg);
-    } finally {
-      setLoading(false);
-    }
-  };
   return (
     <div className="h-screen w-full bg-slate-950 text-white grid grid-cols-1 lg:grid-cols-2 relative overflow-hidden animate-in fade-in duration-700">
 

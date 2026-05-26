@@ -21,3 +21,21 @@ export const formatearFecha = (fecha: string | Date): string => {
     day: 'numeric',
   });
 };
+
+export const formatearHoraConSegundos = (fecha: string | Date): string => {
+  return new Date(fecha).toLocaleTimeString('es-NI', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
+};
+
+export const formatearFechaLarga = (fecha: string | Date): string => {
+  return new Date(fecha).toLocaleDateString('es-NI', { 
+    weekday: 'long', 
+    day: 'numeric', 
+    month: 'long', 
+    year: 'numeric' 
+  });
+};
