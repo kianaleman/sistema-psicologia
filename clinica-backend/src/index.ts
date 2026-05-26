@@ -38,18 +38,18 @@ app.use(helmet());
 // LIMITADOR DE PETICIONES GLOBAL (RATE LIMIT)
 // ==========================================
 // Previene ataques de Denegación de Servicio (DDoS) básicos.
-const limiterGlobal = rateLimit({
-  windowMs: 15 * 60 * 1000, // Ventana de 15 minutos
-  max: 100, // Límite de 100 peticiones por ventana por IP
-  message: { 
-    error: 'Demasiadas peticiones desde esta IP, por favor intenta de nuevo en 15 minutos.' 
-  },
-  standardHeaders: true, // Envía la información en las cabeceras `RateLimit-*`
-  legacyHeaders: false, // Desactiva las cabeceras antiguas `X-RateLimit-*`
-});
+// const limiterGlobal = rateLimit({
+//   windowMs: 15 * 60 * 1000, // Ventana de 15 minutos
+//   max: 100, // Límite de 100 peticiones por ventana por IP
+//   message: { 
+//     error: 'Demasiadas peticiones desde esta IP, por favor intenta de nuevo en 15 minutos.' 
+//   },
+//   standardHeaders: true, // Envía la información en las cabeceras `RateLimit-*`
+//   legacyHeaders: false, // Desactiva las cabeceras antiguas `X-RateLimit-*`
+// });
 
-// Aplicar el limitador global a todas las rutas
-app.use(limiterGlobal);
+// // Aplicar el limitador global a todas las rutas
+// app.use(limiterGlobal);
 
 
 // Limitador estricto para autenticación (Rutas de Auth)
@@ -57,7 +57,7 @@ app.use(limiterGlobal);
 // Para evitar ataques de fuerza bruta adivinando contraseñas.
 const authLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // Ventana de 1 hora
-  max: 5, // Solo permite 5 intentos fallidos/peticiones por hora por IP
+  max: 100, // Solo permite 5 intentos fallidos/peticiones por hora por IP
   message: { 
     error: 'Demasiados intentos de inicio de sesión, intenta de nuevo en 1 hora.' 
   }
