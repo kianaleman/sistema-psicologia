@@ -45,7 +45,7 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   if (!response.ok) {
     if (response.status === 401) {
       localStorage.removeItem('token'); 
-      window.location.href = '/login';  
+      window.location.href = '/';  
       throw new Error('Sesión expirada');
     }
 
