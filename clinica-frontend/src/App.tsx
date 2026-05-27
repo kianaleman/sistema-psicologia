@@ -16,6 +16,7 @@ import Psicologos from './pages/Psicologos';
 import Facturacion from './pages/Facturacion';
 import Configuracion from './pages/Configuracion';
 import PacienteDetalle from './pages/PacienteDetalle';
+import ForgotPassword from './pages/ForgotPassword';
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
       <Routes>
         {/* RUTA PÚBLICA */}
         <Route path="/" element={<Presentacion />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         
         {/* RUTAS PROTEGIDAS Y CON DISEÑO (LAYOUT) */}
         <Route element={<ProtectedRoute />}>
