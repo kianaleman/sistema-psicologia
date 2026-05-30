@@ -22,13 +22,10 @@ export interface Direccion {
   Barrio: string;
   Calle?: string;
   ID_Municipio: number;
+
+  Municipio?: Municipio; // Relación para mostrar en UI, aunque en la BD es una tabla intermedia Paciente_Tutor
 }
 
-export interface Pais {
-  ID_Pais: number;
-  Nombre_Pais: string;
-  Nacionalidad: string;
-}
 
 // ==========================================
 // CATÁLOGOS CLÍNICOS
@@ -91,10 +88,19 @@ export interface PacienteAdultoDetalle {
   EstadoCivil?: EstadoCivil;
 }
 
+// Si no la tienes, agrega esta interfaz pequeña para la tabla intermedia:
+export interface RelacionTutor {
+  ID_Tutor: number;
+  Es_Contacto_Principal?: boolean | null;
+}
+
 export interface PacienteMenorDetalle {
   ID_Paciente_Menor: number; // Es el mismo ID_Paciente
   PartidaDeNacimiento: string;
   Grado_Escolar?: string;
+  ID_Tutor?: number;
+  Tutor?: Tutor; // Relación para mostrar en UI, aunque en la BD es una tabla intermedia Paciente_Tutor
+  Tutor_PacienteMenor?: RelacionTutor[]; // Para mostrar en UI, se construye a partir de la relación con Tutor
 }
 
 export interface Paciente {
@@ -110,19 +116,85 @@ export interface Paciente {
   Pais?: Pais;
   PacienteAdulto?: PacienteAdultoDetalle | null;
   Paciente_Menor?: PacienteMenorDetalle | null;
+  Nacionalidad?: string; // Campo calculado para mostrar en UI, no existe en la BD
+  DireccionPaciente?: DireccionPaciente; // Para mostrar en UI, no existe en la BD, se construye a partir de la relación con Direccion
 }
 
-// DTO estricto mapeado con Zod para el PacienteFormModal
+export interface DireccionPaciente {
+  ID_Direccion?: number;
+  Departamento?: string;
+  Ciudad?: string;
+  Barrio?: string;
+  Calle?: string;
+}
+
+export interface Departamento {
+  ID_Departamento: number;
+  Nombre_Departamento: string;
+}
+
+
+// Sub-interfaz para reutilizar la estructura geográfica
+export interface DireccionDTO {
+  municipioId: number;
+  barrio: string;
+  calle?: string;
+}
+
+export interface Pais {
+  ID_Pais: number;
+  Nombre_Pais: string;
+  Nacionalidad?: string;
+}
+
+export interface Municipio {
+  ID_Municipio: number;
+  Nombre_Municipio: string;
+  ID_Departamento?: number;
+
+  Departamento?: Departamento; // Relación para mostrar en UI, aunque en la BD es una tabla intermedia Paciente_Tutor
+}
+
 export interface CreatePacienteDTO {
-  Nombre: string;
-  Apellido: string;
-  Fecha_Nacimiento: string; // Formato YYYY-MM-DD esperado
-  Genero: string;
-  ID_Direccion: number;
-  ID_Pais?: number;
-  Activo?: boolean;
-}
+  nombre: string;
+  apellido: string;
+  fechaNac: string;
+  genero: string;
+  activo?: boolean;
+  esAdulto: boolean;
+  paisId: number; // Requerido por el backend
+  
+  // La dirección principal ahora exige el municipioId
+  direccion: DireccionDTO;
 
+  // Cambiado de PacienteAdultoDetalle a datosAdulto para coincidir con el Service
+  datosAdulto?: {
+    cedula: string;
+    codigoTelefonoId: number; // Nuevo requerimiento
+    telefono: string;
+    ocupacionId: number;
+    estadoCivilId: number;
+  };
+
+  // Cambiado de PacienteMenorDetalle a datosMenor para coincidir con el Service
+  datosMenor?: {
+    partNacimiento: string;
+    grado?: string;
+    modoTutor: 'existente' | 'nuevo';
+    tutorId?: number;
+    nuevoTutor?: {
+      nombre: string;
+      apellido: string;
+      cedula: string;
+      codigoTelefonoId: number; // Nuevo requerimiento
+      telefono: string;
+      ocupacionId: number;
+      estadoCivilId: number;
+      parentescoId: number;
+      direccion?: DireccionDTO;
+    };
+  };
+}
 // ==========================================
 // CITAS
 // ==========================================

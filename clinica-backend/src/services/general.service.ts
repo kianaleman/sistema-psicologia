@@ -19,6 +19,7 @@ export const GeneralService = {
       estadosCita,
       metodosPago,
       paises,
+      departamentos,
       municipios,
       bancos,
       divisas,
@@ -40,6 +41,7 @@ export const GeneralService = {
       prisma.estadoCita.findMany(),
       prisma.metodoPago.findMany(),
       prisma.pais.findMany(),
+      prisma.departamento.findMany(),
       prisma.municipio.findMany({ include: { Departamento: true } }),
       prisma.banco.findMany({ where: { Activo: true } }),
       prisma.divisa.findMany(),
@@ -68,7 +70,7 @@ export const GeneralService = {
       ocupaciones, estadosCiviles, parentescos, tutores, especialidades, 
       viasAdministracion, tiposTerapia, exploraciones,
       tiposCita, estadosCita, metodosPago, 
-      paises, municipios, bancos, divisas, codigosTelefono,
+      paises,departamentos, municipios, bancos, divisas, codigosTelefono,
       pacientes, psicologos
     };
   },
