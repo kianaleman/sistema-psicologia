@@ -195,9 +195,11 @@ model Tutor {
   Ocupacion                                  Int
   EstadoCivil                                Int
   ID_CodigoTelefono                          Int?
+  ID_Direccion                               Int?
   EstadoCivil_Tutor_EstadoCivilToEstadoCivil EstadoCivil           @relation("Tutor_EstadoCivilToEstadoCivil", fields: [EstadoCivil], references: [ID_EstadoCivil], onUpdate: NoAction, map: "FK__Tutor__EstadoCiv__6D0D32F4")
   Ocupacion_Tutor_OcupacionToOcupacion       Ocupacion             @relation("Tutor_OcupacionToOcupacion", fields: [Ocupacion], references: [ID_Ocupacion], onUpdate: NoAction, map: "FK__Tutor__Ocupacion__6C190EBB")
   CodigoTelefonoPais                         CodigoTelefonoPais?   @relation(fields: [ID_CodigoTelefono], references: [ID_CodigoTelefono], onDelete: NoAction, onUpdate: NoAction, map: "FK_Tutor_CodigoTel")
+  Direccion                                  Direccion?            @relation(fields: [ID_Direccion], references: [ID_Direccion], onDelete: NoAction, onUpdate: NoAction, map: "FK_Tutor_Direccion")
   Tutor_PacienteMenor                        Tutor_PacienteMenor[]
 }
 
@@ -264,6 +266,7 @@ model Direccion {
   Municipio    Municipio   @relation(fields: [ID_Municipio], references: [ID_Municipio], onUpdate: NoAction, map: "FK_Direccion_Municipio")
   Paciente     Paciente[]
   Psicologo    Psicologo[]
+  Tutor        Tutor[]
 }
 
 model Divisa {
@@ -379,18 +382,18 @@ model Tutor_PacienteMenor {
 }
 
 model Usuario {
-  ID_Usuario       Int           @id(map: "PK__Usuario__DE4431C563777BAA") @default(autoincrement())
-  Email            String        @unique(map: "UQ__Usuario__A9D10534AEF0F97C") @db.VarChar(100)
-  PasswordHash     String        @db.VarChar(255)
-  Fecha_Creacion   DateTime?     @default(now(), map: "DF__Usuario__Fecha_C__05D8E0BE") @db.DateTime
-  Ultimo_Acceso    DateTime?     @db.DateTime
-  Activo           Boolean?      @default(true, map: "DF__Usuario__Activo__4CA06362")
-  ResetToken       String?
-  ResetTokenExpire DateTime?
-  Verificado       Boolean       @default(false)
-  Psicologo        Psicologo?
-  Usuario_Rol      Usuario_Rol[]
-  RequiereCambioPassword  Boolean  @default(true)
+  ID_Usuario             Int           @id(map: "PK__Usuario__DE4431C563777BAA") @default(autoincrement())
+  Email                  String        @unique(map: "UQ__Usuario__A9D10534AEF0F97C") @db.VarChar(100)
+  PasswordHash           String        @db.VarChar(255)
+  Fecha_Creacion         DateTime?     @default(now(), map: "DF__Usuario__Fecha_C__05D8E0BE") @db.DateTime
+  Ultimo_Acceso          DateTime?     @db.DateTime
+  Activo                 Boolean?      @default(true, map: "DF__Usuario__Activo__4CA06362")
+  ResetToken             String?
+  ResetTokenExpire       DateTime?
+  Verificado             Boolean       @default(false)
+  RequiereCambioPassword Boolean       @default(true)
+  Psicologo              Psicologo?
+  Usuario_Rol            Usuario_Rol[]
 }
 
 model Usuario_Rol {
