@@ -24,7 +24,8 @@ interface Props {
   onSubmit: (data: CreateCitaDTO, isEdit: boolean) => Promise<boolean | void>;
   citaEditar: Cita | null;
   catalogos: CatalogosModal;
-  onNewPacienteClick?: () => void; // 👈 NUEVA PROPIEDAD AQUÍ
+  onNewPacienteClick?: () => void;
+  onCheckDisponibilidad: (psicologoId: number, fecha: string) => Promise<string[]>;
 }
 
 const Icons = {
@@ -49,12 +50,14 @@ const initialForm = {
     modalidadAtencion: 'clinica' as 'clinica' | 'domicilio'
 };
 
-export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, catalogos, onNewPacienteClick }: Props) {
+export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, catalogos, onNewPacienteClick, onCheckDisponibilidad }: Props) {
   const [formData, setFormData] = useState(initialForm);
   const [guardando, setGuardando] = useState(false); 
   const [timePart, setTimePart] = useState({ hour: '12', minute: '00', period: 'AM' });
   const [busquedaPaciente, setBusquedaPaciente] = useState('');
   const [busquedaPsicologo, setBusquedaPsicologo] = useState('');
+  const [horariosOcupados, setHorariosOcupados] = useState<string[]>([]);
+  const [cargandoHorarios, setCargandoHorarios] = useState(false);
 
   // --- LOGICA DE HORA ---
   const parse24to12 = (time24: string) => {
@@ -92,6 +95,8 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
       setTimePart(prev => ({ ...prev, minute: formattedMinute }));
       updateTime24(timePart.hour, formattedMinute, timePart.period);
   };
+
+
 
   // Cargar datos al editar
   useEffect(() => {
@@ -138,6 +143,24 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
       setFormData(prev => ({ ...prev, hora: '08:00' }));
     }
   }, [citaEditar, isOpen]);
+
+  // 2. NUEVO useEffect (Consulta de disponibilidad)
+// Este solo se ejecuta cuando cambian estos dos campos específicos
+useEffect(() => {
+  const verificarDisponibilidad = async () => {
+    if (formData.psicologoId && formData.fecha) {
+        // Aquí llamas a la función que pasamos por props desde Citas.tsx
+        const horarios = await onCheckDisponibilidad(parseInt(formData.psicologoId), formData.fecha);
+        setHorariosOcupados(horarios);
+    } else {
+        setHorariosOcupados([]); // Si no hay doctor o fecha, limpiamos la lista
+    }
+  };
+
+  verificarDisponibilidad();
+}, [formData.psicologoId, formData.fecha, onCheckDisponibilidad]);
+
+  
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -287,38 +310,64 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
 
               {/* SECCIÓN 2: Fecha y Hora */}
               <div className="space-y-4 pt-2">
-                  <h4 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2"><Icons.Time /> Fecha y Hora</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                      <div className="form-control">
-                          <label className="label pt-0"><span className="label-text text-sm font-medium text-slate-600">Fecha</span></label>
-                          <input required type="date" className="input input-bordered bg-slate-50 w-full focus:border-blue-500" value={formData.fecha} onChange={e => setFormData({...formData, fecha: e.target.value})} />
-                      </div>
-                      <div className="form-control">
-                          <label className="label pt-0"><span className="label-text text-sm font-medium text-slate-600">Hora</span></label>
-                          <div className="flex gap-2">
-                              <select className="select select-bordered bg-white w-20 text-center" value={timePart.hour} onChange={(e) => updateTime24(e.target.value, timePart.minute, timePart.period)}>
-                                  {Array.from({length: 12}, (_, i) => i + 1).map(h => <option key={h} value={h.toString().padStart(2,'0')}>{h}</option>)}
-                              </select>
-                              <span className="self-center font-bold text-slate-400">:</span>
-                              
-                              <input 
-                                type="text" 
-                                className="input input-bordered bg-white w-20 text-center font-medium focus:border-blue-500" 
-                                placeholder="00"
-                                value={timePart.minute}
-                                onChange={handleMinuteChange}
-                                onBlur={handleMinuteBlur}
-                                onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-                              />
+    <h4 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+        <Icons.Time /> Fecha y Hora
+    </h4>
+    
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+        {/* Campo Fecha */}
+        <div className="form-control">
+            <label className="label pt-0"><span className="label-text text-sm font-medium text-slate-600">Fecha</span></label>
+            <input required type="date" className="input input-bordered bg-slate-50 w-full focus:border-blue-500" value={formData.fecha} onChange={e => setFormData({...formData, fecha: e.target.value})} />
+        </div>
 
-                              <div className="join border border-slate-300 rounded-lg ml-2">
-                                  <button type="button" className={`join-item btn btn-sm px-3 border-none ${timePart.period === 'AM' ? 'bg-blue-600 text-white' : 'bg-white text-slate-500'}`} onClick={() => updateTime24(timePart.hour, timePart.minute, 'AM')}>AM</button>
-                                  <button type="button" className={`join-item btn btn-sm px-3 border-none ${timePart.period === 'PM' ? 'bg-blue-600 text-white' : 'bg-white text-slate-500'}`} onClick={() => updateTime24(timePart.hour, timePart.minute, 'PM')}>PM</button>
-                              </div>
-                          </div>
-                      </div>
-                  </div>
-              </div>
+        {/* Campo Hora */}
+        <div className="form-control">
+            <label className="label pt-0"><span className="label-text text-sm font-medium text-slate-600">Hora</span></label>
+            <div className="flex gap-2">
+                <select className="select select-bordered bg-white w-20 text-center" value={timePart.hour} onChange={(e) => updateTime24(e.target.value, timePart.minute, timePart.period)}>
+                    {Array.from({length: 12}, (_, i) => i + 1).map(h => <option key={h} value={h.toString().padStart(2,'0')}>{h}</option>)}
+                </select>
+                <span className="self-center font-bold text-slate-400">:</span>
+                
+                <input 
+                    type="text" 
+                    className="input input-bordered bg-white w-20 text-center font-medium focus:border-blue-500" 
+                    placeholder="00"
+                    value={timePart.minute}
+                    onChange={handleMinuteChange}
+                    onBlur={handleMinuteBlur}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+                />
+
+                <div className="join border border-slate-300 rounded-lg ml-2">
+                    <button type="button" className={`join-item btn btn-sm px-3 border-none ${timePart.period === 'AM' ? 'bg-blue-600 text-white' : 'bg-white text-slate-500'}`} onClick={() => updateTime24(timePart.hour, timePart.minute, 'AM')}>AM</button>
+                    <button type="button" className={`join-item btn btn-sm px-3 border-none ${timePart.period === 'PM' ? 'bg-blue-600 text-white' : 'bg-white text-slate-500'}`} onClick={() => updateTime24(timePart.hour, timePart.minute, 'PM')}>PM</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {/* 👇 INDICADOR DE DISPONIBILIDAD INTEGRADO 👇 */}
+    {formData.psicologoId && formData.fecha && (
+        <div className="mt-2 text-[11px] font-medium text-slate-500 bg-slate-50 p-2 rounded border border-slate-200 animate-fade-in">
+            {cargandoHorarios ? (
+                <span className="italic">Consultando disponibilidad del profesional...</span>
+            ) : horariosOcupados.length > 0 ? (
+                <div className="flex flex-col gap-1">
+                    <span className="text-rose-600 font-bold">⚠️ Horarios ocupados este día:</span>
+                    <div className="flex flex-wrap gap-1">
+                        {horariosOcupados.map(h => (
+                            <span key={h} className="badge badge-error badge-sm text-white font-mono">{h}</span>
+                        ))}
+                    </div>
+                </div>
+            ) : (
+                <span className="text-emerald-600 font-semibold">✓ El profesional tiene disponibilidad horaria este día.</span>
+            )}
+        </div>
+    )}
+</div>
 
               {/* SECCIÓN 3: Ubicación */}
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">

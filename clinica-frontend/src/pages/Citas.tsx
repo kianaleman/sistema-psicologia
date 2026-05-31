@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { useCitas } from "../hooks/useCitas";
 import {usePacientes} from "../hooks/usePacientes";
@@ -63,7 +63,7 @@ export default function Citas() {
   };
 
   // 👇 4. Función para crear el paciente desde la vista de Citas 👇
-  const handleCrearPacienteRapido = async (data: CreatePacienteDTO, isEdit: boolean) => {
+  const handleCrearPacienteRapido = async (data: CreatePacienteDTO) => {
     // Usamos el servicio de pacientes para crearlo
     const success = await accionesPaciente.crearPaciente(data);
     
@@ -128,6 +128,11 @@ export default function Citas() {
     if (s.includes("cancelada")) return "badge-error text-white";
     return "badge-ghost";
   };
+
+  // 2. Envuelve la función en useCallback
+const checkDisponibilidad = useCallback(async (id: number, fecha: string) => {
+    return await acciones.obtenerHorariosOcupados(id, fecha);
+}, [acciones]); // Depende de acciones
 
   const renderDireccion = (dir: { Ciudad?: string; Calle?: string; Departamento?: string; Barrio?: string } | null | undefined) => {
     if (!dir) return null;
@@ -406,8 +411,8 @@ export default function Citas() {
         onSubmit={handleCreateOrUpdate}
         citaEditar={selectedCita}
         catalogos={catalogos}
-
         onNewPacienteClick={() => setIsPacienteModalOpen(true)}
+        onCheckDisponibilidad={checkDisponibilidad}
       />
 
       <SesionModal

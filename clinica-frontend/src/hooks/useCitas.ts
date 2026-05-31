@@ -99,6 +99,8 @@ export const useCitas = () => {
 
   // --- ACCIONES ---
 
+  
+
   const crearCita = async (data: CreateCitaDTO) => {
     try {
       await api.citas.create(data);
@@ -112,6 +114,8 @@ export const useCitas = () => {
       return false;
     }
   };
+
+ 
 
   const actualizarCita = async (id: number, data: Partial<CreateCitaDTO>) => {
     try {
@@ -151,6 +155,15 @@ export const useCitas = () => {
         throw new Error(msg);
      }
   };
+
+  const obtenerHorariosOcupados = useCallback(async (psicologoId: number, fecha: string) => {
+    try {
+      return await api.citas.getHorariosOcupados(psicologoId, fecha);
+    } catch (err) {
+      console.error("Error al obtener disponibilidad:", err);
+      return []; // Retornamos array vacío si falla para no romper la UI
+    }
+  }, []);
 
   // --- FILTRADO ---
   const citasFiltradas = citas.filter(c => {
@@ -215,6 +228,6 @@ export const useCitas = () => {
     filtros,
     setFiltro,
     catalogos, 
-    acciones: { crearCita, actualizarCita, cancelarCita, guardarSesion }
+    acciones: { crearCita, actualizarCita, cancelarCita, guardarSesion, obtenerHorariosOcupados }
   };
 };

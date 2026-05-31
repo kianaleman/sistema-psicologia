@@ -4,7 +4,8 @@ import {
   createCita, 
   updateCita, 
   cancelCita, 
-  getCatalogosCitas 
+  getCatalogosCitas,
+  getHorariosOcupados 
 } from '../controllers/cita.controller.js';
 import { verificarToken } from '../middlewares/auth.middleware.js';
 import { validateSchema } from '../middlewares/validator.middleware.js';
@@ -25,6 +26,10 @@ router.use(verificarToken);
 
 // 1. RUTAS ESTÁTICAS
 router.get('/catalogos', getCatalogosCitas);
+
+// 👇 NUEVA RUTA PARA CONSULTAR DISPONIBILIDAD 👇
+// Se accede vía /api/citas/horarios-ocupados?psicologoId=1&fecha=2026-05-31
+router.get('/horarios-ocupados', getHorariosOcupados);
 
 // 2. RUTAS GENERALES
 router.get('/', getCitas);

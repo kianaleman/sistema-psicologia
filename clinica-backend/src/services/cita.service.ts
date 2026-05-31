@@ -83,6 +83,29 @@ export const CitaService = {
     return { tiposCita, estadosCita, metodosPago, bancos, divisas };
   },
 
+  getHorariosOcupados: async (psicologoId: number, fechaStr: string) => {
+    const fechaBuscar = new Date(fechaStr); // Convierte "YYYY-MM-DD" al formato de DB
+    
+    const citas = await prisma.cita.findMany({
+      where: {
+        ID_Psicologo: psicologoId,
+        FechaCita: fechaBuscar,
+        ID_EstadoCita: { not: 3 } // Ignoramos las canceladas (y no bloquean la agenda)
+      },
+      select: {
+        HoraCita: true // Solo traemos la hora para que la petición sea rapidísima
+      }
+    });
+
+    // Formateamos las horas extraídas a un formato legible "HH:mm" (24hrs)
+    return citas.map(c => {
+      const horaDb = new Date(c.HoraCita);
+      const hh = horaDb.getUTCHours().toString().padStart(2, '0');
+      const mm = horaDb.getUTCMinutes().toString().padStart(2, '0');
+      return `${hh}:${mm}`;
+    });
+  },
+
   create: async (data: CreateCitaDTO) => {
     const pacienteCheck = await prisma.paciente.findUnique({ where: { ID_Paciente: data.ID_Paciente }, select: { Activo: true } });
     if (!pacienteCheck || !pacienteCheck.Activo) throw new Error('El paciente no existe o está INACTIVO.');

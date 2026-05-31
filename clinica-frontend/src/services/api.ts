@@ -123,6 +123,8 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ ID_MotivoCancelacion, NotasCancelacion }) 
       }),
+    getHorariosOcupados: (psicologoId: number, fecha: string) => 
+      request<string[]>(`/citas/horarios-ocupados?psicologoId=${psicologoId}&fecha=${fecha}`),
   },
 
   sesiones: {

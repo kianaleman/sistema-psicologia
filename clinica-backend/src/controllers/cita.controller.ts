@@ -22,6 +22,28 @@ export const getCatalogosCitas = async (req: Request, res: Response): Promise<vo
   }
 };
 
+// GET: Obtener horas ocupadas de un psicólogo por fecha
+export const getHorariosOcupados = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { psicologoId, fecha } = req.query;
+
+    if (!psicologoId || !fecha) {
+      res.status(400).json({ error: 'Faltan parámetros: psicologoId y fecha son requeridos.' });
+      return;
+    }
+
+    const horarios = await CitaService.getHorariosOcupados(
+      Number(psicologoId), 
+      String(fecha)
+    );
+
+    res.json(horarios); // Retorna algo como: ["08:00", "14:00"]
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: 'Error al consultar disponibilidad' });
+  }
+};
+
 // POST: Crear Cita
 export const createCita = async (req: Request, res: Response): Promise<void> => {
   try {
