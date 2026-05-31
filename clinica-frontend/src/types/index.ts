@@ -213,11 +213,21 @@ export interface EstadoCitaCatalogo {
   NombreEstado: string;
 }
 
+export interface ReciboCita {
+  Cod_Recibo?: number;
+  MontoTotal: number;
+  ID_MetodoPago: number;
+  ID_Banco?: number | null;
+  Numero_Referencia?: string | null;
+  ID_Divisa?: number;
+}
+
 export interface Cita {
   ID_Cita: number;
   FechaCita: string; // DateTime
   HoraCita: string;  // DateTime
   MotivoConsulta?: string;
+  NumeroSesion?: number; // Para mostrar en UI, se calcula a partir de las sesiones relacionadas
   NotasCancelacion?: string;
   ID_TipoCita: number;
   ID_Direccion: number;
@@ -225,6 +235,7 @@ export interface Cita {
   ID_Paciente: number;
   ID_Psicologo: number;
   ID_MotivoCancelacion?: number;
+  Recibo?: ReciboCita | ReciboCita[]; // Para mostrar en UI, aunque en la BD es una tabla intermedia con Cita
 
   // Relaciones anidadas devueltas por Prisma (include)
   Paciente?: { 
@@ -251,11 +262,18 @@ export interface CreateCitaDTO {
   ID_Paciente: number;
   ID_Psicologo: number;
   ID_TipoCita: number;
-  ID_Direccion: number;
   ID_EstadoCita: number;
-  FechaCita: string;
-  HoraCita: string;
+  ID_Direccion: number; // Tomará el ID de la clínica o el del paciente
+  FechaCita: string; 
+  HoraCita: string;  
   MotivoConsulta?: string;
+
+  // 👇 DATOS FINANCIEROS (NUEVOS) 👇
+  Precio: number;
+  ID_MetodoPago: number;
+  ID_Divisa?: number;
+  ID_Banco?: number;
+  Numero_Referencia?: string;
 }
 
 // ==========================================
@@ -296,19 +314,24 @@ export interface Recibo {
 // SESIONES CLÍNICAS
 // ==========================================
 // DTO para la UI de tratamientos dentro de la sesión
-export interface TratamientoUI {
-  idTemporal: string | number;
-  tipo: 'farmaceutico' | 'terapeutico';
-  frecuencia: string;
-  
-  // Farmacéutico
-  Nombre_Medicamento?: string;
-  Dosis?: string;
-  ID_ViaAdministracion?: number;
-  
-  // Terapéutico
-  Objetivo?: string;
-  ID_Tipo_Terapia?: number;
+// Sub-interfaz para ordenar el Tratamiento
+export interface TratamientoDTO {
+  id: number; // ID local para manejar la UI, no se envía al backend
+  Frecuencia: string;
+  Tipo: 'farmaceutico' | 'terapeutico';
+  FechaInicio: string;
+  FechaFin?: string;
+  // Puede incluir medicina
+  Farmaceutico?: {
+    ID_ViaAdministracion: number;
+    Nombre_Medicamento: string;
+    Dosis: string;
+  };
+  // Puede incluir terapia
+  Terapeutico?: {
+    ID_Tipo_Terapia: number;
+    Objetivo: string;
+  };
 }
 
 export interface Sesion {
@@ -328,14 +351,20 @@ export interface Sesion {
 
 // DTO estricto mapeado con Zod para registrar nueva sesión
 export interface CreateSesionDTO {
-  ID_Cita?: number;
-  ID_Expediente?: number;
-  HoraDeInicio?: string;
-  HoraFinal?: string;
+  ID_Cita: number;
+  ID_Expediente: number;
+  HoraDeInicio: string;
+  HoraFinal: string;
   Observaciones: string;
   DiagnosticoDiferencial: string;
   HistorialDeEvolucion: string;
   Criterios_DeDiagnostico: string;
+  
+  // Arreglo de IDs de las exploraciones seleccionadas (checkboxes)
+  ExploracionesIds?: number[]; 
+  
+  // Objeto anidado para recetar en la misma transacción
+  Tratamiento?: TratamientoDTO; 
 }
 
 // ==========================================

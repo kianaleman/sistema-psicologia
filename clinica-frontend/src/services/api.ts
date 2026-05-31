@@ -70,6 +70,7 @@ interface CatalogosResponse {
   estadosCiviles: EstadoCivil[];
   parentescos: Parentesco[];
   tutores: Tutor[];
+  [key: string]: unknown; // Para evitar que TypeScript se queje si hay campos adicionales
 }
 
 export const api = {
@@ -142,7 +143,6 @@ export const api = {
 
   general: {
     catalogos: () => request<CatalogosResponse>('/general/catalogos'),
-    catalogosCitas: () => request<Record<string, unknown>>('/citas/catalogos'),
     // Aquí implementamos la interfaz Stats que me pasaste en los types
     stats: () => request<Stats>('/general/dashboard-stats'),
     historialCompleto: () => request<unknown[]>('/general/historial'),

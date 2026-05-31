@@ -12,7 +12,8 @@ import type {
   Psicologo,
   ViaAdministracion,
   TipoDeTerapia,
-  ExploracionPsicologica
+  ExploracionPsicologica,
+  Banco,
 } from '../types';
 
 // Definimos la interfaz estricta para los catálogos locales del hook
@@ -25,6 +26,7 @@ interface CatalogosCita {
   viasAdmin: ViaAdministracion[];
   tiposTerapia: TipoDeTerapia[];
   exploraciones: ExploracionPsicologica[];
+  bancos: Banco[];
 }
 
 export const useCitas = () => {
@@ -50,7 +52,8 @@ export const useCitas = () => {
     psicologos: [],
     viasAdmin: [],       
     tiposTerapia: [],    
-    exploraciones: []    
+    exploraciones: [],
+    bancos: []    
   });
 
   const fetchCitas = useCallback(async () => {
@@ -71,7 +74,7 @@ export const useCitas = () => {
   const fetchCatalogos = useCallback(async () => {
     try {
       // Usamos Record<string, unknown> en lugar de any para la respuesta cruda
-      const general = await api.general.catalogosCitas() as Record<string, unknown>;
+      const general = await api.general.catalogos();
       
       setCatalogos({
          tiposCita: (general.tiposCita as TipoCitaCatalogo[]) || [],
@@ -81,7 +84,8 @@ export const useCitas = () => {
          psicologos: (general.psicologos as Psicologo[]) || [],
          viasAdmin: (general.viasAdministracion as ViaAdministracion[]) || [], 
          tiposTerapia: (general.tiposTerapia as TipoDeTerapia[]) || [],
-         exploraciones: (general.exploraciones as ExploracionPsicologica[]) || []
+         exploraciones: (general.exploraciones as ExploracionPsicologica[]) || [],
+         bancos: (general.bancos as Banco[]) || []
       });
     } catch (err) {
       console.error("Error al cargar catálogos de citas", err);

@@ -1,12 +1,22 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { useCitas } from "../hooks/useCitas";
-import type { Cita } from "../types";
+import {usePacientes} from "../hooks/usePacientes";
+import type { 
+  Cita, 
+  CreateCitaDTO, 
+  CreateSesionDTO, 
+  CreatePacienteDTO,
+  Psicologo, 
+  Paciente, 
+  EstadoCitaCatalogo
+} from "../types";
 
 import CitaFormModal from "../components/citas/CitaFormModal";
 import SesionModal from "../components/citas/SesionModal";
 import HistorialModal from "../components/citas/HistorialModal";
 import CancelarCitaModal from "../components/citas/CancelarCitaModal";
+import PacienteFormModal from "../components/pacientes/PacienteFormModal";
 
 // Iconos SVG Inline
 const Icons = {
@@ -18,20 +28,28 @@ const Icons = {
   Ban: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" /></svg>
 };
 
+
+
 export default function Citas() {
   const { citas, loading, filtros, setFiltro, catalogos, acciones } = useCitas();
 
+  const { catalogos: catalogosPaciente, acciones: accionesPaciente } = usePacientes();
+
   // Estados UI locales
-  const [modalOpen, setModalOpen] = useState<"create" | "session" | "view" | null>(null);
+  // Añadimos 'edit' al tipo de estados permitidos
+  const [modalOpen, setModalOpen] = useState<"create" | "edit" | "session" | "view" | null>(null);
   const [selectedCita, setSelectedCita] = useState<Cita | null>(null);
   const [idCancelar, setIdCancelar] = useState<number | null>(null);
 
-  const openModal = (type: "create" | "session" | "view", cita?: Cita) => {
+  const [isPacienteModalOpen, setIsPacienteModalOpen] = useState(false);
+
+  const openModal = (type: "create" | "edit" | "session" | "view", cita?: Cita) => {
     setSelectedCita(cita || null);
     setModalOpen(type);
   };
 
-  const handleCreateOrUpdate = async (data: any, isEdit: boolean) => {
+
+  const handleCreateOrUpdate = async (data: CreateCitaDTO, isEdit: boolean) => {
     let success = false;
     if (isEdit && selectedCita) {
       success = await acciones.actualizarCita(selectedCita.ID_Cita, data);
@@ -44,6 +62,21 @@ export default function Citas() {
     return success;
   };
 
+  // 👇 4. Función para crear el paciente desde la vista de Citas 👇
+  const handleCrearPacienteRapido = async (data: CreatePacienteDTO, isEdit: boolean) => {
+    // Usamos el servicio de pacientes para crearlo
+    const success = await accionesPaciente.crearPaciente(data);
+    
+    if (success) {
+      setIsPacienteModalOpen(false); // Cerramos el modal de paciente
+      
+      // NOTA: Para que el paciente aparezca en el select de citas sin recargar la página,
+      // la página se actualizará automáticamente la próxima vez que el usuario abra el select, 
+      // o puedes forzar un reload aquí si lo prefieres: window.location.reload();
+    }
+    return success;
+  };
+
   const confirmarCancelacion = async (motivoId: number, nota: string) => {
     if (idCancelar) {
         await acciones.cancelarCita(idCancelar, motivoId, nota);
@@ -51,7 +84,7 @@ export default function Citas() {
     }
   };
 
-  const handleFinalizarSesion = async (data: any) => {
+  const handleFinalizarSesion = async (data: CreateSesionDTO) => {
     toast.promise(acciones.guardarSesion(data), {
       loading: "Finalizando...",
       success: "Sesión guardada",
@@ -64,7 +97,6 @@ export default function Citas() {
   const formatearHora = (h: string) => {
     if (!h) return "--:--";
     const fecha = new Date(h);
-    // Forzamos UTC para que lea "20:30" tal cual está en la BD
     return fecha.toLocaleTimeString('en-US', { 
         hour: 'numeric', 
         minute: '2-digit', 
@@ -91,16 +123,16 @@ export default function Citas() {
 
   const getEstadoColor = (st: string) => {
     const s = st.toLowerCase();
-    if (s.includes("programada")) return "badge-primary";
-    if (s.includes("completada")) return "badge-success text-white";
+    if (s.includes("pendiente")) return "badge-primary";
+    if (s.includes("realizada")) return "badge-success text-white";
     if (s.includes("cancelada")) return "badge-error text-white";
     return "badge-ghost";
   };
 
-  const renderDireccion = (dir: any) => {
+  const renderDireccion = (dir: { Ciudad?: string; Calle?: string; Departamento?: string; Barrio?: string } | null | undefined) => {
     if (!dir) return null;
-    const textoCorto = `${dir.Ciudad}, ${dir.Calle}`;
-    const textoCompleto = `${dir.Departamento}, ${dir.Ciudad}. B° ${dir.Barrio}, ${dir.Calle}`;
+    const textoCorto = `${dir.Ciudad || ''}, ${dir.Calle || ''}`;
+    const textoCompleto = `${dir.Departamento || ''}, ${dir.Ciudad || ''}. B° ${dir.Barrio || ''}, ${dir.Calle || ''}`;
     return (
       <div className="flex items-start gap-1.5 text-xs text-slate-500 mt-2 bg-slate-50 p-2 rounded-md border border-slate-100 cursor-help transition-colors hover:bg-blue-50 hover:border-blue-100" title={textoCompleto}>
         <span className="text-sm shrink-0">📍</span>
@@ -186,20 +218,20 @@ export default function Citas() {
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400"><Icons.User /></div>
                 <input type="text" list="lista-doctores" placeholder="Doctor..." className="input input-bordered input-sm w-full pl-9 bg-slate-50 focus:bg-white transition-colors" value={filtros.psicologo} onChange={(e) => setFiltro("psicologo", e.target.value)} />
-                <datalist id="lista-doctores">{catalogos.psicologos.map((p: any) => (<option key={p.ID_Psicologo} value={`${p.Nombre} ${p.Apellido}`} />))}</datalist>
+                <datalist id="lista-doctores">{catalogos.psicologos.map((p: Psicologo) => (<option key={p.ID_Psicologo} value={`${p.Nombre} ${p.Apellido}`} />))}</datalist>
               </div>
 
               {/* Paciente */}
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400"><Icons.Search /></div>
                 <input type="text" list="lista-pacientes" placeholder="Paciente..." className="input input-bordered input-sm w-full pl-9 bg-slate-50 focus:bg-white transition-colors" value={filtros.paciente} onChange={(e) => setFiltro("paciente", e.target.value)} />
-                <datalist id="lista-pacientes">{catalogos.pacientes.map((p: any) => (<option key={p.ID_Paciente} value={`${p.Nombre} ${p.Apellido}`} />))}</datalist>
+                <datalist id="lista-pacientes">{catalogos.pacientes.map((p: Paciente) => (<option key={p.ID_Paciente} value={`${p.Nombre} ${p.Apellido}`} />))}</datalist>
               </div>
 
               {/* Estado */}
               <select className="select select-bordered select-sm bg-slate-50 focus:bg-white w-full text-slate-600" value={filtros.estado} onChange={(e) => setFiltro("estado", e.target.value)}>
                 <option value="">Todos los estados</option>
-                {catalogos.estadosCita.map((e: any) => (<option key={e.ID_EstadoCita} value={e.ID_EstadoCita}>{e.NombreEstado}</option>))}
+                {catalogos.estadosCita.map((e: EstadoCitaCatalogo) => (<option key={e.ID_EstadoCita} value={e.ID_EstadoCita}>{e.NombreEstado}</option>))}
               </select>
             </div>
           </div>
@@ -215,8 +247,8 @@ export default function Citas() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {citas.map((cita) => {
-            const esProgramada = cita.EstadoCita?.NombreEstado === "Programada";
-            const esCancelada = cita.EstadoCita?.NombreEstado === "Cancelada" || cita.EstadoCita?.NombreEstado === "No Asistió";
+            const esProgramada = cita.ID_EstadoCita === 1;
+            const esCancelada = cita.ID_EstadoCita === 3 || cita.ID_EstadoCita === 4;
 
             return (
               <div
@@ -231,7 +263,6 @@ export default function Citas() {
                     📅 {formatearFechaCompleta(cita.FechaCita)}
                   </span>
                   <div
-                    // Se agregan clases para que el badge se adapte al contenido: h-auto, py-1, text-center, leading-tight
                     className={`badge ${getEstadoColor(
                       cita.EstadoCita?.NombreEstado || ""
                     )} font-bold border-none h-auto py-1 text-center leading-tight`}
@@ -263,7 +294,8 @@ export default function Citas() {
 
                     <div className="flex flex-wrap gap-2 items-center text-sm text-slate-500">
                       <span className="badge badge-sm badge-outline text-slate-500">
-                        {cita.TipoDeCita?.NombreDeCita}
+                        {/* Se corrige el acceso al nombre del tipo de cita */}
+                        {cita.TipoDeCita?.Nombre_DeCita || "Tipo Desconocido"}
                       </span>
                       {cita.NumeroSesion && (
                         <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-200 shadow-sm uppercase tracking-wider">
@@ -281,7 +313,8 @@ export default function Citas() {
                         <div className="mt-2 p-2 bg-rose-50 border border-rose-100 rounded-lg">
                             <div className="flex items-center gap-1.5 text-rose-700 font-bold text-xs mb-1">
                                 <Icons.Ban />
-                                <span>{cita.MotivoCancelacion?.Categoria || 'Cancelada'}</span>
+                                {/* Se corrige el acceso a la categoría de cancelación */}
+                                <span>{cita.MotivoCancelacion?.Motivo || 'Cancelada'}</span>
                             </div>
                             {cita.NotasCancelacion && (
                                 <p className="text-xs text-rose-600/80 italic leading-snug">
@@ -290,7 +323,7 @@ export default function Citas() {
                             )}
                         </div>
                     ) : (
-                        cita.DireccionCita && renderDireccion(cita.DireccionCita)
+                        cita.Direccion && renderDireccion(cita.Direccion)
                     )}
                   </div>
                 </div>
@@ -317,7 +350,8 @@ export default function Citas() {
 
                         <button
                           className="btn btn-outline btn-xs"
-                          onClick={() => openModal("create", cita)}
+                          // SE CAMBIA A 'edit' EN LUGAR DE 'create'
+                          onClick={() => openModal("edit", cita)}
                         >
                           Editar
                         </button>
@@ -364,12 +398,16 @@ export default function Citas() {
       )}
 
       {/* MODALES REUTILIZABLES */}
+      
+      {/* Se abre si modalOpen es "create" O "edit" */}
       <CitaFormModal
-        isOpen={modalOpen === "create"}
+        isOpen={modalOpen === "create" || modalOpen === "edit"}
         onClose={() => setModalOpen(null)}
         onSubmit={handleCreateOrUpdate}
         citaEditar={selectedCita}
         catalogos={catalogos}
+
+        onNewPacienteClick={() => setIsPacienteModalOpen(true)}
       />
 
       <SesionModal
@@ -392,6 +430,16 @@ export default function Citas() {
         onClose={() => setIdCancelar(null)}
         onConfirm={confirmarCancelacion}
       />
+
+      {isPacienteModalOpen && (
+        <PacienteFormModal 
+          isOpen={isPacienteModalOpen} 
+          onClose={() => setIsPacienteModalOpen(false)} 
+          onSubmit={handleCrearPacienteRapido} 
+          pacienteEditar={null} // Siempre null para crear uno nuevo
+          catalogos={catalogosPaciente} // Usamos los catálogos del hook de pacientes
+        />
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { CitaService } from '../services/cita.service.js'; // Asegura la extensión .js si usas ESM
+import { CitaService } from '../services/cita.service.js';
 
 // GET: Obtener todas las citas
 export const getCitas = async (req: Request, res: Response): Promise<void> => {
@@ -25,30 +25,9 @@ export const getCatalogosCitas = async (req: Request, res: Response): Promise<vo
 // POST: Crear Cita
 export const createCita = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { 
-      fecha, hora, motivo, tipoCitaId, pacienteId, psicologoId, 
-      precio, divisaId, metodoPagoId, bancoId, numeroReferencia, direccion 
-    } = req.body;
-
-    const result = await CitaService.create({
-      fecha,
-      hora,
-      motivo, 
-      tipoCitaId: parseInt(tipoCitaId), 
-      pacienteId: parseInt(pacienteId), 
-      psicologoId: parseInt(psicologoId), 
-      precio: parseFloat(precio) || 0, 
-      divisaId: parseInt(divisaId) || 1, 
-      metodoPagoId: parseInt(metodoPagoId),
-      // Inyectamos las propiedades SOLO si existen
-      ...(bancoId ? { bancoId: parseInt(bancoId) } : {}),
-      ...(numeroReferencia ? { numeroReferencia } : {}),
-      direccion: direccion || { municipioId: 1, barrio: 'No especificado', calle: '' }
-    });
-
-    // Ahora devolvemos el recibo, alineado a la nueva BD
-    res.status(201).json({ nuevaCita: result.cita, nuevoRecibo: result.recibo });
-
+    // Zod ya validó y transformó req.body, se lo pasamos directo al Service
+    const result = await CitaService.create(req.body);
+    res.status(201).json(result);
   } catch (error: any) {
     console.error(error);
 
@@ -58,7 +37,7 @@ export const createCita = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // 2. ERRORES DE VALIDACIÓN
+    // 2. ERRORES DE VALIDACIÓN GENERALES
     res.status(400).json({ error: error.message });
   }
 };
@@ -72,29 +51,8 @@ export const updateCita = async (req: Request, res: Response): Promise<void> => 
         return;
     }
 
-    const { 
-      fecha, hora, motivo, tipoCitaId, pacienteId, psicologoId, 
-      precio, divisaId, metodoPagoId, bancoId, numeroReferencia, direccion 
-    } = req.body;
-
-    const result = await CitaService.update(id, { 
-      fecha, 
-      hora, 
-      motivo,
-      tipoCitaId: parseInt(tipoCitaId),
-      pacienteId: parseInt(pacienteId),
-      psicologoId: parseInt(psicologoId),
-      precio: parseFloat(precio) || 0,
-      divisaId: parseInt(divisaId) || 1,
-      metodoPagoId: parseInt(metodoPagoId),
-      // Inyectamos las propiedades SOLO si existen
-      ...(bancoId ? { bancoId: parseInt(bancoId) } : {}),
-      ...(numeroReferencia ? { numeroReferencia } : {}),
-      direccion: direccion || { municipioId: 1, barrio: 'No especificado', calle: '' }
-    });
-
+    const result = await CitaService.update(id, req.body);
     res.json(result);
-
   } catch (error: any) {
     console.error(error);
     
@@ -116,14 +74,15 @@ export const cancelCita = async (req: Request, res: Response): Promise<void> => 
         return;
     }
 
-    const { motivoId, notas } = req.body; 
+    // Usamos los nombres exactos que envía el Frontend
+    const { ID_MotivoCancelacion, NotasCancelacion } = req.body; 
 
-    if (!motivoId) {
+    if (!ID_MotivoCancelacion) {
       res.status(400).json({ error: "Debe seleccionar un motivo." });
       return;
     }
 
-    await CitaService.cancel(id, Number(motivoId), notas);
+    await CitaService.cancel(id, Number(ID_MotivoCancelacion), NotasCancelacion || '');
     res.json({ message: 'Cita cancelada correctamente' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

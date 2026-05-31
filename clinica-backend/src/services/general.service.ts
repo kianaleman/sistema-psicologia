@@ -51,16 +51,27 @@ export const GeneralService = {
     // --- LÓGICA AGREGADA PARA CITA FORM MODAL ---
     const [pacientes, psicologos] = await Promise.all([
         prisma.paciente.findMany({ 
-            where: { Activo: true }, // Renombrado
+            where: { Activo: true }, 
             select: { 
-                ID_Paciente: true, Nombre: true, Apellido: true, 
+                ID_Paciente: true, 
+                Nombre: true, 
+                Apellido: true, 
+                Activo: true,
+                ID_Direccion: true, // 👈 1. Vital para que el frontend sepa el ID real al agendar
                 PacienteAdulto: { select: { No_Cedula: true } }, 
-                Activo: true, 
-                Direccion: { include: { Municipio: true } } // Renombrado
+                Direccion: { 
+                    include: { 
+                        Municipio: {
+                            include: {
+                                Departamento: true // 👈 2. El eslabón perdido para la vista de solo lectura
+                            }
+                        } 
+                    } 
+                } 
             } 
         }),
         prisma.psicologo.findMany({ 
-            where: { Activo: true }, // Renombrado
+            where: { Activo: true }, 
             select: { ID_Psicologo: true, Nombre: true, Apellido: true, Activo: true } 
         })
     ]);
