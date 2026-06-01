@@ -3,49 +3,158 @@ import { api } from '../services/api';
 import { toast } from 'sonner';
 import type { Psicologo, Direccion } from '../types';
 
-// Definiciones locales
-// Ajustado a Nombre_Especialidad para coincidir con la convención de DB
-export interface Especialidad { 
-  ID_Especialidad: number; 
-  Nombre_Especialidad: string; 
+export interface Especialidad {
+  ID_Especialidad: number;
+  Nombre_Especialidad: string;
+  NombreEspecialidad?: string;
 }
 
-// Extendemos nuestra interfaz base para incluir las relaciones complejas
-export interface PsicologoCompleto extends Psicologo {
-  Psicologo_EspecialidadPsicologo?: { EspecialidadPsicologo: Especialidad }[];
-  // Actualizado de DireccionPsicologo a Direccion (como dicta types/index.ts)
-  Direccion?: Direccion;
+export interface PsicologoEspecialidadRelacion {
+  ID_Especialidad?: number;
+  EspecialidadPsicologo?: Especialidad;
+  Especialidad?: Especialidad;
 }
+
+// Usamos Omit porque Psicologo ya define Direccion como Direccion | undefined.
+// La respuesta del backend puede devolver Direccion como null.
+export type PsicologoCompleto = Omit<Psicologo, 'Direccion'> & {
+  Direccion?: Direccion | null;
+
+  // Este campo existe en la UI/backend, pero no esta declarado en la interfaz Psicologo base.
+  Email?: string | null;
+
+  Psicologo_EspecialidadPsicologo?: PsicologoEspecialidadRelacion[];
+};
+
+export type FiltroActividad = 'todos' | 'activos' | 'inactivos';
+
+export interface PsicologoFormData {
+  nombre: string;
+  apellido: string;
+  codigoMinsa: string;
+  telefono: string;
+  email: string;
+  activo: boolean;
+  direccion: {
+    departamento: string;
+    municipio: string;
+    barrio: string;
+    calle: string;
+  };
+  especialidadIds: string[];
+}
+
+type CatalogosPsicologos = {
+  especialidades?: Especialidad[];
+};
+
+type PsicologoPayload = {
+  Nombre: string;
+  Apellido: string;
+  CodigoMinsa: string;
+  No_Telefono: string;
+  Email: string;
+  Activo: boolean;
+  direccion: {
+    departamento: string;
+    municipio: string;
+    barrio: string;
+    calle: string;
+  };
+  especialidadIds: number[];
+};
+
+type PsicologoCreateRequest = Omit<Psicologo, 'ID_Psicologo'> & {
+  Email?: string;
+  direccion?: PsicologoPayload['direccion'];
+  especialidadIds?: number[];
+};
+
+type PsicologoUpdateRequest = Partial<Psicologo> & {
+  Email?: string;
+  direccion?: PsicologoPayload['direccion'];
+  especialidadIds?: number[];
+};
+
+const normalizarTexto = (valor?: string | null) => {
+  return valor?.trim().toLowerCase() || '';
+};
+
+const normalizarCatalogos = (catalogos: unknown): CatalogosPsicologos => {
+  if (
+    typeof catalogos === 'object' &&
+    catalogos !== null &&
+    'especialidades' in catalogos
+  ) {
+    const data = catalogos as CatalogosPsicologos;
+
+    return {
+      especialidades: Array.isArray(data.especialidades) ? data.especialidades : [],
+    };
+  }
+
+  return { especialidades: [] };
+};
+
+const construirPayload = (data: PsicologoFormData): PsicologoPayload => ({
+  Nombre: data.nombre.trim(),
+  Apellido: data.apellido.trim(),
+  CodigoMinsa: data.codigoMinsa.trim(),
+  No_Telefono: data.telefono.trim(),
+  Email: data.email.trim(),
+  Activo: data.activo,
+  direccion: {
+    departamento: data.direccion.departamento.trim(),
+    municipio: data.direccion.municipio.trim(),
+    barrio: data.direccion.barrio.trim(),
+    calle: data.direccion.calle.trim(),
+  },
+  especialidadIds: data.especialidadIds
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0),
+});
+
+const adaptarPayloadCrear = (payload: PsicologoPayload): PsicologoCreateRequest => {
+  return {
+    ...payload,
+
+    // ID_Direccion es requerido por el tipo base Psicologo, pero cuando se crea desde este formulario
+    // el backend recibe el objeto direccion y resuelve o crea la direccion correspondiente.
+    ID_Direccion: 0,
+  } as PsicologoCreateRequest;
+};
+
+const adaptarPayloadActualizar = (payload: PsicologoPayload): PsicologoUpdateRequest => {
+  return {
+    ...payload,
+  };
+};
 
 export function usePsicologos() {
   const [psicologos, setPsicologos] = useState<PsicologoCompleto[]>([]);
-  const [loading, setLoading] = useState(true);
-  
-  // Filtros
-  const [busqueda, setBusqueda] = useState('');
-  const [filtroActividad, setFiltroActividad] = useState<'todos' | 'activos' | 'inactivos'>('todos');
-
-  // Catálogos
+  const [loading, setLoading] = useState<boolean>(true);
+  const [busqueda, setBusqueda] = useState<string>('');
+  const [filtroActividad, setFiltroActividad] = useState<FiltroActividad>('todos');
   const [especialidades, setEspecialidades] = useState<Especialidad[]>([]);
-  // NOTA: Eliminamos el estado `estadosActividad` porque ahora usamos el booleano `Activo`
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
+
       const [dataPsicologos, dataCatalogos] = await Promise.all([
         api.psicologos.getAll(),
-        api.general.catalogos()
+        api.general.catalogos(),
       ]);
-      
-      setPsicologos(dataPsicologos as PsicologoCompleto[]);
-      
-      // SOLUCIÓN: Usamos unknown como puente y tipamos el objeto anónimo exactamente como lo necesitamos
-      const catalogos = dataCatalogos as unknown as { especialidades?: Especialidad[] };
+
+      setPsicologos(Array.isArray(dataPsicologos) ? dataPsicologos as PsicologoCompleto[] : []);
+
+      const catalogos = normalizarCatalogos(dataCatalogos);
       setEspecialidades(catalogos.especialidades || []);
-      
     } catch (error: unknown) {
-      console.error(error);
-      toast.error("Error cargando datos de psicólogos");
+      console.error('Error cargando datos de psicólogos:', error);
+      toast.error('Error cargando datos de psicólogos');
+      setPsicologos([]);
+      setEspecialidades([]);
     } finally {
       setLoading(false);
     }
@@ -55,55 +164,60 @@ export function usePsicologos() {
     loadData();
   }, [loadData]);
 
-  // --- Lógica de Filtrado Optimizada ---
   const psicologosFiltrados = useMemo(() => {
-    return psicologos.filter(p => {
-      const busquedaLower = busqueda.toLowerCase().trim();
-      
-      let pasaBusqueda = true;
-      if (busquedaLower) {
-        const nombreCompleto = `${p.Nombre} ${p.Apellido}`.toLowerCase();
-        // Usamos la nueva propiedad CodigoMinsa (antes CodigoDeMinsa) de manera segura
-        const minsa = p.CodigoMinsa?.toLowerCase() || ''; 
-        
-        pasaBusqueda = nombreCompleto.includes(busquedaLower) || minsa.includes(busquedaLower);
-      }
-      
-      let pasaActividad = true;
-      // Ya no buscamos en objetos anidados, evaluamos el booleano directamente
-      if (filtroActividad === 'activos') pasaActividad = p.Activo === true;
-      else if (filtroActividad === 'inactivos') pasaActividad = p.Activo === false;
-      
+    const termino = normalizarTexto(busqueda);
+
+    return psicologos.filter((psicologo) => {
+      const nombreCompleto = normalizarTexto(`${psicologo.Nombre} ${psicologo.Apellido}`);
+      const minsa = normalizarTexto(psicologo.CodigoMinsa);
+      const email = normalizarTexto(psicologo.Email);
+      const telefono = normalizarTexto(psicologo.No_Telefono);
+
+      const pasaBusqueda = !termino ||
+        nombreCompleto.includes(termino) ||
+        minsa.includes(termino) ||
+        email.includes(termino) ||
+        telefono.includes(termino);
+
+      const pasaActividad =
+        filtroActividad === 'todos' ||
+        (filtroActividad === 'activos' && psicologo.Activo === true) ||
+        (filtroActividad === 'inactivos' && psicologo.Activo === false);
+
       return pasaBusqueda && pasaActividad;
     });
   }, [psicologos, busqueda, filtroActividad]);
 
-  // --- Acciones CRUD con manejo de errores de Zod ---
-  
-  // Usamos Omit para indicarle a TS que un psicólogo nuevo no tiene ID todavía
-  const crearPsicologo = async (data: Omit<Psicologo, 'ID_Psicologo'>) => { 
+  const crearPsicologo = async (data: PsicologoFormData) => {
     try {
-      await api.psicologos.create(data); 
-      toast.success("Psicólogo registrado exitosamente");
-      await loadData(); 
+      const payload = construirPayload(data);
+
+      await api.psicologos.create(adaptarPayloadCrear(payload));
+      toast.success('Psicólogo registrado exitosamente');
+      await loadData();
+
       return true;
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : "Error al registrar psicólogo";
-      toast.error(msg);
+      const message = error instanceof Error ? error.message : 'Error al registrar psicólogo';
+      toast.error(message);
+
       return false;
     }
   };
-  
-  // Usamos Partial porque en las actualizaciones (PUT/PATCH) no siempre se envían todos los campos
-  const actualizarPsicologo = async (id: number, data: Partial<Psicologo>) => { 
+
+  const actualizarPsicologo = async (id: number, data: PsicologoFormData) => {
     try {
-      await api.psicologos.update(id, data); 
-      toast.success("Psicólogo actualizado correctamente");
-      await loadData(); 
+      const payload = construirPayload(data);
+
+      await api.psicologos.update(id, adaptarPayloadActualizar(payload));
+      toast.success('Psicólogo actualizado correctamente');
+      await loadData();
+
       return true;
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : "Error al actualizar psicólogo";
-      toast.error(msg);
+      const message = error instanceof Error ? error.message : 'Error al actualizar psicólogo';
+      toast.error(message);
+
       return false;
     }
   };
@@ -111,9 +225,15 @@ export function usePsicologos() {
   return {
     psicologos: psicologosFiltrados,
     loading,
-    busqueda, setBusqueda,
-    filtroActividad, setFiltroActividad,
-    catalogos: { especialidades }, // Eliminamos estadosActividad del return
-    acciones: { crearPsicologo, actualizarPsicologo, reload: loadData }
+    busqueda,
+    setBusqueda,
+    filtroActividad,
+    setFiltroActividad,
+    catalogos: { especialidades },
+    acciones: {
+      crearPsicologo,
+      actualizarPsicologo,
+      reload: loadData,
+    },
   };
 }

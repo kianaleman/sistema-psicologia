@@ -1,43 +1,54 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
-import type { Sesion } from '../types';
+import type { Paciente, Pais, Psicologo, Sesion } from '../types';
 
-// Definimos el DTO específico para el reporte del historial.
-// Extendemos de Sesion (para heredar Observaciones, DiagnosticoDiferencial, etc.)
-// y añadimos los campos relacionales que el backend formatea para esta vista.
-export interface RegistroHistorial extends Sesion {
-  FechaReal?: string; 
-  // Hacemos las relaciones opcionales para evitar crasheos si el backend envía un null
-  Paciente?: {
-    Nombre: string;
-    Apellido: string;
-  };
-  Psicologo?: {
-    Nombre: string;
-    Apellido: string;
-  };
-  Expediente?: {
-    No_Expediente: string;
-  };
-  DatosCita?: { 
-    Motivo?: string; 
-    Tipo?: string 
-  };
-}
+type PacienteHistorial = Pick<
+  Paciente,
+  'ID_Paciente' | 'Nombre' | 'Apellido' | 'Nacionalidad'
+> & {
+  Pais?: Pick<Pais, 'Nombre_Pais' | 'Nacionalidad'> | null;
+};
+
+type PsicologoHistorial = Pick<
+  Psicologo,
+  'ID_Psicologo' | 'Nombre' | 'Apellido'
+>;
+
+type ExpedienteHistorial = {
+  ID_Expediente?: number;
+  No_Expediente?: string | null;
+};
+
+type DatosCitaHistorial = {
+  Motivo: string;
+  Tipo: string;
+};
+
+// Usamos Omit porque Sesion ya define Expediente con otra forma.
+// El historial necesita permitir Expediente null porque depende de la relacion incluida por Prisma.
+export type RegistroHistorial = Omit<Sesion, 'Expediente'> & {
+  FechaReal?: string;
+  Paciente?: PacienteHistorial | null;
+  Psicologo?: PsicologoHistorial | null;
+  Expediente?: ExpedienteHistorial | null;
+  DatosCita?: DatosCitaHistorial;
+};
 
 export function useHistorial() {
   const [registros, setRegistros] = useState<RegistroHistorial[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busqueda, setBusqueda] = useState('');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [busqueda, setBusqueda] = useState<string>('');
 
   const loadData = useCallback(async () => {
-    setLoading(true);
     try {
-      // Usamos el servicio centralizado y casteamos de forma segura 
+      setLoading(true);
+
       const data = await api.general.historialCompleto() as RegistroHistorial[];
-      setRegistros(data);
+
+      setRegistros(Array.isArray(data) ? data : []);
     } catch (error: unknown) {
-      console.error("Error cargando historial completo:", error);
+      console.error('Error cargando historial completo:', error);
+      setRegistros([]);
     } finally {
       setLoading(false);
     }
@@ -47,18 +58,27 @@ export function useHistorial() {
     loadData();
   }, [loadData]);
 
-  // --- LÓGICA DE FILTRADO MEMOIZADA ---
   const registrosFiltrados = useMemo(() => {
-    if (!busqueda.trim()) return registros;
-    
-    const term = busqueda.toLowerCase();
-    
-    return registros.filter(r => {
-      // Usamos Optional Chaining (?.) para protegernos si r.Paciente o r.Expediente son null
-      const nombreCompleto = `${r.Paciente?.Nombre || ''} ${r.Paciente?.Apellido || ''}`.toLowerCase();
-      const numExpediente = r.Expediente?.No_Expediente?.toLowerCase() || '';
-      
-      return nombreCompleto.includes(term) || numExpediente.includes(term);
+    const term = busqueda.trim().toLowerCase();
+
+    if (!term) return registros;
+
+    return registros.filter((registro) => {
+      const nombrePaciente = `${registro.Paciente?.Nombre || ''} ${registro.Paciente?.Apellido || ''}`.toLowerCase();
+      const expediente = registro.Expediente?.No_Expediente?.toLowerCase() || '';
+      const psicologo = `${registro.Psicologo?.Nombre || ''} ${registro.Psicologo?.Apellido || ''}`.toLowerCase();
+      const diagnostico = registro.DiagnosticoDiferencial?.toLowerCase() || '';
+      const motivo = registro.DatosCita?.Motivo?.toLowerCase() || '';
+      const tipoCita = registro.DatosCita?.Tipo?.toLowerCase() || '';
+
+      return (
+        nombrePaciente.includes(term) ||
+        expediente.includes(term) ||
+        psicologo.includes(term) ||
+        diagnostico.includes(term) ||
+        motivo.includes(term) ||
+        tipoCita.includes(term)
+      );
     });
   }, [registros, busqueda]);
 
@@ -67,6 +87,6 @@ export function useHistorial() {
     loading,
     busqueda,
     setBusqueda,
-    reload: loadData
+    reload: loadData,
   };
 }

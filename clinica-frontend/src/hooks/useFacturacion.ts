@@ -1,26 +1,80 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
-import type { Recibo } from '../types';
+import type { Recibo, Cita, Paciente, Psicologo, MetodoPago, Banco } from '../types';
+
+type DivisaFacturacion = {
+  ID_Divisa: number;
+  Codigo_ISO: string;
+  Nombre: string;
+};
+
+type ReciboFacturacion = Recibo & {
+  Divisa?: DivisaFacturacion | null;
+  MetodoPago?: MetodoPago | null;
+  Banco?: Banco | null;
+  Cita?: Cita & {
+    Paciente?: Paciente;
+    Psicologo?: Psicologo;
+  };
+};
+
+type FiltrosFacturacion = {
+  busqueda: string;
+  fechaInicio: string;
+  fechaFin: string;
+};
+
+const filtrosIniciales: FiltrosFacturacion = {
+  busqueda: '',
+  fechaInicio: '',
+  fechaFin: '',
+};
+
+function obtenerFechaFiltro(recibo: ReciboFacturacion) {
+  return (recibo.FechaDePago || recibo.FechaRecibo || '').toString().split('T')[0];
+}
+
+function obtenerNombrePaciente(recibo: ReciboFacturacion) {
+  const paciente = recibo.Cita?.Paciente;
+
+  if (!paciente) return '';
+
+  return `${paciente.Nombre || ''} ${paciente.Apellido || ''}`.trim().toLowerCase();
+}
+
+function obtenerIdentificacionPaciente(recibo: ReciboFacturacion) {
+  const paciente = recibo.Cita?.Paciente;
+
+  return (
+    paciente?.PacienteAdulto?.No_Cedula ||
+    paciente?.Paciente_Menor?.PartidaDeNacimiento ||
+    ''
+  ).toLowerCase();
+}
+
+function obtenerNombrePsicologo(recibo: ReciboFacturacion) {
+  const psicologo = recibo.Cita?.Psicologo;
+
+  if (!psicologo) return '';
+
+  return `${psicologo.Nombre || ''} ${psicologo.Apellido || ''}`.trim().toLowerCase();
+}
 
 export const useFacturacion = () => {
-  // Cambiamos el tipo Factura por Recibo según nuestro types/index.ts
-  const [recibos, setRecibos] = useState<Recibo[]>([]);
-  const [loading, setLoading] = useState(true);
-  
-  // Filtros locales
-  const [filtros, setFiltros] = useState({
-    busqueda: '',
-    fechaInicio: '',
-    fechaFin: ''
-  });
+  const [recibos, setRecibos] = useState<ReciboFacturacion[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [filtros, setFiltros] = useState<FiltrosFacturacion>(filtrosIniciales);
 
   const fetchFacturas = useCallback(async () => {
-    setLoading(true);
     try {
-      const data = await api.facturas.getAll();
-      setRecibos(data);
+      setLoading(true);
+
+      const data = await api.facturas.getAll() as ReciboFacturacion[];
+
+      setRecibos(Array.isArray(data) ? data : []);
     } catch (error: unknown) {
-      console.error("Error al cargar recibos/facturas:", error);
+      console.error('Error al cargar recibos/facturas:', error);
+      setRecibos([]);
     } finally {
       setLoading(false);
     }
@@ -30,78 +84,68 @@ export const useFacturacion = () => {
     fetchFacturas();
   }, [fetchFacturas]);
 
-  // --- LÓGICA DE FILTRADO AVANZADA ---
   const facturasFiltradas = useMemo(() => {
-    return recibos.filter(f => {
-      // 1. Filtro de Fechas (Ahora usamos f.FechaRecibo)
-      const fechaFac = f.FechaRecibo ? f.FechaRecibo.toString().split('T')[0] : '';
-      
-      if (filtros.fechaInicio && fechaFac < filtros.fechaInicio) return false;
-      if (filtros.fechaFin && fechaFac > filtros.fechaFin) return false;
+    const termino = filtros.busqueda.trim().toLowerCase();
 
-      // 2. Filtro de Búsqueda (Texto)
-      if (!filtros.busqueda) return true;
+    return recibos.filter((recibo) => {
+      const fechaRecibo = obtenerFechaFiltro(recibo);
 
-      const term = filtros.busqueda.toLowerCase();
-      
-      // Datos Paciente (Usamos Optional Chaining para evitar crasheos)
-      const pacienteNombre = f.Cita?.Paciente 
-        ? `${f.Cita.Paciente.Nombre} ${f.Cita.Paciente.Apellido}`.toLowerCase() 
-        : '';
-      const cedulaPaciente = f.Cita?.Paciente?.PacienteAdulto?.No_Cedula?.toLowerCase() || '';
-      
-      // Ajustado a Paciente_Menor y PartidaDeNacimiento según la BD actual
-      const partidaNacimiento = f.Cita?.Paciente?.Paciente_Menor?.PartidaDeNacimiento?.toLowerCase() || '';
+      if (filtros.fechaInicio && fechaRecibo < filtros.fechaInicio) return false;
+      if (filtros.fechaFin && fechaRecibo > filtros.fechaFin) return false;
 
-      // Datos Doctor
-      const doctorNombre = f.Cita?.Psicologo 
-        ? `${f.Cita.Psicologo.Nombre} ${f.Cita.Psicologo.Apellido}`.toLowerCase() 
-        : '';
-      // Ajustado a CodigoMinsa
-      const codigoMinsa = f.Cita?.Psicologo?.CodigoMinsa?.toLowerCase() || ''; 
+      if (!termino) return true;
 
-      // Datos Factura (Ajustado a Cod_Recibo)
-      const numFactura = f.Cod_Recibo.toString();
+      const pacienteNombre = obtenerNombrePaciente(recibo);
+      const identificacionPaciente = obtenerIdentificacionPaciente(recibo);
+      const psicologoNombre = obtenerNombrePsicologo(recibo);
+      const codigoMinsa = recibo.Cita?.Psicologo?.CodigoMinsa?.toLowerCase() || '';
+      const numeroRecibo = recibo.Cod_Recibo.toString();
+      const metodoPago = recibo.MetodoPago?.Nombre_Metodo?.toLowerCase() || '';
+      const banco = recibo.Banco?.Nombre_Banco?.toLowerCase() || '';
+      const referencia = recibo.Numero_Referencia?.toLowerCase() || '';
 
-      // Verificamos coincidencias
       return (
-        pacienteNombre.includes(term) ||
-        cedulaPaciente.includes(term) ||
-        partidaNacimiento.includes(term) ||
-        doctorNombre.includes(term) ||
-        codigoMinsa.includes(term) ||
-        numFactura.includes(term)
+        pacienteNombre.includes(termino) ||
+        identificacionPaciente.includes(termino) ||
+        psicologoNombre.includes(termino) ||
+        codigoMinsa.includes(termino) ||
+        numeroRecibo.includes(termino) ||
+        metodoPago.includes(termino) ||
+        banco.includes(termino) ||
+        referencia.includes(termino)
       );
     });
   }, [recibos, filtros]);
 
-  // --- CÁLCULO DE TOTALES (KPIs) ---
   const totales = useMemo(() => {
-    // MontoTotal ahora es opcional en la BD, nos aseguramos de que sea un número válido
     const ingresos = facturasFiltradas.reduce((acc, curr) => acc + Number(curr.MontoTotal || 0), 0);
     const transacciones = facturasFiltradas.length;
     const ticketPromedio = transacciones > 0 ? ingresos / transacciones : 0;
 
-    return { ingresos, transacciones, ticketPromedio };
+    return {
+      ingresos,
+      transacciones,
+      ticketPromedio,
+    };
   }, [facturasFiltradas]);
 
-  const setFiltro = (key: keyof typeof filtros, value: string) => {
-    setFiltros(prev => ({ ...prev, [key]: value }));
+  const setFiltro = (key: keyof FiltrosFacturacion, value: string) => {
+    setFiltros((prev) => ({ ...prev, [key]: value }));
   };
 
   const limpiarFiltros = () => {
-    setFiltros({ busqueda: '', fechaInicio: '', fechaFin: '' });
+    setFiltros(filtrosIniciales);
   };
 
   return {
-    // Exportamos 'facturas' en el objeto para no romper tu UI (Facturacion.tsx)
-    // aunque internamente ahora estamos manejando 'recibos'
     facturas: facturasFiltradas,
     loading,
     filtros,
     totales,
     setFiltro,
     limpiarFiltros,
-    recargar: fetchFacturas
+    recargar: fetchFacturas,
   };
 };
+
+export type { ReciboFacturacion, FiltrosFacturacion };
