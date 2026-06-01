@@ -1,10 +1,13 @@
 import { useParams, Link } from 'react-router-dom';
+import { toast } from 'sonner';
 import { usePacienteDetalle } from '../hooks/usePacienteDetalle';
+import { generarPDFExpediente } from '../services/pdfGenerator';
 import type { ExpedienteCompleto } from '../hooks/usePacienteDetalle';
 
 // Iconos SVG para diseno
 const Icons = {
   Back: () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>,
+  Download: () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 12l4.5 4.5m0 0l4.5-4.5M12 16.5V3" /></svg>,
   Info: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-4.75a.75.75 0 00-1.5 0v1.5c0 .414.336.75.75.75h.75v-.75h-.75v-1.5zM10 7a1 1 0 100-2 1 1 0 000 2z" /></svg>,
   Calendar: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path d="M4.5 3A1.5 1.5 0 003 4.5v11A1.5 1.5 0 004.5 17h11a1.5 1.5 0 001.5-1.5v-11A1.5 1.5 0 0015.5 3H4.5zM15 7h-11m11 2H5m10 2h-4.5m-1.5 2h-2" /></svg>,
   Notes: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M2.5 4A1.5 1.5 0 001 5.5v11A1.5 1.5 0 002.5 18h11A1.5 1.5 0 0015 16.5V5.5A1.5 1.5 0 0013.5 4h-11zM14 6H3v10h11V6zm-5 4h5v1.5H9V10z" clipRule="evenodd" /></svg>
@@ -80,6 +83,33 @@ type SesionVista = SesionDetalleData & {
   Tratamiento?: TratamientoVista[];
 };
 
+type ExpedientePDFResumen = {
+  ID_Expediente?: number;
+  No_Expediente?: string;
+};
+
+type ExpedienteCompletoConNumero = ExpedienteCompleto & {
+  expediente?: ExpedientePDFResumen | null;
+  Expediente?: ExpedientePDFResumen | null;
+};
+
+type PacienteConExpedientePDF = PacienteDetalleData & {
+  Expediente?: ExpedientePDFResumen | null;
+  expediente?: ExpedientePDFResumen | null;
+  expedientes?: ExpedientePDFResumen[];
+};
+
+type SesionPDFDetalle = SesionVista & {
+  ID_Cita?: number;
+  FechaCita?: string;
+  HoraCita?: string;
+  Cita?: CitaDetalleData | null;
+  Expediente?: ExpedientePDFResumen | null;
+  Psicologo?: CitaDetalleData['Psicologo'];
+  TipoDeCita?: CitaDetalleData['TipoDeCita'];
+  MotivoConsulta?: string | null;
+};
+
 export default function PacienteDetalle() {
   const { id } = useParams();
   const { expediente, loading, tab, setTab, helpers } = usePacienteDetalle(id);
@@ -139,6 +169,45 @@ export default function PacienteDetalle() {
     return 'bg-slate-300 text-slate-700';
   };
 
+  const handleDescargarExpediente = () => {
+    try {
+      const expedienteConNumero = expediente as ExpedienteCompletoConNumero;
+      const pacienteConExpediente = paciente as PacienteConExpedientePDF;
+
+      const expedientePaciente =
+        pacienteConExpediente.Expediente ||
+        pacienteConExpediente.expediente ||
+        pacienteConExpediente.expedientes?.[0] ||
+        expedienteConNumero.expediente ||
+        expedienteConNumero.Expediente ||
+        null;
+
+      const citasPorId = new Map(citas.map((cita) => [cita.ID_Cita, cita]));
+
+      const pacientePDF = {
+        ...paciente,
+        Expediente: expedientePaciente,
+      } as Parameters<typeof generarPDFExpediente>[0];
+
+      const historialPDF = sesiones.map((sesion) => {
+        const sesionPDF = sesion as SesionPDFDetalle;
+        const citaSesion = sesionPDF.Cita || citasPorId.get(Number(sesionPDF.ID_Cita)) || null;
+
+        return {
+          ...sesionPDF,
+          Cita: citaSesion,
+          Expediente: sesionPDF.Expediente || expedientePaciente,
+        };
+      }) as Parameters<typeof generarPDFExpediente>[1];
+
+      generarPDFExpediente(pacientePDF, historialPDF);
+      toast.success('Expediente generado correctamente');
+    } catch (error: unknown) {
+      console.error('Error al generar expediente:', error);
+      toast.error('No se pudo generar el expediente del paciente');
+    }
+  };
+
   return (
     <div className="animate-fade-in-up p-8 max-w-7xl mx-auto">
 
@@ -176,7 +245,15 @@ export default function PacienteDetalle() {
           </div>
         </div>
 
-        <div className="flex flex-col items-end">
+        <div className="flex flex-col items-stretch md:items-end gap-2">
+          <button
+            type="button"
+            className="btn btn-primary btn-sm text-white gap-2 shadow-md"
+            onClick={handleDescargarExpediente}
+          >
+            <Icons.Download /> Descargar expediente
+          </button>
+
           <Link to="/pacientes" className="btn btn-ghost btn-sm text-slate-500 hover:text-slate-800 gap-1">
             <Icons.Back /> Volver
           </Link>

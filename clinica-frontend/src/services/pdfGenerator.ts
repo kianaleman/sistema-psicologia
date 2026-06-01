@@ -69,10 +69,18 @@ interface CitaSesionPDF {
 
 interface SesionPDF {
   ID_Sesion?: number;
+  ID_Cita?: number;
+  ID_Expediente?: number;
   Cita?: CitaSesionPDF | null;
+  Expediente?: ExpedientePacientePDF | null;
+  FechaCita?: string;
+  HoraCita?: string;
   FechaReal?: string;
   Fecha_Sesion?: string;
   HoraDeInicio?: string;
+  Psicologo?: PsicologoPDF | null;
+  TipoDeCita?: TipoDeCitaPDF | null;
+  MotivoConsulta?: string | null;
   DiagnosticoDiferencial?: string;
   Observaciones?: string;
   HistorialDeEvolucion?: string;
@@ -125,6 +133,7 @@ interface DireccionPDF {
 }
 
 interface ExpedientePacientePDF {
+  ID_Expediente?: number;
   No_Expediente?: string;
 }
 
@@ -138,6 +147,8 @@ interface PacientePDF {
   PacienteMenor?: PacienteMenorPDF | null;
   Direccion?: DireccionPDF | null;
   Expediente?: ExpedientePacientePDF | null;
+  expediente?: ExpedientePacientePDF | null;
+  expedientes?: ExpedientePacientePDF[];
 }
 
 interface MetodoPagoPDF {
@@ -192,7 +203,12 @@ const getFechaRecibo = (recibo: ReciboPDF) => {
 };
 
 const getFechaSesion = (sesion: SesionPDF) => {
-  return sesion.Cita?.FechaCita || sesion.FechaReal || sesion.Fecha_Sesion || sesion.HoraDeInicio || new Date().toISOString();
+  return sesion.Cita?.FechaCita ||
+    sesion.FechaCita ||
+    sesion.FechaReal ||
+    sesion.Fecha_Sesion ||
+    sesion.HoraDeInicio ||
+    new Date().toISOString();
 };
 
 const getNombrePaciente = (paciente?: PacientePDF | null) => {
@@ -211,6 +227,32 @@ const getNombrePsicologo = (psicologo?: PsicologoPDF | null) => {
 
 const getTipoCita = (tipo?: TipoDeCitaPDF | null) => {
   return tipo?.Nombre_DeCita || tipo?.NombreDeCita || 'Consulta General';
+};
+
+const getTipoCitaSesion = (sesion: SesionPDF) => {
+  return getTipoCita(sesion.Cita?.TipoDeCita || sesion.TipoDeCita || null);
+};
+
+const getPsicologoSesion = (sesion: SesionPDF) => {
+  return sesion.Cita?.Psicologo || sesion.Psicologo || null;
+};
+
+const getMotivoSesion = (sesion: SesionPDF) => {
+  return sesion.Cita?.MotivoConsulta || sesion.MotivoConsulta || 'No especificado';
+};
+
+const getNoExpedientePaciente = (paciente: PacientePDF, historial: SesionPDF[]) => {
+  const expediente =
+    paciente.Expediente ||
+    paciente.expediente ||
+    paciente.expedientes?.[0] ||
+    historial.find((sesion) => sesion.Expediente?.No_Expediente)?.Expediente ||
+    null;
+
+  if (expediente?.No_Expediente) return expediente.No_Expediente;
+  if (expediente?.ID_Expediente) return `ID ${expediente.ID_Expediente}`;
+
+  return 'S/E';
 };
 
 const getMetodoPago = (recibo: ReciboPDF) => {
@@ -587,7 +629,7 @@ export const generarPDFExpediente = (paciente: PacientePDF, historial: SesionPDF
   doc.text('CLÍNICA PSICOLÓGICA RESILIENCIA', 20, 28);
   doc.text('Dirección: Managua, Nicaragua | Sistema de Gestión Salud', 20, 33);
 
-  const noExp = paciente.Expediente?.No_Expediente || 'S/E';
+  const noExp = getNoExpedientePaciente(paciente, historial);
 
   doc.setFillColor(255, 255, 255);
   doc.roundedRect(width - 60, 12, 45, 15, 2, 2, 'F');
@@ -616,7 +658,12 @@ export const generarPDFExpediente = (paciente: PacientePDF, historial: SesionPDF
   const ocupacion = paciente.PacienteAdulto?.Ocupacion?.Nombre_DeOcupacion || 'N/A';
   const estadoCivil = paciente.PacienteAdulto?.EstadoCivil?.Nombre_EstadoCivil || 'N/A';
   const direccion = paciente.Direccion
-    ? `${paciente.Direccion.Municipio?.Nombre_Municipio || paciente.Direccion.Ciudad || 'N/A'}, B° ${paciente.Direccion.Barrio || 'N/A'}, ${paciente.Direccion.Calle || 'N/A'}`
+    ? [
+        paciente.Direccion.Calle,
+        paciente.Direccion.Barrio ? `B° ${paciente.Direccion.Barrio}` : '',
+        paciente.Direccion.Municipio?.Nombre_Municipio || paciente.Direccion.Ciudad,
+        paciente.Direccion.Municipio?.Departamento?.Nombre_Departamento,
+      ].filter(Boolean).join(', ') || 'N/A'
     : 'N/A';
 
   autoTable(doc, {
@@ -678,9 +725,10 @@ export const generarPDFExpediente = (paciente: PacientePDF, historial: SesionPDF
       }
 
       const fecha = getFechaSesion(sesion);
-      const doctor = sesion.Cita?.Psicologo?.Apellido || 'Especialista';
-      const tipoCita = getTipoCita(sesion.Cita?.TipoDeCita);
-      const motivo = sesion.Cita?.MotivoConsulta || 'No especificado';
+      const psicologo = getPsicologoSesion(sesion);
+      const doctor = psicologo?.Apellido || psicologo?.Nombre || 'Especialista';
+      const tipoCita = getTipoCitaSesion(sesion);
+      const motivo = getMotivoSesion(sesion);
       const tratamientos = sesion.Tratamiento?.map((tratamiento) => {
         const farmaco = getTratamientoFarmaceutico(tratamiento);
         const terapia = getTratamientoTerapeutico(tratamiento);
