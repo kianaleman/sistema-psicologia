@@ -17,17 +17,22 @@ import Facturacion from './pages/Facturacion';
 import Configuracion from './pages/Configuracion';
 import PacienteDetalle from './pages/PacienteDetalle';
 import ForgotPassword from './pages/ForgotPassword';
+import CambiarPasswordDefault from './pages/CambiarPasswordDefault';
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* RUTA PÚBLICA */}
+        {/* RUTAS PUBLICAS */}
         <Route path="/" element={<Presentacion />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
-        
-        {/* RUTAS PROTEGIDAS Y CON DISEÑO (LAYOUT) */}
+
+        {/* RUTAS PROTEGIDAS */}
         <Route element={<ProtectedRoute />}>
+          {/* Esta ruta va fuera del Layout para que no muestre menu lateral ni dashboard */}
+          <Route path="/cambiar-password-default" element={<CambiarPasswordDefault />} />
+
+          {/* Rutas protegidas con Layout principal */}
           <Route element={<Layout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/citas" element={<Citas />} />
@@ -41,7 +46,7 @@ export default function App() {
           </Route>
         </Route>
 
-        {/* RUTA COMODÍN (404) */}
+        {/* RUTA COMODIN */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

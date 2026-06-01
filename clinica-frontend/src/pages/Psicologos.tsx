@@ -2,11 +2,13 @@ import { useState } from 'react';
 import {
   usePsicologos,
   type FiltroActividad,
+  type CredencialesTemporales,
   type PsicologoCompleto,
   type PsicologoEspecialidadRelacion,
   type PsicologoFormData,
 } from '../hooks/usePsicologos';
 import PsicologoFormModal from '../components/psicologos/PsicologoFormModal';
+import { toast } from 'sonner';
 
 const Icons = {
   Plus: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>,
@@ -56,6 +58,7 @@ export default function Psicologos() {
 
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [selectedPsicologo, setSelectedPsicologo] = useState<PsicologoCompleto | null>(null);
+  const [credencialesTemporales, setCredencialesTemporales] = useState<CredencialesTemporales | null>(null);
 
   const handleOpenNuevo = () => {
     setSelectedPsicologo(null);
@@ -68,16 +71,36 @@ export default function Psicologos() {
   };
 
   const handleSubmit = async (data: PsicologoFormData, isEdit: boolean) => {
-    const success = isEdit && selectedPsicologo
-      ? await acciones.actualizarPsicologo(selectedPsicologo.ID_Psicologo, data)
-      : await acciones.crearPsicologo(data);
+    if (isEdit && selectedPsicologo) {
+      const success = await acciones.actualizarPsicologo(selectedPsicologo.ID_Psicologo, data);
 
-    if (success) {
-      setModalOpen(false);
-      setSelectedPsicologo(null);
+      if (success) {
+        setModalOpen(false);
+        setSelectedPsicologo(null);
+      }
+
+      return success;
     }
 
-    return success;
+    const result = await acciones.crearPsicologo(data);
+
+    if (result) {
+      setModalOpen(false);
+      setSelectedPsicologo(null);
+      setCredencialesTemporales(result.credenciales);
+      return true;
+    }
+
+    return false;
+  };
+
+  const copiarCredenciales = async () => {
+    if (!credencialesTemporales) return;
+
+    const texto = `Correo: ${credencialesTemporales.email}\nContraseña temporal: ${credencialesTemporales.passwordTemporal}`;
+
+    await navigator.clipboard.writeText(texto);
+    toast.success('Credenciales copiadas');
   };
 
   return (
@@ -267,6 +290,51 @@ export default function Psicologos() {
         psicologoEditar={selectedPsicologo}
         catalogos={catalogos}
       />
+
+      {credencialesTemporales && (
+        <dialog className="modal modal-open bg-black/50 backdrop-blur-sm">
+          <div className="modal-box max-w-lg bg-white text-slate-800 rounded-2xl shadow-2xl">
+            <h3 className="font-bold text-xl text-slate-900">Credenciales temporales</h3>
+
+            <p className="text-sm text-slate-500 mt-2">
+              Guarda estas credenciales antes de cerrar este cuadro. La contraseña temporal solo se muestra después de crear el psicólogo.
+            </p>
+
+            <div className="mt-5 space-y-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <div>
+                <span className="text-xs font-bold uppercase text-slate-400">Correo</span>
+                <p className="font-mono text-sm text-slate-800 break-all">{credencialesTemporales.email}</p>
+              </div>
+
+              <div>
+                <span className="text-xs font-bold uppercase text-slate-400">Contraseña temporal</span>
+                <p className="font-mono text-lg font-bold text-slate-900 tracking-wide break-all">
+                  {credencialesTemporales.passwordTemporal}
+                </p>
+              </div>
+            </div>
+
+            <div className="modal-action">
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={copiarCredenciales}
+              >
+                Copiar
+              </button>
+
+              <button
+                type="button"
+                className="btn bg-slate-900 text-white hover:bg-slate-800"
+                onClick={() => setCredencialesTemporales(null)}
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </dialog>
+      )}
+
     </div>
   );
 }

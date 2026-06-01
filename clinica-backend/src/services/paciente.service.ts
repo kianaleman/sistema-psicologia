@@ -74,6 +74,17 @@ const validarTelefonoNica = (telefono: string, contexto: string) => {
   return limpio;
 };
 
+const construirNumeroExpediente = (pacienteId: number) => {
+  return `EXP-${pacienteId}-${Date.now()}`;
+};
+
+const expedienteSelect = {
+  ID_Expediente: true,
+  No_Expediente: true,
+  FechaIngreso: true,
+  ID_Paciente: true,
+};
+
 // ❌ Se eliminó la función corregirFechasSesiones() ya que ahora existe una FK directa entre Cita y Sesion.
 
 export const PacienteService = {
@@ -137,10 +148,21 @@ export const PacienteService = {
             Psicologo: { select: { Nombre: true, Apellido: true } },
             Sesion: { // <--- Magia de la nueva FK
               select: {
-                ID_Sesion: true, HoraDeInicio: true, HoraFinal: true, Observaciones: true, DiagnosticoDiferencial: true, HistorialDeEvolucion: true, Criterios_DeDiagnostico: true,
+                ID_Sesion: true,
+                ID_Expediente: true,
+                HoraDeInicio: true,
+                HoraFinal: true,
+                Observaciones: true,
+                DiagnosticoDiferencial: true,
+                HistorialDeEvolucion: true,
+                Criterios_DeDiagnostico: true,
+                Expediente: {
+                  select: expedienteSelect
+                },
                 Tratamiento: {
                   select: {
-                    Frecuencia: true, FechaInicio: true,
+                    Frecuencia: true,
+                    FechaInicio: true,
                     Tratamiento_Farmaceutico: { select: { Nombre_Medicamento: true, Dosis: true } },
                     Tratamiento_Terapeutico: { select: { Objetivo: true } }
                   }
@@ -155,6 +177,23 @@ export const PacienteService = {
 
     if (!paciente) return null;
 
+    let expediente = await prisma.expediente.findFirst({
+      where: { ID_Paciente: id },
+      orderBy: { ID_Expediente: 'asc' },
+      select: expedienteSelect
+    });
+
+    if (!expediente) {
+      expediente = await prisma.expediente.create({
+        data: {
+          No_Expediente: construirNumeroExpediente(id),
+          FechaIngreso: new Date(),
+          ID_Paciente: id
+        },
+        select: expedienteSelect
+      });
+    }
+
     // Separamos las citas y sesiones para mantener la compatibilidad con el formato de respuesta antiguo.
     // Cada sesion incluye datos basicos de la cita y del psicologo para facilitar su uso en el frontend.
     const citas = paciente.Cita.map((c) => {
@@ -166,13 +205,15 @@ export const PacienteService = {
       .filter((c) => c.Sesion !== null)
       .map((c) => ({
         ...c.Sesion!,
+        Expediente: c.Sesion?.Expediente || expediente,
+        ID_Expediente: c.Sesion?.ID_Expediente || expediente.ID_Expediente,
         Psicologo: c.Psicologo,
         FechaCita: c.FechaCita,
         HoraCita: c.HoraCita,
         ID_Cita: c.ID_Cita
       }));
 
-    return { paciente, citas, sesiones };
+    return { paciente, expediente, citas, sesiones };
   },
 
   create: async (data: CreatePacienteDTO) => {
@@ -224,6 +265,14 @@ export const PacienteService = {
           ID_Pais: data.paisId,
           ID_Direccion: nuevaDireccion.ID_Direccion,
           Activo: true // Renombrado
+        }
+      });
+
+      const nuevoExpediente = await tx.expediente.create({
+        data: {
+          No_Expediente: construirNumeroExpediente(nuevoPaciente.ID_Paciente),
+          FechaIngreso: new Date(),
+          ID_Paciente: nuevoPaciente.ID_Paciente
         }
       });
 
@@ -281,7 +330,10 @@ export const PacienteService = {
           });
         }
       }
-      return nuevoPaciente;
+      return {
+        ...nuevoPaciente,
+        Expediente: nuevoExpediente
+      };
     });
   },
 
@@ -385,6 +437,29 @@ export const PacienteService = {
         ID_Cita: c.ID_Cita
       }));
 
-    return { citas, sesiones };
+    let expediente = await prisma.expediente.findFirst({
+      where: { ID_Paciente: id },
+      orderBy: { ID_Expediente: 'asc' },
+      select: expedienteSelect
+    });
+
+    if (!expediente) {
+      expediente = await prisma.expediente.create({
+        data: {
+          No_Expediente: construirNumeroExpediente(id),
+          FechaIngreso: new Date(),
+          ID_Paciente: id
+        },
+        select: expedienteSelect
+      });
+    }
+
+    const sesionesConExpediente = sesiones.map((sesion) => ({
+      ...sesion,
+      Expediente: sesion.Expediente || expediente,
+      ID_Expediente: sesion.ID_Expediente || expediente.ID_Expediente
+    }));
+
+    return { expediente, citas, sesiones: sesionesConExpediente };
   }
 };

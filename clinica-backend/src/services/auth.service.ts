@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import crypto from 'crypto'; // Módulo nativo de Node.js para criptografía
+import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 
 const prisma = new PrismaClient();
@@ -11,9 +11,14 @@ if (!JWT_SECRET) {
   throw new Error('Falta la variable de entorno JWT_SECRET');
 }
 
-// Configuración del Transporter para Nodemailer (El Cartero)
+const getFechaHoraLocalSistema = () => {
+  const fecha = new Date();
+
+  return new Date(fecha.getTime() - fecha.getTimezoneOffset() * 60000);
+};
+
 const transporter = nodemailer.createTransport({
-  service: 'gmail', // Puedes usar 'outlook' u otro dependiendo de tu correo
+  service: 'gmail',
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
@@ -22,8 +27,8 @@ const transporter = nodemailer.createTransport({
 
 interface RegisterDTO {
   email: string;
-  rolId: number;       // 1 = Administrador, 2 = Psicologo, 3 = Recepcionista
-  psicologoId?: number; // Opcional, si está enlazado a un psicólogo
+  rolId: number;
+  psicologoId?: number;
 }
 
 interface LoginDTO {
@@ -36,149 +41,252 @@ interface CambiarPasswordDTO {
   passwordNuevaRaw: string;
 }
 
+type UsuarioTokenData = {
+  idUsuario: number;
+  email: string;
+  roles: string[];
+  idPsicologo: number | null;
+  requiereCambioPassword: boolean;
+};
+
+const firmarToken = (payload: UsuarioTokenData) => {
+  const expiresIn = (process.env.JWT_EXPIRES_IN || '8h') as NonNullable<jwt.SignOptions['expiresIn']>;
+
+  return jwt.sign(payload, JWT_SECRET as jwt.Secret, {
+    expiresIn,
+  });
+};
+
+const construirSesionUsuario = async (idUsuario: number) => {
+  const usuario = await prisma.usuario.findUnique({
+    where: {
+      ID_Usuario: idUsuario,
+    },
+    include: {
+      Usuario_Rol: {
+        include: {
+          Rol: true,
+        },
+      },
+      Psicologo: {
+        select: {
+          ID_Psicologo: true,
+          Nombre: true,
+          Apellido: true,
+        },
+      },
+    },
+  });
+
+  if (!usuario) {
+    throw new Error('Usuario no encontrado.');
+  }
+
+  const roles = usuario.Usuario_Rol.map((usuarioRol) => usuarioRol.Rol.Nombre_Rol);
+  const requiereCambioPassword = Boolean(usuario.RequiereCambioPassword);
+  const idPsicologo = usuario.Psicologo?.ID_Psicologo || null;
+
+  const payload: UsuarioTokenData = {
+    idUsuario: usuario.ID_Usuario,
+    email: usuario.Email,
+    roles,
+    idPsicologo,
+    requiereCambioPassword,
+  };
+
+  const token = firmarToken(payload);
+
+  return {
+    token,
+    requiereCambioPassword,
+    usuario: {
+      id: usuario.ID_Usuario,
+      email: usuario.Email,
+      roles,
+      idPsicologo,
+      requiereCambioPassword,
+      nombre: usuario.Psicologo
+        ? `${usuario.Psicologo.Nombre} ${usuario.Psicologo.Apellido}`
+        : 'Administrador/Recepcionista',
+    },
+  };
+};
+
 export const AuthService = {
-  
-  // 1. Registro de Trabajadores con Contraseña Temporal Automática
   register: async (data: RegisterDTO) => {
+    const email = data.email.trim().toLowerCase();
+
     const existeUser = await prisma.usuario.findUnique({
-      where: { Email: data.email }
+      where: {
+        Email: email,
+      },
     });
-    if (existeUser) throw new Error('Este correo electrónico ya está registrado.');
 
-    // Generamos una clave aleatoria de 10 caracteres alfanuméricos (ej: aB3x9ZqW1p)
+    if (existeUser) {
+      throw new Error('Este correo electrónico ya está registrado.');
+    }
+
     const passwordTemporal = crypto.randomBytes(5).toString('hex');
-
-    // Encriptamos la contraseña temporal para guardarla en la BD
-    const saltRounds = 10;
-    const passwordHash = await bcrypt.hash(passwordTemporal, saltRounds);
+    const passwordHash = await bcrypt.hash(passwordTemporal, 10);
 
     return await prisma.$transaction(async (tx) => {
       const nuevoUsuario = await tx.usuario.create({
         data: {
-          Email: data.email,
+          Email: email,
           PasswordHash: passwordHash,
+          Fecha_Creacion: getFechaHoraLocalSistema(),
+          Ultimo_Acceso: null,
           Activo: true,
-          RequiereCambioPassword: true, // Forzamos el cambio en su primer login
-          // Vinculación opcional con la entidad psicólogo
-          ID_Psicologo: data.psicologoId || null 
-        }
+          ResetToken: null,
+          ResetTokenExpire: null,
+          Verificado: true,
+          RequiereCambioPassword: true,
+          ...(data.psicologoId
+            ? {
+                Psicologo: {
+                  connect: {
+                    ID_Psicologo: data.psicologoId,
+                  },
+                },
+              }
+            : {}),
+        },
       });
 
-      // Insertar en la tabla intermedia Usuario_Rol
       await tx.usuario_Rol.create({
         data: {
           ID_Usuario: nuevoUsuario.ID_Usuario,
-          ID_Rol: data.rolId
-        }
+          ID_Rol: data.rolId,
+        },
       });
 
-      // Retornamos los datos del usuario junto a la contraseña temporal en TEXTO PLANO
-      // ¡Es crucial para que el administrador la pueda ver en pantalla una única vez!
       return {
         id: nuevoUsuario.ID_Usuario,
         email: nuevoUsuario.Email,
-        passwordTemporal // El administrador copiará esto para dárselo al empleado
+        passwordTemporal,
       };
     });
   },
 
-  // 2. Login Interceptado por Semáforo de Seguridad
   login: async (data: LoginDTO) => {
     const usuario = await prisma.usuario.findUnique({
-      where: { Email: data.email },
+      where: {
+        Email: data.email.trim().toLowerCase(),
+      },
       include: {
-        Usuario_Rol: { include: { Rol: true } },
-        Psicologo: { select: { Nombre: true, Apellido: true } }
-      }
+        Usuario_Rol: {
+          include: {
+            Rol: true,
+          },
+        },
+        Psicologo: {
+          select: {
+            ID_Psicologo: true,
+            Nombre: true,
+            Apellido: true,
+          },
+        },
+      },
     });
 
-    if (!usuario) throw new Error('Credenciales inválidas');
-    if (!usuario.Activo) throw new Error('Esta cuenta ha sido desactivada');
+    if (!usuario) {
+      throw new Error('Credenciales inválidas');
+    }
+
+    if (!usuario.Activo) {
+      throw new Error('Esta cuenta ha sido desactivada');
+    }
 
     const passwordValida = await bcrypt.compare(data.passwordRaw, usuario.PasswordHash);
-    if (!passwordValida) throw new Error('Credenciales inválidas');
 
-    const roles = usuario.Usuario_Rol.map(ur => ur.Rol.Nombre_Rol);
+    if (!passwordValida) {
+      throw new Error('Credenciales inválidas');
+    }
 
-    // Creamos el payload clásico del JWT
-    const payload = {
-      idUsuario: usuario.ID_Usuario,
-      email: usuario.Email,
-      roles: roles,
-      idPsicologo: usuario.ID_Usuario,
-      requiereCambioPassword: usuario.RequiereCambioPassword // Viaja en el token para validación en backend
-    };
-
-    const token = jwt.sign(payload, JWT_SECRET, { 
-      expiresIn: (process.env.JWT_EXPIRES_IN || '8h') as any
+    await prisma.usuario.update({
+      where: {
+        ID_Usuario: usuario.ID_Usuario,
+      },
+      data: {
+        Ultimo_Acceso: getFechaHoraLocalSistema(),
+      },
     });
 
-    // Enviamos el flag 'requiereCambioPassword' en la raíz de la respuesta.
-    // El Frontend leerá esto y sabrá si debe dejarlo entrar al Dashboard o mandarlo al formulario de cambio.
-    return {
-      token,
-      requiereCambioPassword: usuario.RequiereCambioPassword,
-      usuario: {
-        id: usuario.ID_Usuario,
-        email: usuario.Email,
-        roles: roles,
-        nombre: usuario.Psicologo 
-          ? `${usuario.Psicologo.Nombre} ${usuario.Psicologo.Apellido}` 
-          : 'Administrador/Recepcionista'
-      }
-    };
+    return await construirSesionUsuario(usuario.ID_Usuario);
   },
 
-  // 3. Método para actualizar la Contraseña Temporal por la Definitiva
   cambiarPasswordForzado: async (data: CambiarPasswordDTO) => {
-    // Validamos que la nueva clave no esté vacía y cumpla con un mínimo de seguridad
     if (!data.passwordNuevaRaw || data.passwordNuevaRaw.trim().length < 6) {
       throw new Error('La nueva contraseña debe tener al menos 6 caracteres.');
     }
 
-    const saltRounds = 10;
-    const nuevoHash = await bcrypt.hash(data.passwordNuevaRaw, saltRounds);
-
-    // Actualizamos la contraseña y apagamos el semáforo de cambio obligatorio
-    await prisma.usuario.update({
-      where: { ID_Usuario: data.idUsuario },
-      data: {
-        PasswordHash: nuevoHash,
-        RequiereCambioPassword: false 
-      }
+    const usuario = await prisma.usuario.findUnique({
+      where: {
+        ID_Usuario: data.idUsuario,
+      },
     });
 
-    return { message: 'Contraseña actualizada correctamente. Ya puede utilizar el sistema.' };
-  },
-
-  // 4. Solicitar recuperación (Genera token y envía correo)
-  forgotPassword: async (email: string) => {
-    // A. Buscamos al usuario
-    const usuario = await prisma.usuario.findUnique({ where: { Email: email } });
     if (!usuario) {
-      // Por seguridad, no decimos "El correo no existe", simplemente decimos que se envió el link
-      return { message: 'Si el correo existe en nuestro sistema, recibirá un enlace de recuperación.' };
+      throw new Error('Usuario no encontrado.');
     }
 
-    // B. Generamos un token criptográfico seguro (ej. 4b8f1... 64 caracteres)
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    
-    // C. Guardamos el token en la BD y definimos que expira en 15 minutos
-    const expiracion = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos desde ahora
+    const esMismaPassword = await bcrypt.compare(data.passwordNuevaRaw, usuario.PasswordHash);
+
+    if (esMismaPassword) {
+      throw new Error('La nueva contraseña no puede ser igual a la contraseña temporal.');
+    }
+
+    const nuevoHash = await bcrypt.hash(data.passwordNuevaRaw, 10);
 
     await prisma.usuario.update({
-      where: { ID_Usuario: usuario.ID_Usuario },
+      where: {
+        ID_Usuario: data.idUsuario,
+      },
       data: {
-        ResetToken: resetToken,
-        ResetTokenExpire: expiracion
-      }
+        PasswordHash: nuevoHash,
+        RequiereCambioPassword: false,
+        Verificado: true,
+        ResetToken: null,
+        ResetTokenExpire: null,
+      },
     });
 
-    // D. Enviamos el correo con el enlace
+    return {
+      message: 'Contraseña actualizada correctamente. Ya puede utilizar el sistema.',
+      ...(await construirSesionUsuario(data.idUsuario)),
+    };
+  },
+
+  forgotPassword: async (email: string) => {
+    const usuario = await prisma.usuario.findUnique({
+      where: {
+        Email: email.trim().toLowerCase(),
+      },
+    });
+
+    if (!usuario) {
+      return {
+        message: 'Si el correo existe en nuestro sistema, recibirá un enlace de recuperación.',
+      };
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const expiracion = new Date(Date.now() + 15 * 60 * 1000);
+
+    await prisma.usuario.update({
+      where: {
+        ID_Usuario: usuario.ID_Usuario,
+      },
+      data: {
+        ResetToken: resetToken,
+        ResetTokenExpire: expiracion,
+      },
+    });
+
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
 
-    const mailOptions = {
+    await transporter.sendMail({
       from: `"Clínica Resiliencia" <${process.env.EMAIL_USER}>`,
       to: usuario.Email,
       subject: 'Recuperación de Contraseña - Clínica Resiliencia',
@@ -189,49 +297,49 @@ export const AuthService = {
         <a href="${resetLink}" style="padding: 10px 15px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 5px;">Restablecer mi contraseña</a>
         <br><br>
         <p>Si no solicitaste este cambio, puedes ignorar este correo con seguridad.</p>
-      `
+      `,
+    });
+
+    return {
+      message: 'Si el correo existe en nuestro sistema, recibirá un enlace de recuperación.',
     };
-
-    await transporter.sendMail(mailOptions);
-
-    return { message: 'Si el correo existe en nuestro sistema, recibirá un enlace de recuperación.' };
   },
 
-  // 5. Validar token y Guardar nueva contraseña
   resetPassword: async (token: string, passwordNuevaRaw: string) => {
     if (!passwordNuevaRaw || passwordNuevaRaw.trim().length < 6) {
       throw new Error('La nueva contraseña debe tener al menos 6 caracteres.');
     }
 
-    // A. Buscamos al usuario que tenga ESE token Y que NO haya expirado
     const usuario = await prisma.usuario.findFirst({
       where: {
         ResetToken: token,
         ResetTokenExpire: {
-          gt: new Date() // El token debe ser mayor a la fecha/hora actual (no ha expirado)
-        }
-      }
+          gt: getFechaHoraLocalSistema(),
+        },
+      },
     });
 
     if (!usuario) {
       throw new Error('El enlace de recuperación es inválido o ya ha expirado.');
     }
 
-    // B. Encriptamos la nueva contraseña
-    const saltRounds = 10;
-    const nuevoHash = await bcrypt.hash(passwordNuevaRaw, saltRounds);
+    const nuevoHash = await bcrypt.hash(passwordNuevaRaw, 10);
 
-    // C. Actualizamos la BD: Guardamos la clave, y BORRAMOS los tokens por seguridad
     await prisma.usuario.update({
-      where: { ID_Usuario: usuario.ID_Usuario },
+      where: {
+        ID_Usuario: usuario.ID_Usuario,
+      },
       data: {
         PasswordHash: nuevoHash,
         ResetToken: null,
         ResetTokenExpire: null,
-        RequiereCambioPassword: false // Ya la cambió, no es necesario forzarlo
-      }
+        RequiereCambioPassword: false,
+        Verificado: true,
+      },
     });
 
-    return { message: 'Tu contraseña ha sido restablecida exitosamente. Ya puedes iniciar sesión.' };
-  }
+    return {
+      message: 'Tu contraseña ha sido restablecida exitosamente. Ya puedes iniciar sesión.',
+    };
+  },
 };

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { 
   Cita, 
   ViaAdministracion, 
@@ -75,6 +75,70 @@ export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos
   const [listaTratamientos, setListaTratamientos] = useState<TratamientoLocal[]>([]);
   const [selectedExploraciones, setSelectedExploraciones] = useState<Set<number>>(new Set());
   const [formTratamiento, setFormTratamiento] = useState<TratamientoLocal>(initialTratamiento);
+  const [horaInicioSistema, setHoraInicioSistema] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const [mostrarConfirmacionFechaFutura, setMostrarConfirmacionFechaFutura] = useState(false);
+
+  const obtenerFechaCita = (fecha?: string | Date | null) => {
+    if (!fecha) return null;
+
+    const fechaCita = fecha instanceof Date ? fecha : new Date(fecha);
+
+    if (Number.isNaN(fechaCita.getTime())) return null;
+
+    return fechaCita;
+  };
+
+  const esCitaDeFechaFutura = (fecha?: string | Date | null) => {
+    const fechaCita = obtenerFechaCita(fecha);
+
+    if (!fechaCita) return false;
+
+    const inicioHoy = new Date();
+    inicioHoy.setHours(0, 0, 0, 0);
+
+    const inicioCita = new Date(fechaCita);
+    inicioCita.setHours(0, 0, 0, 0);
+
+    return inicioCita.getTime() > inicioHoy.getTime();
+  };
+
+  const inicializarSesion = useCallback((citaId: number) => {
+    const storageKey = `sesion_inicio_${citaId}`;
+    const horaGuardada = sessionStorage.getItem(storageKey);
+    const horaInicio = horaGuardada || new Date().toISOString();
+
+    if (!horaGuardada) {
+      sessionStorage.setItem(storageKey, horaInicio);
+    }
+
+    setHoraInicioSistema(horaInicio);
+    setDatosSesion({
+      observaciones: "",
+      diagnostico: "",
+      historial: "",
+      criterios: "DSM-5",
+    });
+    setListaTratamientos([]);
+    setSelectedExploraciones(new Set());
+    setFormTratamiento(initialTratamiento);
+    setGuardando(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen || !cita?.ID_Cita) return;
+
+    setGuardando(false);
+
+    if (esCitaDeFechaFutura(cita.FechaCita)) {
+      setHoraInicioSistema(null);
+      setMostrarConfirmacionFechaFutura(true);
+      return;
+    }
+
+    setMostrarConfirmacionFechaFutura(false);
+    inicializarSesion(cita.ID_Cita);
+  }, [isOpen, cita?.ID_Cita, cita?.FechaCita, inicializarSesion]);
 
   const viaMap = useMemo(
     () =>
@@ -101,59 +165,180 @@ export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos
     [catalogos.tiposTerapia]
   );
 
-  if (!isOpen || !cita) return null;
+  const limpiarInicioSesion = () => {
+    if (cita?.ID_Cita) {
+      sessionStorage.removeItem(`sesion_inicio_${cita.ID_Cita}`);
+    }
+  };
 
-  const getViaNombre = (id: string) => viaMap.get(String(id));
-  const getTerapiaNombre = (id: string) => terapiaMap.get(String(id));
+  const handleClose = () => {
+    limpiarInicioSesion();
+    onClose();
+  };
 
-  const handleSave = () => {
-    if (!datosSesion.diagnostico.trim()) {
-      return toast.error("El diagnóstico es obligatorio");
-    } 
+  const formatearHoraSistema = (fechaIso: string | null) => {
+    if (!fechaIso) return "--:--";
 
-    const horaCalculada = new Date().toLocaleTimeString("en-GB", {
+    const fecha = new Date(fechaIso);
+
+    if (Number.isNaN(fecha.getTime())) return "--:--";
+
+    return fecha.toLocaleTimeString("es-NI", {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
     });
+  };
 
-    // Mapeamos los tratamientos visuales al formato DTO que espera la base de datos
-    const tratamientosFormateados = listaTratamientos.map(t => ({
-      id: t.id,
-      Frecuencia: t.frecuencia,
-      Tipo: t.tipo === "farmacologico" ? "farmaceutico" : "terapeutico",
-      FechaInicio: new Date().toISOString().split('T')[0],
-      Farmaceutico: t.tipo === "farmacologico" ? {
-        ID_ViaAdministracion: Number(t.viaAdminId),
-        Nombre_Medicamento: t.medicamento,
-        Dosis: t.dosis
-      } : undefined,
-      Terapeutico: t.tipo === "terapeutico" ? {
-        ID_Tipo_Terapia: Number(t.tipoTerapiaId),
-        Objetivo: t.objetivo
-      } : undefined
-    }));
+  const formatearFechaCita = (fecha?: string | Date | null) => {
+    const fechaCita = obtenerFechaCita(fecha);
 
-    // Armamos el payload con los NOMBRES EXACTOS del CreateSesionDTO
-    const payload = {
+    if (!fechaCita) return "Fecha no registrada";
+
+    return fechaCita.toLocaleDateString("es-NI", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+  };
+
+  const handleConfirmarFechaFutura = () => {
+    if (!cita?.ID_Cita) return;
+
+    setMostrarConfirmacionFechaFutura(false);
+    inicializarSesion(cita.ID_Cita);
+  };
+
+  const handleCancelarFechaFutura = () => {
+    limpiarInicioSesion();
+    setMostrarConfirmacionFechaFutura(false);
+    onClose();
+  };
+
+  if (!isOpen || !cita) return null;
+
+  if (mostrarConfirmacionFechaFutura) {
+    return (
+      <dialog className="modal modal-open bg-black/50 backdrop-blur-sm">
+        <div className="modal-box max-w-lg bg-white text-slate-800 rounded-2xl shadow-2xl">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0">
+              <span className="text-2xl font-bold">!</span>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="font-bold text-xl text-slate-900">Confirmar inicio de sesión</h3>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                La cita seleccionada está programada para una fecha futura:
+              </p>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-900">
+                <p>
+                  <span className="font-semibold">Fecha de la cita:</span>{" "}
+                  {formatearFechaCita(cita.FechaCita)}
+                </p>
+                <p className="mt-1">
+                  Al confirmar, se registrará la hora de inicio con la hora actual del sistema.
+                </p>
+              </div>
+
+              <p className="text-sm text-slate-600">
+                Confirma que deseas iniciar la sesión clínica antes de la fecha programada.
+              </p>
+            </div>
+          </div>
+
+          <div className="modal-action">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={handleCancelarFechaFutura}
+              disabled={guardando}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="btn bg-amber-600 text-white hover:bg-amber-700"
+              onClick={handleConfirmarFechaFutura}
+              disabled={guardando}
+            >
+              Confirmar e iniciar
+            </button>
+          </div>
+        </div>
+      </dialog>
+    );
+  }
+
+  const getViaNombre = (id: string) => viaMap.get(String(id));
+  const getTerapiaNombre = (id: string) => terapiaMap.get(String(id));
+
+  const handleSave = async () => {
+    if (!datosSesion.diagnostico.trim()) {
+      toast.error("El diagnóstico es obligatorio");
+      return;
+    }
+
+    if (!horaInicioSistema) {
+      toast.error("No se registró la hora de inicio de la sesión");
+      return;
+    }
+
+    const horaFinalSistema = new Date().toISOString();
+
+    const tratamientosFormateados: NonNullable<CreateSesionDTO["Tratamiento"]>[] = listaTratamientos.map((tratamiento) => {
+      if (tratamiento.tipo === "farmacologico") {
+        return {
+          id: tratamiento.id,
+          Frecuencia: tratamiento.frecuencia,
+          Tipo: "farmaceutico",
+          FechaInicio: horaInicioSistema,
+          Farmaceutico: {
+            ID_ViaAdministracion: Number(tratamiento.viaAdminId),
+            Nombre_Medicamento: tratamiento.medicamento,
+            Dosis: tratamiento.dosis,
+          },
+        };
+      }
+
+      return {
+        id: tratamiento.id,
+        Frecuencia: tratamiento.frecuencia,
+        Tipo: "terapeutico",
+        FechaInicio: horaInicioSistema,
+        Terapeutico: {
+          ID_Tipo_Terapia: Number(tratamiento.tipoTerapiaId),
+          Objetivo: tratamiento.objetivo,
+        },
+      };
+    });
+
+    const tratamientoPrincipal = tratamientosFormateados[0];
+
+    const payload: CreateSesionDTO = {
       ID_Cita: cita.ID_Cita,
-      ID_Expediente: cita.Paciente?.ID_Paciente || 0, // Usamos el ID de paciente temporalmente
-      HoraDeInicio: horaCalculada,
-      HoraFinal: horaCalculada, // Asumimos que la sesión termina al guardar
-      Observaciones: datosSesion.observaciones,
-      DiagnosticoDiferencial: datosSesion.diagnostico,
-      HistorialDeEvolucion: datosSesion.historial,
-      Criterios_DeDiagnostico: datosSesion.criterios,
+      ID_Expediente: 0,
+      HoraDeInicio: horaInicioSistema,
+      HoraFinal: horaFinalSistema,
+      Observaciones: datosSesion.observaciones.trim(),
+      DiagnosticoDiferencial: datosSesion.diagnostico.trim(),
+      HistorialDeEvolucion: datosSesion.historial.trim(),
+      Criterios_DeDiagnostico: datosSesion.criterios.trim(),
       ExploracionesIds: Array.from(selectedExploraciones),
-      
-      // Enviamos el primer tratamiento al DTO (o el arreglo completo si tu backend lo soporta)
-      Tratamiento: tratamientosFormateados[0], 
-      Tratamientos: tratamientosFormateados 
+      ...(tratamientoPrincipal ? { Tratamiento: tratamientoPrincipal } : {}),
     };
 
-    // Casteamos a unknown -> CreateSesionDTO para que el linter ignore los campos extras 
-    // y pase la validación estricta de la función padre.
-    onSubmit(payload as unknown as CreateSesionDTO);
+    try {
+      setGuardando(true);
+      await onSubmit(payload);
+      limpiarInicioSesion();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Error al guardar la sesión";
+      toast.error(message);
+    } finally {
+      setGuardando(false);
+    }
   };
 
   const agregarTratamiento = () => {
@@ -200,7 +385,7 @@ export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos
               </span>
             </p>
           </div>
-          <button className="btn btn-circle btn-ghost text-slate-200" onClick={onClose}>✕</button>
+          <button className="btn btn-circle btn-ghost text-slate-200" onClick={handleClose} disabled={guardando}>✕</button>
         </div>
 
         <div className="p-8 overflow-y-auto flex-1 space-y-8 bg-slate-50">
@@ -432,13 +617,20 @@ export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos
         </div>
 
         <div className="bg-white p-4 border-t border-slate-200 flex justify-between items-center flex-shrink-0">
-          <span className="text-xs text-slate-400">
-            Guardando datos para Exp. #{cita.Paciente?.ID_Paciente}
-          </span>
+          <div className="text-xs text-slate-500">
+            <span className="font-semibold text-slate-700">Inicio:</span>{" "}
+            {formatearHoraSistema(horaInicioSistema)}
+            <span className="mx-2 text-slate-300">|</span>
+            <span>La hora final se registrará al guardar</span>
+          </div>
           <div className="flex gap-3">
-            <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-            <button className="btn bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg px-8" onClick={handleSave}>
-              ✅ Finalizar Consulta y Guardar
+            <button className="btn btn-ghost" onClick={handleClose} disabled={guardando}>Cancelar</button>
+            <button
+              className="btn bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg px-8"
+              onClick={handleSave}
+              disabled={guardando}
+            >
+              {guardando ? <span className="loading loading-spinner loading-sm" /> : "Finalizar Consulta y Guardar"}
             </button>
           </div>
         </div>

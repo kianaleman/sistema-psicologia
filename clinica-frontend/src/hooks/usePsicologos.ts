@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
 import { toast } from 'sonner';
-import type { Psicologo, Direccion } from '../types';
+import type { Psicologo, Direccion, Pais, Departamento, Municipio } from '../types';
 
 export interface Especialidad {
   ID_Especialidad: number;
@@ -28,6 +28,16 @@ export type PsicologoCompleto = Omit<Psicologo, 'Direccion'> & {
 
 export type FiltroActividad = 'todos' | 'activos' | 'inactivos';
 
+export interface CredencialesTemporales {
+  email: string;
+  passwordTemporal: string;
+}
+
+export interface CrearPsicologoResponse {
+  psicologo: PsicologoCompleto;
+  credenciales: CredencialesTemporales;
+}
+
 export interface PsicologoFormData {
   nombre: string;
   apellido: string;
@@ -36,8 +46,9 @@ export interface PsicologoFormData {
   email: string;
   activo: boolean;
   direccion: {
-    departamento: string;
-    municipio: string;
+    paisId: string;
+    departamentoId: string;
+    municipioId: string;
     barrio: string;
     calle: string;
   };
@@ -46,6 +57,9 @@ export interface PsicologoFormData {
 
 type CatalogosPsicologos = {
   especialidades?: Especialidad[];
+  paises?: Pais[];
+  departamentos?: Departamento[];
+  municipios?: Municipio[];
 };
 
 type PsicologoPayload = {
@@ -55,9 +69,9 @@ type PsicologoPayload = {
   No_Telefono: string;
   Email: string;
   Activo: boolean;
+  paisId: number;
   direccion: {
-    departamento: string;
-    municipio: string;
+    municipioId: number;
     barrio: string;
     calle: string;
   };
@@ -66,12 +80,14 @@ type PsicologoPayload = {
 
 type PsicologoCreateRequest = Omit<Psicologo, 'ID_Psicologo'> & {
   Email?: string;
+  paisId?: number;
   direccion?: PsicologoPayload['direccion'];
   especialidadIds?: number[];
 };
 
 type PsicologoUpdateRequest = Partial<Psicologo> & {
   Email?: string;
+  paisId?: number;
   direccion?: PsicologoPayload['direccion'];
   especialidadIds?: number[];
 };
@@ -90,10 +106,18 @@ const normalizarCatalogos = (catalogos: unknown): CatalogosPsicologos => {
 
     return {
       especialidades: Array.isArray(data.especialidades) ? data.especialidades : [],
+      paises: Array.isArray(data.paises) ? data.paises : [],
+      departamentos: Array.isArray(data.departamentos) ? data.departamentos : [],
+      municipios: Array.isArray(data.municipios) ? data.municipios : [],
     };
   }
 
-  return { especialidades: [] };
+  return {
+    especialidades: [],
+    paises: [],
+    departamentos: [],
+    municipios: [],
+  };
 };
 
 const construirPayload = (data: PsicologoFormData): PsicologoPayload => ({
@@ -103,10 +127,10 @@ const construirPayload = (data: PsicologoFormData): PsicologoPayload => ({
   No_Telefono: data.telefono.trim(),
   Email: data.email.trim(),
   Activo: data.activo,
+  paisId: Number(data.direccion.paisId),
   direccion: {
-    departamento: data.direccion.departamento.trim(),
-    municipio: data.direccion.municipio.trim(),
-    barrio: data.direccion.barrio.trim(),
+    municipioId: Number(data.direccion.municipioId),
+    barrio: data.direccion.barrio.trim() || 'Sin especificar',
     calle: data.direccion.calle.trim(),
   },
   especialidadIds: data.especialidadIds
@@ -130,12 +154,33 @@ const adaptarPayloadActualizar = (payload: PsicologoPayload): PsicologoUpdateReq
   };
 };
 
+const esObjeto = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === 'object' && value !== null;
+};
+
+const esCredencialesTemporales = (value: unknown): value is CredencialesTemporales => {
+  if (!esObjeto(value)) return false;
+
+  return typeof value.email === 'string' &&
+    typeof value.passwordTemporal === 'string' &&
+    value.passwordTemporal.trim().length > 0;
+};
+
+const esCrearPsicologoResponse = (value: unknown): value is CrearPsicologoResponse => {
+  if (!esObjeto(value)) return false;
+
+  return esObjeto(value.psicologo) && esCredencialesTemporales(value.credenciales);
+};
+
 export function usePsicologos() {
   const [psicologos, setPsicologos] = useState<PsicologoCompleto[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [busqueda, setBusqueda] = useState<string>('');
   const [filtroActividad, setFiltroActividad] = useState<FiltroActividad>('todos');
   const [especialidades, setEspecialidades] = useState<Especialidad[]>([]);
+  const [paises, setPaises] = useState<Pais[]>([]);
+  const [departamentos, setDepartamentos] = useState<Departamento[]>([]);
+  const [municipios, setMunicipios] = useState<Municipio[]>([]);
 
   const loadData = useCallback(async () => {
     try {
@@ -150,11 +195,17 @@ export function usePsicologos() {
 
       const catalogos = normalizarCatalogos(dataCatalogos);
       setEspecialidades(catalogos.especialidades || []);
+      setPaises(catalogos.paises || []);
+      setDepartamentos(catalogos.departamentos || []);
+      setMunicipios(catalogos.municipios || []);
     } catch (error: unknown) {
       console.error('Error cargando datos de psicólogos:', error);
       toast.error('Error cargando datos de psicólogos');
       setPsicologos([]);
       setEspecialidades([]);
+      setPaises([]);
+      setDepartamentos([]);
+      setMunicipios([]);
     } finally {
       setLoading(false);
     }
@@ -188,20 +239,27 @@ export function usePsicologos() {
     });
   }, [psicologos, busqueda, filtroActividad]);
 
-  const crearPsicologo = async (data: PsicologoFormData) => {
+  const crearPsicologo = async (data: PsicologoFormData): Promise<CrearPsicologoResponse | null> => {
     try {
       const payload = construirPayload(data);
 
-      await api.psicologos.create(adaptarPayloadCrear(payload));
-      toast.success('Psicólogo registrado exitosamente');
+      const response = await api.psicologos.create(adaptarPayloadCrear(payload));
+
       await loadData();
 
-      return true;
+      if (!esCrearPsicologoResponse(response)) {
+        toast.warning('Psicólogo registrado, pero el backend no devolvió la contraseña temporal.');
+        return null;
+      }
+
+      toast.success('Psicólogo registrado exitosamente');
+
+      return response;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Error al registrar psicólogo';
       toast.error(message);
 
-      return false;
+      return null;
     }
   };
 
@@ -229,7 +287,12 @@ export function usePsicologos() {
     setBusqueda,
     filtroActividad,
     setFiltroActividad,
-    catalogos: { especialidades },
+    catalogos: {
+      especialidades,
+      paises,
+      departamentos,
+      municipios,
+    },
     acciones: {
       crearPsicologo,
       actualizarPsicologo,

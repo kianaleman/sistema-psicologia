@@ -1,43 +1,53 @@
 import { z } from 'zod';
 
+const passwordSchema = z.string({
+  message: 'La contraseña es obligatoria',
+})
+  .trim()
+  .min(6, 'La contraseña debe tener al menos 6 caracteres');
+
 export const registerSchema = z.object({
   body: z.object({
-    email: z.string({ message : 'El email es obligatorio' })
-      .email('Debe proporcionar un formato de correo válido'),
-    rolId: z.number({ message : 'El rolId es obligatorio' })
-      .int('El rolId debe ser un número entero')
-      .positive('El rolId debe ser un ID válido'),
+    email: z.string({
+      message: 'El correo electrónico es obligatorio',
+    }).trim().email('El correo electrónico tiene un formato inválido'),
+    rolId: z.number({
+      message: 'El rol es obligatorio',
+    }).int().positive('El rol debe ser válido'),
     psicologoId: z.number().int().positive().optional(),
-  })
+  }),
 });
 
 export const loginSchema = z.object({
   body: z.object({
-    email: z.string({ message : 'El email es obligatorio' })
-      .email('Formato de correo inválido'),
-    passwordRaw: z.string({ message : 'La contraseña es obligatoria' })
-      .min(1, 'La contraseña no puede estar vacía'),
-  })
+    email: z.string({
+      message: 'El correo electrónico es obligatorio',
+    }).trim().email('El correo electrónico tiene un formato inválido'),
+    passwordRaw: z.string({
+      message: 'La contraseña es obligatoria',
+    }).min(1, 'La contraseña es obligatoria'),
+  }),
 });
 
 export const cambiarPasswordSchema = z.object({
   body: z.object({
-    passwordNuevaRaw: z.string({ message : 'La nueva contraseña es obligatoria' })
-      .min(6, 'La contraseña debe tener al menos 6 caracteres'),
-  })
+    passwordNuevaRaw: passwordSchema,
+  }),
 });
 
 export const forgotPasswordSchema = z.object({
   body: z.object({
-    email: z.string({ message : 'El email es obligatorio' })
-      .email('Formato de correo inválido'),
-  })
+    email: z.string({
+      message: 'El correo electrónico es obligatorio',
+    }).trim().email('El correo electrónico tiene un formato inválido'),
+  }),
 });
 
 export const resetPasswordSchema = z.object({
   body: z.object({
-    token: z.string({ message : 'El token de seguridad es obligatorio' }),
-    passwordNuevaRaw: z.string({ message : 'La nueva contraseña es obligatoria' })
-      .min(6, 'La nueva contraseña debe tener al menos 6 caracteres'),
-  })
+    token: z.string({
+      message: 'El token es obligatorio',
+    }).trim().min(1, 'El token es obligatorio'),
+    passwordNuevaRaw: passwordSchema,
+  }),
 });

@@ -5,6 +5,7 @@ import type {
   PsicologoCompleto,
   PsicologoFormData,
 } from '../../hooks/usePsicologos';
+import type { Departamento, Municipio, Pais } from '../../types';
 
 interface PsicologoFormModalProps {
   isOpen: boolean;
@@ -13,6 +14,9 @@ interface PsicologoFormModalProps {
   psicologoEditar: PsicologoCompleto | null;
   catalogos: {
     especialidades: Especialidad[];
+    paises: Pais[];
+    departamentos: Departamento[];
+    municipios: Municipio[];
   };
 }
 
@@ -34,8 +38,9 @@ const initialForm: PsicologoFormData = {
   email: '',
   activo: true,
   direccion: {
-    departamento: '',
-    municipio: '',
+    paisId: '',
+    departamentoId: '',
+    municipioId: '',
     barrio: '',
     calle: '',
   },
@@ -57,8 +62,28 @@ function getEspecialidadesSeleccionadas(psicologo: PsicologoCompleto) {
     .map((id) => id.toString());
 }
 
-function getInitialForm(psicologoEditar: PsicologoCompleto | null): PsicologoFormData {
-  if (!psicologoEditar) return initialForm;
+function getPaisIdDesdeDireccion(psicologo: PsicologoCompleto, paises: Pais[]) {
+  const paisDireccion = psicologo.Direccion?.Pais?.trim().toLowerCase();
+
+  if (paisDireccion) {
+    const paisEncontrado = paises.find((pais) => pais.Nombre_Pais.trim().toLowerCase() === paisDireccion);
+
+    if (paisEncontrado) return paisEncontrado.ID_Pais.toString();
+  }
+
+  return paises.length === 1 ? paises[0].ID_Pais.toString() : '';
+}
+
+function getInitialForm(psicologoEditar: PsicologoCompleto | null, paises: Pais[]): PsicologoFormData {
+  if (!psicologoEditar) {
+    return {
+      ...initialForm,
+      direccion: {
+        ...initialForm.direccion,
+        paisId: paises.length === 1 ? paises[0].ID_Pais.toString() : '',
+      },
+    };
+  }
 
   return {
     nombre: psicologoEditar.Nombre || '',
@@ -68,8 +93,15 @@ function getInitialForm(psicologoEditar: PsicologoCompleto | null): PsicologoFor
     email: psicologoEditar.Email || '',
     activo: psicologoEditar.Activo ?? true,
     direccion: {
-      departamento: psicologoEditar.Direccion?.Municipio?.Departamento?.Nombre_Departamento || '',
-      municipio: psicologoEditar.Direccion?.Municipio?.Nombre_Municipio || '',
+      paisId: getPaisIdDesdeDireccion(psicologoEditar, paises),
+      departamentoId:
+        psicologoEditar.Direccion?.Municipio?.ID_Departamento?.toString() ||
+        psicologoEditar.Direccion?.Municipio?.Departamento?.ID_Departamento?.toString() ||
+        '',
+      municipioId:
+        psicologoEditar.Direccion?.ID_Municipio?.toString() ||
+        psicologoEditar.Direccion?.Municipio?.ID_Municipio?.toString() ||
+        '',
       barrio: psicologoEditar.Direccion?.Barrio || '',
       calle: psicologoEditar.Direccion?.Calle || '',
     },
@@ -89,9 +121,9 @@ export default function PsicologoFormModal({
 
   useEffect(() => {
     if (isOpen) {
-      setFormData(getInitialForm(psicologoEditar));
+      setFormData(getInitialForm(psicologoEditar, catalogos.paises));
     }
-  }, [psicologoEditar, isOpen]);
+  }, [psicologoEditar, isOpen, catalogos.paises]);
 
   const handleEspecialidadChange = (id: string) => {
     setFormData((prev) => {
@@ -114,6 +146,16 @@ export default function PsicologoFormModal({
       return;
     }
 
+    if (!formData.direccion.paisId || !formData.direccion.departamentoId || !formData.direccion.municipioId) {
+      toast.error('Selecciona país, departamento y municipio.');
+      return;
+    }
+
+    if (!formData.direccion.barrio.trim()) {
+      toast.error('El barrio es obligatorio.');
+      return;
+    }
+
     if (formData.especialidadIds.length === 0) {
       toast.error('Selecciona al menos una especialidad.');
       return;
@@ -128,6 +170,10 @@ export default function PsicologoFormModal({
   };
 
   if (!isOpen) return null;
+
+  const municipiosFiltrados = catalogos.municipios.filter(
+    (municipio) => municipio.ID_Departamento === Number(formData.direccion.departamentoId)
+  );
 
   return (
     <dialog className="modal modal-open bg-slate-900/40 backdrop-blur-sm transition-all duration-300">
@@ -250,31 +296,73 @@ export default function PsicologoFormModal({
                   </h4>
 
                   <div className="space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <input
-                        type="text"
-                        placeholder="Departamento"
-                        className="input input-sm input-bordered bg-slate-50"
-                        value={formData.direccion.departamento}
-                        onChange={(event) => setFormData({
-                          ...formData,
-                          direccion: { ...formData.direccion, departamento: event.target.value },
-                        })}
-                      />
+                    <select
+                      required
+                      className="select select-bordered bg-slate-50 w-full"
+                      value={formData.direccion.paisId}
+                      onChange={(event) => setFormData({
+                        ...formData,
+                        direccion: {
+                          ...formData.direccion,
+                          paisId: event.target.value,
+                          departamentoId: '',
+                          municipioId: '',
+                        },
+                      })}
+                    >
+                      <option value="">1. Seleccione el País...</option>
+                      {catalogos.paises.map((pais) => (
+                        <option key={pais.ID_Pais} value={pais.ID_Pais}>
+                          {pais.Nombre_Pais}
+                        </option>
+                      ))}
+                    </select>
 
-                      <input
-                        type="text"
-                        placeholder="Municipio"
-                        className="input input-sm input-bordered bg-slate-50"
-                        value={formData.direccion.municipio}
-                        onChange={(event) => setFormData({
-                          ...formData,
-                          direccion: { ...formData.direccion, municipio: event.target.value },
-                        })}
-                      />
-                    </div>
+                    <select
+                      required
+                      className="select select-bordered bg-slate-50 w-full"
+                      value={formData.direccion.departamentoId}
+                      onChange={(event) => setFormData({
+                        ...formData,
+                        direccion: {
+                          ...formData.direccion,
+                          departamentoId: event.target.value,
+                          municipioId: '',
+                        },
+                      })}
+                      disabled={!formData.direccion.paisId}
+                    >
+                      <option value="">2. Seleccione el Departamento...</option>
+                      {catalogos.departamentos.map((departamento) => (
+                        <option key={departamento.ID_Departamento} value={departamento.ID_Departamento}>
+                          {departamento.Nombre_Departamento}
+                        </option>
+                      ))}
+                    </select>
+
+                    <select
+                      required
+                      className="select select-bordered bg-slate-50 w-full"
+                      value={formData.direccion.municipioId}
+                      onChange={(event) => setFormData({
+                        ...formData,
+                        direccion: {
+                          ...formData.direccion,
+                          municipioId: event.target.value,
+                        },
+                      })}
+                      disabled={!formData.direccion.departamentoId}
+                    >
+                      <option value="">3. Seleccione el Municipio...</option>
+                      {municipiosFiltrados.map((municipio) => (
+                        <option key={municipio.ID_Municipio} value={municipio.ID_Municipio}>
+                          {municipio.Nombre_Municipio}
+                        </option>
+                      ))}
+                    </select>
 
                     <input
+                      required
                       type="text"
                       placeholder="Barrio / Residencial"
                       className="input input-sm input-bordered w-full bg-slate-50"
@@ -286,7 +374,7 @@ export default function PsicologoFormModal({
                     />
 
                     <textarea
-                      placeholder="Dirección exacta"
+                      placeholder="Calle / Dirección exacta"
                       className="textarea textarea-bordered bg-slate-50 w-full h-20 resize-none text-sm"
                       value={formData.direccion.calle}
                       onChange={(event) => setFormData({

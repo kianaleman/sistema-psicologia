@@ -2,170 +2,271 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// DTOs (Data Transfer Objects)
-interface TratamientoInput {
-  tipo: 'farmacologico' | 'terapeutico';
-  frecuencia: string;
-  // Farmacológico
-  medicamento?: string;
-  dosis?: string;
-  viaAdminId?: number | string;
-  // Terapéutico
-  tipoTerapiaId?: number | string;
-  objetivo?: string;
+interface TratamientoDTO {
+  id?: number;
+  Frecuencia: string;
+  Tipo: 'farmaceutico' | 'terapeutico';
+  FechaInicio: string;
+  FechaFin?: string;
+  Farmaceutico?: {
+    ID_ViaAdministracion: number;
+    Nombre_Medicamento: string;
+    Dosis: string;
+  };
+  Terapeutico?: {
+    ID_Tipo_Terapia: number;
+    Objetivo: string;
+  };
 }
 
 interface CreateSesionDTO {
-  citaId: number;
-  observaciones: string;
-  diagnostico: string;
-  criterios?: string;
-  historial?: string;
-  horaInicio: string; // "HH:MM"
-  tratamientos: TratamientoInput[];
-  exploracionIds: number[];
+  ID_Cita: number;
+  ID_Expediente: number;
+  HoraDeInicio: string;
+  HoraFinal: string;
+  Observaciones: string;
+  DiagnosticoDiferencial: string;
+  HistorialDeEvolucion: string;
+  Criterios_DeDiagnostico: string;
+  ExploracionesIds?: number[];
+  Tratamiento?: TratamientoDTO;
 }
 
-export const SesionService = {
+const validarId = (value: number, field: string) => {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${field} inválido.`);
+  }
+};
 
+const construirFechaDesdeHora = (hora: number, minuto: number, segundo = 0) => {
+  if (
+    !Number.isInteger(hora) ||
+    !Number.isInteger(minuto) ||
+    !Number.isInteger(segundo) ||
+    hora < 0 ||
+    hora > 23 ||
+    minuto < 0 ||
+    minuto > 59 ||
+    segundo < 0 ||
+    segundo > 59
+  ) {
+    return null;
+  }
+
+  const fecha = new Date();
+  fecha.setHours(hora, minuto, segundo, 0);
+
+  return fecha;
+};
+
+const construirFecha = (value: string, field: string) => {
+  const rawValue = value?.trim();
+
+  if (!rawValue) {
+    throw new Error(`${field} es requerido.`);
+  }
+
+  const timeOnlyMatch = rawValue.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.\d{1,3})?(?:Z)?$/);
+
+  if (timeOnlyMatch) {
+    const hora = Number(timeOnlyMatch[1]);
+    const minuto = Number(timeOnlyMatch[2]);
+    const segundo = Number(timeOnlyMatch[3] || 0);
+
+    const fecha = construirFechaDesdeHora(hora, minuto, segundo);
+
+    if (!fecha) {
+      throw new Error(`${field} tiene un formato inválido.`);
+    }
+
+    return fecha;
+  }
+
+  const fecha = new Date(rawValue);
+
+  if (!Number.isNaN(fecha.getTime())) {
+    return fecha;
+  }
+
+  throw new Error(`${field} tiene un formato inválido. Valor recibido: ${rawValue}`);
+};
+
+const normalizarExploraciones = (ids?: number[]) => {
+  return (ids || [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+};
+
+const construirNumeroExpediente = (pacienteId: number) => {
+  const timestamp = Date.now();
+
+  return `EXP-${pacienteId}-${timestamp}`;
+};
+
+export const SesionService = {
   create: async (data: CreateSesionDTO) => {
+    validarId(data.ID_Cita, 'ID_Cita');
+
     return await prisma.$transaction(async (tx) => {
-      
-      // 0. Obtener la información del paciente a través de la Cita
       const citaActual = await tx.cita.findUnique({
-        where: { ID_Cita: data.citaId },
-        select: { ID_Paciente: true, ID_Psicologo: true }
+        where: { ID_Cita: data.ID_Cita },
+        select: {
+          ID_Cita: true,
+          ID_Paciente: true,
+          ID_Psicologo: true,
+          Sesion: {
+            select: {
+              ID_Sesion: true,
+            },
+          },
+        },
       });
 
       if (!citaActual) {
-          throw new Error("La cita proporcionada no existe.");
+        throw new Error('La cita proporcionada no existe.');
       }
 
-      // 1. Buscar o Crear Expediente (Viajando por las relaciones)
-      const pacienteActual = await tx.paciente.findUnique({
-        where: { ID_Paciente: citaActual.ID_Paciente },
-        include: { Expediente: true }
-      });
-      
-      // En la nueva BD, un paciente tiene un arreglo de expedientes (aunque en la práctica sea uno).
-      // Tomamos el primero si existe.
-      let expedienteId = pacienteActual?.Expediente?.ID_Expediente;
+      if (citaActual.Sesion) {
+        throw new Error('Esta cita ya tiene una sesión registrada.');
+      }
+
+      let expedienteId: number | null = null;
+
+      if (Number.isInteger(data.ID_Expediente) && data.ID_Expediente > 0) {
+        const expedientePorId = await tx.expediente.findFirst({
+          where: {
+            ID_Expediente: data.ID_Expediente,
+            ID_Paciente: citaActual.ID_Paciente,
+          },
+          select: {
+            ID_Expediente: true,
+          },
+        });
+
+        if (expedientePorId) {
+          expedienteId = expedientePorId.ID_Expediente;
+        }
+      }
 
       if (!expedienteId) {
-        const nuevoExp = await tx.expediente.create({
-          data: { 
-            No_Expediente: `EXP-${Date.now()}`, 
-            FechaIngreso: new Date(),
-            ID_Paciente: citaActual.ID_Paciente // El expediente sí está vinculado al paciente
-          }
+        const expedienteExistente = await tx.expediente.findFirst({
+          where: {
+            ID_Paciente: citaActual.ID_Paciente,
+          },
+          orderBy: {
+            ID_Expediente: 'asc',
+          },
+          select: {
+            ID_Expediente: true,
+          },
         });
-        expedienteId = nuevoExp.ID_Expediente;
+
+        if (expedienteExistente) {
+          expedienteId = expedienteExistente.ID_Expediente;
+        }
       }
 
-      // 2. Manejo de Horas (CORREGIDO)
-      const horaInicioParts = data.horaInicio.split(':');
-      const fechaInicio = new Date(); 
-      
-      // Extraemos y aseguramos que siempre sea string para el parseInt
-      const horaStr = horaInicioParts[0] ?? '0';
-      const minStr = horaInicioParts[1] ?? '0';
+      if (!expedienteId) {
+        const nuevoExpediente = await tx.expediente.create({
+          data: {
+            No_Expediente: construirNumeroExpediente(citaActual.ID_Paciente),
+            FechaIngreso: new Date(),
+            ID_Paciente: citaActual.ID_Paciente,
+          },
+          select: {
+            ID_Expediente: true,
+          },
+        });
 
-      fechaInicio.setHours(parseInt(horaStr), parseInt(minStr), 0, 0);
+        expedienteId = nuevoExpediente.ID_Expediente;
+      }
 
-      const fechaFinal = new Date();
-      fechaFinal.setUTCHours(fechaFinal.getHours(), fechaFinal.getMinutes());
-
-      // 3. Crear la Sesión Base (La magia del 1:1)
       const nuevaSesion = await tx.sesion.create({
         data: {
-          ID_Cita: data.citaId, // Vínculo directo a la cita (1:1)
-          HoraDeInicio: fechaInicio,
-          HoraFinal: fechaFinal,
-          Observaciones: data.observaciones,
-          DiagnosticoDiferencial: data.diagnostico,
-          Criterios_DeDiagnostico: data.criterios || 'DSM-5', // Renombrado
-          HistorialDeEvolucion: data.historial || 'Evolución estándar', // Renombrado
-          ID_Expediente: expedienteId
-        }
+          ID_Cita: data.ID_Cita,
+          ID_Expediente: expedienteId,
+          HoraDeInicio: construirFecha(data.HoraDeInicio, 'HoraDeInicio'),
+          HoraFinal: construirFecha(data.HoraFinal, 'HoraFinal'),
+          Observaciones: data.Observaciones,
+          DiagnosticoDiferencial: data.DiagnosticoDiferencial,
+          HistorialDeEvolucion: data.HistorialDeEvolucion,
+          Criterios_DeDiagnostico: data.Criterios_DeDiagnostico,
+        },
       });
 
-      // 4. Insertar Tratamientos (Iterativo)
-      if (data.tratamientos && data.tratamientos.length > 0) {
-        for (const t of data.tratamientos) {
-          // Crear Tratamiento Padre
-          const tratamientoBase = await tx.tratamiento.create({
-            data: {
-              ID_Sesion: nuevaSesion.ID_Sesion,
-              FechaInicio: new Date(),
-              Frecuencia: t.frecuencia || 'Según indicación',
-              ID_Psicologo_Firma: citaActual.ID_Psicologo // Se firma con el psicólogo de la cita
-            }
-          });
+      if (data.Tratamiento) {
+        const tratamiento = data.Tratamiento;
 
-          // Crear Tratamiento Hijo según Tipo
-          if (t.tipo === 'farmacologico') {
-            if (!t.medicamento || !t.dosis || !t.viaAdminId) continue; 
-            await tx.tratamiento_Farmaceutico.create({ // Renombrado
-              data: {
-                ID_Tratamiento_Farmaceutico: tratamientoBase.ID_Tratamiento, // Renombrado
-                ID_ViaAdministracion: Number(t.viaAdminId),
-                Nombre_Medicamento: t.medicamento, // Renombrado
-                Dosis: t.dosis
-              }
-            });
-          } else if (t.tipo === 'terapeutico') {
-            if (!t.tipoTerapiaId || !t.objetivo) continue; 
-            await tx.tratamiento_Terapeutico.create({ // Renombrado
-              data: {
-                ID_TratamientoTerapeutico: tratamientoBase.ID_Tratamiento,
-                ID_Tipo_Terapia: Number(t.tipoTerapiaId), // Renombrado
-                Objetivo: t.objetivo
-              }
-            });
-          }
+        const tratamientoBase = await tx.tratamiento.create({
+          data: {
+            ID_Sesion: nuevaSesion.ID_Sesion,
+            FechaInicio: construirFecha(tratamiento.FechaInicio, 'FechaInicio del tratamiento'),
+            Frecuencia: tratamiento.Frecuencia || 'Según indicación',
+            ID_Psicologo_Firma: citaActual.ID_Psicologo,
+          },
+        });
+
+        if (tratamiento.Tipo === 'farmaceutico' && tratamiento.Farmaceutico) {
+          validarId(tratamiento.Farmaceutico.ID_ViaAdministracion, 'ID_ViaAdministracion');
+
+          await tx.tratamiento_Farmaceutico.create({
+            data: {
+              ID_Tratamiento_Farmaceutico: tratamientoBase.ID_Tratamiento,
+              ID_ViaAdministracion: tratamiento.Farmaceutico.ID_ViaAdministracion,
+              Nombre_Medicamento: tratamiento.Farmaceutico.Nombre_Medicamento,
+              Dosis: tratamiento.Farmaceutico.Dosis,
+            },
+          });
+        }
+
+        if (tratamiento.Tipo === 'terapeutico' && tratamiento.Terapeutico) {
+          validarId(tratamiento.Terapeutico.ID_Tipo_Terapia, 'ID_Tipo_Terapia');
+
+          await tx.tratamiento_Terapeutico.create({
+            data: {
+              ID_TratamientoTerapeutico: tratamientoBase.ID_Tratamiento,
+              ID_Tipo_Terapia: tratamiento.Terapeutico.ID_Tipo_Terapia,
+              Objetivo: tratamiento.Terapeutico.Objetivo,
+            },
+          });
         }
       }
 
-      // 5. Insertar Exploraciones (Relación M:N)
-      if (data.exploracionIds && data.exploracionIds.length > 0) {
-        const exploracionesData = data.exploracionIds.map((id) => ({
-          ID_Sesion: nuevaSesion.ID_Sesion,
-          ID_ExploracionPsicologica: Number(id)
-        }));
-        
+      const exploracionesIds = normalizarExploraciones(data.ExploracionesIds);
+
+      if (exploracionesIds.length > 0) {
         await tx.sesion_ExploracionPsicologica.createMany({
-          data: exploracionesData
+          data: exploracionesIds.map((id) => ({
+            ID_Sesion: nuevaSesion.ID_Sesion,
+            ID_ExploracionPsicologica: id,
+          })),
         });
       }
 
-      // 6. Actualizar Estado de la Cita (Cerrarla)
       await tx.cita.update({
-        where: { ID_Cita: data.citaId },
-        data: { ID_EstadoCita: 2 } // 2 = Realizada
+        where: { ID_Cita: data.ID_Cita },
+        data: { ID_EstadoCita: 2 },
       });
 
       return nuevaSesion;
     });
   },
 
-  // Búsqueda simple para historial
   findByParams: async (pacienteId: number, psicologoId: number) => {
-    // Al no tener paciente/psicólogo en la sesión, buscamos la cita que los tenga
-    // y devolvemos su sesión vinculada.
     const cita = await prisma.cita.findFirst({
-      where: { 
-        ID_Paciente: pacienteId, 
+      where: {
+        ID_Paciente: pacienteId,
         ID_Psicologo: psicologoId,
-        ID_EstadoCita: 2 // Buscamos solo en citas completadas
+        ID_EstadoCita: 2,
       },
       orderBy: { FechaCita: 'desc' },
-      include: { 
+      include: {
         Sesion: {
-            include: { Expediente: true }
-        } 
-      }
+          include: { Expediente: true },
+        },
+      },
     });
 
     return cita ? cita.Sesion : null;
-  }
+  },
 };
