@@ -12,20 +12,20 @@ interface CreatePacienteDTO {
   direccion: { municipioId: number; barrio: string; calle?: string; }; // Usando catálogos de geografía
   esAdulto: boolean;
   datosAdulto?: { cedula: string; codigoTelefonoId: number; telefono: string; ocupacionId: number; estadoCivilId: number; };
-  datosMenor?: { 
-    partNacimiento: string; 
-    grado: string; 
-    modoTutor: 'existente' | 'nuevo'; 
+  datosMenor?: {
+    partNacimiento: string;
+    grado: string;
+    modoTutor: 'existente' | 'nuevo';
     tutorId?: number;
-    nuevoTutor?: { 
-        cedula: string; 
-        nombre: string; 
-        apellido: string; 
-        codigoTelefonoId: number; 
-        telefono: string; 
-        parentescoId: number; 
-        ocupacionId: number; 
-        estadoCivilId: number; 
+    nuevoTutor?: {
+      cedula: string;
+      nombre: string;
+      apellido: string;
+      codigoTelefonoId: number;
+      telefono: string;
+      parentescoId: number;
+      ocupacionId: number;
+      estadoCivilId: number;
     };
   };
 }
@@ -47,17 +47,17 @@ const validarCedulaUnica = async (cedula: string, tipo: 'paciente' | 'tutor', id
     // Construimos el objeto where de forma dinámica
     const whereClause: any = { No_Cedula: cedula };
     if (idExcluir) {
-        whereClause.ID_PacienteAdulto = { not: idExcluir };
+      whereClause.ID_PacienteAdulto = { not: idExcluir };
     }
 
     const existe = await prisma.pacienteAdulto.findFirst({ where: whereClause });
     if (existe) throw new Error(`La cédula ${cedula} ya está registrada en otro PACIENTE.`);
-  } 
-  
+  }
+
   if (tipo === 'tutor') {
     const whereClause: any = { No_Cedula: cedula };
     if (idExcluir) {
-        whereClause.ID_Tutor = { not: idExcluir };
+      whereClause.ID_Tutor = { not: idExcluir };
     }
 
     const existe = await prisma.tutor.findFirst({ where: whereClause });
@@ -71,26 +71,26 @@ const validarTelefonoNica = (telefono: string, contexto: string) => {
   if (!regex.test(limpio)) {
     throw new Error(`El teléfono de ${contexto} es inválido. Debe ser un número de Nicaragua (8 dígitos).`);
   }
-  return limpio; 
+  return limpio;
 };
 
 // ❌ Se eliminó la función corregirFechasSesiones() ya que ahora existe una FK directa entre Cita y Sesion.
 
 export const PacienteService = {
-  
+
   getAll: async () => {
     return await prisma.paciente.findMany({
       include: {
         Pais: true, // Nuevo Catálogo
-        Direccion: { 
-            include: { Municipio: { include: { Departamento: true } } } 
+        Direccion: {
+          include: { Municipio: { include: { Departamento: true } } }
         },
         PacienteAdulto: true,
         // Nueva estructura para menores debido a la tabla intermedia
-        Paciente_Menor: { 
-            include: { 
-                Tutor_PacienteMenor: { include: { Tutor: true, Parentesco: true } } 
-            } 
+        Paciente_Menor: {
+          include: {
+            Tutor_PacienteMenor: { include: { Tutor: true, Parentesco: true } }
+          }
         }
       }
     });
@@ -102,47 +102,75 @@ export const PacienteService = {
       include: {
         Pais: true,
         Direccion: { include: { Municipio: { include: { Departamento: true } } } },
-        PacienteAdulto: { include: { Ocupacion: true, EstadoCivil: true, CodigoTelefonoPais: true } }, 
-        Paciente_Menor: { 
-          include: { 
-            Tutor_PacienteMenor: { 
-              include: { 
+        PacienteAdulto: { include: { Ocupacion: true, EstadoCivil: true, CodigoTelefonoPais: true } },
+        Paciente_Menor: {
+          include: {
+            Tutor_PacienteMenor: {
+              include: {
                 Parentesco: true,
-                Tutor: { include: { Ocupacion: true, EstadoCivil: true, CodigoTelefonoPais: true } } 
-              } 
-            } 
+                Tutor: {
+                  include: {
+                    Ocupacion_Tutor_OcupacionToOcupacion: true,
+                    EstadoCivil_Tutor_EstadoCivilToEstadoCivil: true,
+                    CodigoTelefonoPais: true,
+                    Direccion: {
+                      include: {
+                        Municipio: {
+                          include: {
+                            Departamento: true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         // Al consultar las citas, traemos su sesión (1:1) directamente
         Cita: {
-            select: {
-                ID_Cita: true, FechaCita: true, HoraCita: true, MotivoConsulta: true, ID_EstadoCita: true, ID_Psicologo: true,
-                EstadoCita: { select: { NombreEstado: true } },
-                TipoDeCita: { select: { Nombre_DeCita: true } }, // Renombrado en la DB
-                Psicologo: { select: { Nombre: true, Apellido: true } },
-                Sesion: { // <--- Magia de la nueva FK
-                    select: {
-                        ID_Sesion: true, HoraDeInicio: true, HoraFinal: true, Observaciones: true, DiagnosticoDiferencial: true, HistorialDeEvolucion: true, Criterios_DeDiagnostico: true,
-                        Tratamiento: {
-                            select: {
-                                Frecuencia: true, FechaInicio: true,
-                                Tratamiento_Farmaceutico: { select: { Nombre_Medicamento: true, Dosis: true } },
-                                Tratamiento_Terapeutico: { select: { Objetivo: true } }
-                            }
-                        }
-                    }
+          select: {
+            ID_Cita: true, FechaCita: true, HoraCita: true, MotivoConsulta: true, ID_EstadoCita: true, ID_Psicologo: true,
+            EstadoCita: { select: { NombreEstado: true } },
+            TipoDeCita: { select: { Nombre_DeCita: true } }, // Renombrado en la DB
+            Psicologo: { select: { Nombre: true, Apellido: true } },
+            Sesion: { // <--- Magia de la nueva FK
+              select: {
+                ID_Sesion: true, HoraDeInicio: true, HoraFinal: true, Observaciones: true, DiagnosticoDiferencial: true, HistorialDeEvolucion: true, Criterios_DeDiagnostico: true,
+                Tratamiento: {
+                  select: {
+                    Frecuencia: true, FechaInicio: true,
+                    Tratamiento_Farmaceutico: { select: { Nombre_Medicamento: true, Dosis: true } },
+                    Tratamiento_Terapeutico: { select: { Objetivo: true } }
+                  }
                 }
-            },
-            orderBy: { FechaCita: 'desc' }
+              }
+            }
+          },
+          orderBy: { FechaCita: 'desc' }
         }
       }
     });
 
     if (!paciente) return null;
-    
-    // Separamos las citas y las sesiones para mantener la compatibilidad con el formato de respuesta antiguo
-    const citas = paciente.Cita;
-    const sesiones = paciente.Cita.map(c => c.Sesion).filter(s => s !== null);
+
+    // Separamos las citas y sesiones para mantener la compatibilidad con el formato de respuesta antiguo.
+    // Cada sesion incluye datos basicos de la cita y del psicologo para facilitar su uso en el frontend.
+    const citas = paciente.Cita.map((c) => {
+      const { Sesion, ...datosCita } = c;
+      return datosCita;
+    });
+
+    const sesiones = paciente.Cita
+      .filter((c) => c.Sesion !== null)
+      .map((c) => ({
+        ...c.Sesion!,
+        Psicologo: c.Psicologo,
+        FechaCita: c.FechaCita,
+        HoraCita: c.HoraCita,
+        ID_Cita: c.ID_Cita
+      }));
 
     return { paciente, citas, sesiones };
   },
@@ -151,28 +179,28 @@ export const PacienteService = {
     const fechaNacObj = new Date(data.fechaNac);
     const anio = fechaNacObj.getFullYear();
     if (isNaN(fechaNacObj.getTime()) || anio < 1900 || anio > new Date().getFullYear()) {
-        throw new Error("Fecha de nacimiento inválida.");
+      throw new Error("Fecha de nacimiento inválida.");
     }
 
     if (data.esAdulto && data.datosAdulto) {
-       validarFormatoCedula(data.datosAdulto.cedula, 'Paciente Adulto');
-       await validarCedulaUnica(data.datosAdulto.cedula, 'paciente');
-       data.datosAdulto.telefono = validarTelefonoNica(data.datosAdulto.telefono, 'Paciente Adulto');
+      validarFormatoCedula(data.datosAdulto.cedula, 'Paciente Adulto');
+      await validarCedulaUnica(data.datosAdulto.cedula, 'paciente');
+      data.datosAdulto.telefono = validarTelefonoNica(data.datosAdulto.telefono, 'Paciente Adulto');
 
-       if (!data.datosAdulto.ocupacionId || !data.datosAdulto.estadoCivilId || !data.datosAdulto.codigoTelefonoId) {
-            throw new Error("Datos de Ocupación, Estado Civil o Código de Teléfono inválidos.");
-       }
+      if (!data.datosAdulto.ocupacionId || !data.datosAdulto.estadoCivilId || !data.datosAdulto.codigoTelefonoId) {
+        throw new Error("Datos de Ocupación, Estado Civil o Código de Teléfono inválidos.");
+      }
     }
 
     if (!data.esAdulto && data.datosMenor?.modoTutor === 'nuevo' && data.datosMenor.nuevoTutor) {
-       const tutor = data.datosMenor.nuevoTutor;
-       validarFormatoCedula(tutor.cedula, 'Nuevo Tutor');
-       await validarCedulaUnica(tutor.cedula, 'tutor');
-       tutor.telefono = validarTelefonoNica(tutor.telefono, 'Nuevo Tutor');
+      const tutor = data.datosMenor.nuevoTutor;
+      validarFormatoCedula(tutor.cedula, 'Nuevo Tutor');
+      await validarCedulaUnica(tutor.cedula, 'tutor');
+      tutor.telefono = validarTelefonoNica(tutor.telefono, 'Nuevo Tutor');
 
-       if (!tutor.ocupacionId || !tutor.estadoCivilId || !tutor.parentescoId || !tutor.codigoTelefonoId) {
-          throw new Error("Datos incompletos para el Tutor.");
-       }
+      if (!tutor.ocupacionId || !tutor.estadoCivilId || !tutor.parentescoId || !tutor.codigoTelefonoId) {
+        throw new Error("Datos incompletos para el Tutor.");
+      }
     }
 
     return await prisma.$transaction(async (tx) => {
@@ -216,41 +244,41 @@ export const PacienteService = {
         const idParentescoFinal = data.datosMenor.nuevoTutor?.parentescoId || 6; // 6 = Tutor Legal por defecto
 
         if (data.datosMenor.modoTutor === 'existente' && data.datosMenor.tutorId) {
-           idTutorFinal = data.datosMenor.tutorId;
+          idTutorFinal = data.datosMenor.tutorId;
         } else if (data.datosMenor.nuevoTutor) {
-           const tutorData = data.datosMenor.nuevoTutor;
-           const tutorCreado = await tx.tutor.create({
-             data: {
-               No_Cedula: tutorData.cedula,
-               Nombre: tutorData.nombre,
-               Apellido: tutorData.apellido,
-               ID_CodigoTelefono: tutorData.codigoTelefonoId,
-               No_Telefono: tutorData.telefono,
-               Ocupacion: tutorData.ocupacionId, // El schema dice 'Ocupacion', no 'ID_Ocupacion'
-               EstadoCivil: tutorData.estadoCivilId // El schema dice 'EstadoCivil', no 'ID_EstadoCivil'
-             }
-           });
-           idTutorFinal = tutorCreado.ID_Tutor;
+          const tutorData = data.datosMenor.nuevoTutor;
+          const tutorCreado = await tx.tutor.create({
+            data: {
+              No_Cedula: tutorData.cedula,
+              Nombre: tutorData.nombre,
+              Apellido: tutorData.apellido,
+              ID_CodigoTelefono: tutorData.codigoTelefonoId,
+              No_Telefono: tutorData.telefono,
+              Ocupacion: tutorData.ocupacionId, // El schema dice 'Ocupacion', no 'ID_Ocupacion'
+              EstadoCivil: tutorData.estadoCivilId // El schema dice 'EstadoCivil', no 'ID_EstadoCivil'
+            }
+          });
+          idTutorFinal = tutorCreado.ID_Tutor;
         }
 
         if (idTutorFinal) {
-            await tx.paciente_Menor.create({
-              data: {
-                ID_Paciente_Menor: nuevoPaciente.ID_Paciente,
-                PartidaDeNacimiento: data.datosMenor.partNacimiento,
-                Grado_Escolar: data.datosMenor.grado
-              }
-            });
+          await tx.paciente_Menor.create({
+            data: {
+              ID_Paciente_Menor: nuevoPaciente.ID_Paciente,
+              PartidaDeNacimiento: data.datosMenor.partNacimiento,
+              Grado_Escolar: data.datosMenor.grado
+            }
+          });
 
-            // Llenar tabla intermedia Tutor_PacienteMenor
-            await tx.tutor_PacienteMenor.create({
-                data: {
-                    ID_Tutor: idTutorFinal,
-                    ID_Paciente_Menor: nuevoPaciente.ID_Paciente,
-                    ID_Parentesco: idParentescoFinal,
-                    Es_Contacto_Principal: true
-                }
-            });
+          // Llenar tabla intermedia Tutor_PacienteMenor
+          await tx.tutor_PacienteMenor.create({
+            data: {
+              ID_Tutor: idTutorFinal,
+              ID_Paciente_Menor: nuevoPaciente.ID_Paciente,
+              ID_Parentesco: idParentescoFinal,
+              Es_Contacto_Principal: true
+            }
+          });
         }
       }
       return nuevoPaciente;
@@ -262,9 +290,9 @@ export const PacienteService = {
     if (isNaN(fechaNacObj.getTime())) throw new Error("Fecha inválida");
 
     if (data.esAdulto && data.datosAdulto) {
-        validarFormatoCedula(data.datosAdulto.cedula, 'Paciente');
-        await validarCedulaUnica(data.datosAdulto.cedula, 'paciente', id);
-        data.datosAdulto.telefono = validarTelefonoNica(data.datosAdulto.telefono, 'Paciente');
+      validarFormatoCedula(data.datosAdulto.cedula, 'Paciente');
+      await validarCedulaUnica(data.datosAdulto.cedula, 'paciente', id);
+      data.datosAdulto.telefono = validarTelefonoNica(data.datosAdulto.telefono, 'Paciente');
     }
 
     return await prisma.$transaction(async (tx) => {
@@ -308,13 +336,13 @@ export const PacienteService = {
             Grado_Escolar: data.datosMenor.grado,
           }
         });
-        
+
         // Si se necesita actualizar el tutor, se hace en la tabla intermedia Tutor_PacienteMenor
         if (data.datosMenor.tutorId) {
-            await tx.tutor_PacienteMenor.updateMany({
-                where: { ID_Paciente_Menor: id },
-                data: { ID_Tutor: data.datosMenor.tutorId }
-            });
+          await tx.tutor_PacienteMenor.updateMany({
+            where: { ID_Paciente_Menor: id },
+            data: { ID_Tutor: data.datosMenor.tutorId }
+          });
         }
       }
       return pacienteActualizado;
@@ -325,29 +353,37 @@ export const PacienteService = {
     // Al igual que en Expediente, la llave foránea ahora nos hace el trabajo fácil
     const citasConSesion = await prisma.cita.findMany({
       where: { ID_Paciente: id, ID_EstadoCita: 2 }, // Solo citas realizadas
-      include: { 
-        Psicologo: true, 
+      include: {
+        Psicologo: true,
         Sesion: {
-            include: {
-                Expediente: true,
-                Tratamiento: {
-                  include: {
-                    Tratamiento_Farmaceutico: { include: { ViaAdministracion: true } },
-                    Tratamiento_Terapeutico: { include: { TipoDe_Terapia: true } } // Renombrado
-                  }
-                }
+          include: {
+            Expediente: true,
+            Tratamiento: {
+              include: {
+                Tratamiento_Farmaceutico: { include: { ViaAdministracion: true } },
+                Tratamiento_Terapeutico: { include: { TipoDe_Terapia: true } } // Renombrado
+              }
             }
+          }
         }
       },
-      orderBy: { FechaCita: 'desc' } 
+      orderBy: { FechaCita: 'desc' }
     });
 
     const citas = citasConSesion.map(c => {
-        const { Sesion, ...datosCita } = c;
-        return datosCita;
+      const { Sesion, ...datosCita } = c;
+      return datosCita;
     });
-    
-    const sesiones = citasConSesion.map(c => c.Sesion).filter(s => s !== null);
+
+    const sesiones = citasConSesion
+      .filter((c) => c.Sesion !== null)
+      .map((c) => ({
+        ...c.Sesion!,
+        Psicologo: c.Psicologo,
+        FechaCita: c.FechaCita,
+        HoraCita: c.HoraCita,
+        ID_Cita: c.ID_Cita
+      }));
 
     return { citas, sesiones };
   }
