@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { useCitas } from "../hooks/useCitas";
-import {usePacientes} from "../hooks/usePacientes";
+import { usePacientes } from "../hooks/usePacientes";
 import type { 
   Cita, 
   CreateCitaDTO, 
@@ -28,26 +28,20 @@ const Icons = {
   Ban: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" /></svg>
 };
 
-
-
 export default function Citas() {
   const { citas, loading, filtros, setFiltro, catalogos, acciones } = useCitas();
-
   const { catalogos: catalogosPaciente, acciones: accionesPaciente } = usePacientes();
 
   // Estados UI locales
-  // Añadimos 'edit' al tipo de estados permitidos
   const [modalOpen, setModalOpen] = useState<"create" | "edit" | "session" | "view" | null>(null);
   const [selectedCita, setSelectedCita] = useState<Cita | null>(null);
   const [idCancelar, setIdCancelar] = useState<number | null>(null);
-
   const [isPacienteModalOpen, setIsPacienteModalOpen] = useState(false);
 
   const openModal = (type: "create" | "edit" | "session" | "view", cita?: Cita) => {
     setSelectedCita(cita || null);
     setModalOpen(type);
   };
-
 
   const handleCreateOrUpdate = async (data: CreateCitaDTO, isEdit: boolean) => {
     let success = false;
@@ -62,17 +56,10 @@ export default function Citas() {
     return success;
   };
 
-  // 👇 4. Función para crear el paciente desde la vista de Citas 👇
   const handleCrearPacienteRapido = async (data: CreatePacienteDTO) => {
-    // Usamos el servicio de pacientes para crearlo
     const success = await accionesPaciente.crearPaciente(data);
-    
     if (success) {
-      setIsPacienteModalOpen(false); // Cerramos el modal de paciente
-      
-      // NOTA: Para que el paciente aparezca en el select de citas sin recargar la página,
-      // la página se actualizará automáticamente la próxima vez que el usuario abra el select, 
-      // o puedes forzar un reload aquí si lo prefieres: window.location.reload();
+      setIsPacienteModalOpen(false); 
     }
     return success;
   };
@@ -129,19 +116,64 @@ export default function Citas() {
     return "badge-ghost";
   };
 
-  // 2. Envuelve la función en useCallback
-const checkDisponibilidad = useCallback(async (id: number, fecha: string) => {
+  const checkDisponibilidad = useCallback(async (id: number, fecha: string) => {
     return await acciones.obtenerHorariosOcupados(id, fecha);
-}, [acciones]); // Depende de acciones
+  }, [acciones]); 
 
-  const renderDireccion = (dir: { Ciudad?: string; Calle?: string; Departamento?: string; Barrio?: string } | null | undefined) => {
+  // 👇 NUEVO DISEÑO MULTILÍNEA PARA LA DIRECCIÓN 👇
+  const renderDireccion = (
+    dir: {
+      ID_Direccion?: number;
+      Calle?: string | null;
+      Barrio?: string | null;
+      Municipio?: {
+        Nombre_Municipio?: string;
+        Departamento?: {
+          Nombre_Departamento?: string;
+        } | null;
+      } | null;
+    } | null | undefined
+  ) => {
     if (!dir) return null;
-    const textoCorto = `${dir.Ciudad || ''}, ${dir.Calle || ''}`;
-    const textoCompleto = `${dir.Departamento || ''}, ${dir.Ciudad || ''}. B° ${dir.Barrio || ''}, ${dir.Calle || ''}`;
+
+    // CASO 1: Es la cita en la Clínica (ID 1)
+    if (dir.ID_Direccion === 1) {
+        return (
+          <div className="flex items-start gap-2.5 text-xs mt-3 bg-blue-50/60 p-3 rounded-xl border border-blue-100 transition-all hover:bg-blue-100/50">
+            <span className="text-lg shrink-0 leading-none shadow-sm">🏥</span>
+            <div className="flex flex-col gap-0.5">
+              <span className="font-bold text-blue-900 leading-tight">Clínica Central</span>
+              <span className="text-blue-700/80 font-medium">Managua. C. Principal</span>
+            </div>
+          </div>
+        );
+    } 
+
+    // CASO 2: Es a Domicilio
+    const calle = dir.Calle || '';
+    const barrio = dir.Barrio ? `B° ${dir.Barrio}` : '';
+    const ciudad = dir.Municipio?.Nombre_Municipio || '';
+    const departamento = dir.Municipio?.Departamento?.Nombre_Departamento || '';
+
+    // Agrupamos la info de forma inteligente
+    const linea1 = [calle, barrio].filter(Boolean).join(", ");
+    const linea2 = [ciudad, departamento].filter(Boolean).join(", ");
+
     return (
-      <div className="flex items-start gap-1.5 text-xs text-slate-500 mt-2 bg-slate-50 p-2 rounded-md border border-slate-100 cursor-help transition-colors hover:bg-blue-50 hover:border-blue-100" title={textoCompleto}>
-        <span className="text-sm shrink-0">📍</span>
-        <span className="truncate w-full font-medium">{textoCorto}</span>
+      <div className="flex items-start gap-2.5 text-xs mt-3 bg-slate-50 p-3 rounded-xl border border-slate-200 transition-all hover:shadow-sm hover:bg-slate-100/80">
+        <span className="text-lg shrink-0 leading-none drop-shadow-sm">📍</span>
+        <div className="flex flex-col gap-1 w-full">
+          {/* Línea 1: Lo más específico (Calle y Barrio) */}
+          <span className="font-bold text-slate-700 leading-tight break-words">
+            {linea1 || "Dirección específica no proporcionada"}
+          </span>
+          {/* Línea 2: Lo general (Municipio y Departamento) */}
+          {linea2 && (
+            <span className="text-slate-500 font-medium">
+              {linea2}
+            </span>
+          )}
+        </div>
       </div>
     );
   };
@@ -299,7 +331,6 @@ const checkDisponibilidad = useCallback(async (id: number, fecha: string) => {
 
                     <div className="flex flex-wrap gap-2 items-center text-sm text-slate-500">
                       <span className="badge badge-sm badge-outline text-slate-500">
-                        {/* Se corrige el acceso al nombre del tipo de cita */}
                         {cita.TipoDeCita?.Nombre_DeCita || "Tipo Desconocido"}
                       </span>
                       {cita.NumeroSesion && (
@@ -318,7 +349,6 @@ const checkDisponibilidad = useCallback(async (id: number, fecha: string) => {
                         <div className="mt-2 p-2 bg-rose-50 border border-rose-100 rounded-lg">
                             <div className="flex items-center gap-1.5 text-rose-700 font-bold text-xs mb-1">
                                 <Icons.Ban />
-                                {/* Se corrige el acceso a la categoría de cancelación */}
                                 <span>{cita.MotivoCancelacion?.Motivo || 'Cancelada'}</span>
                             </div>
                             {cita.NotasCancelacion && (
@@ -355,7 +385,6 @@ const checkDisponibilidad = useCallback(async (id: number, fecha: string) => {
 
                         <button
                           className="btn btn-outline btn-xs"
-                          // SE CAMBIA A 'edit' EN LUGAR DE 'create'
                           onClick={() => openModal("edit", cita)}
                         >
                           Editar
@@ -404,7 +433,6 @@ const checkDisponibilidad = useCallback(async (id: number, fecha: string) => {
 
       {/* MODALES REUTILIZABLES */}
       
-      {/* Se abre si modalOpen es "create" O "edit" */}
       <CitaFormModal
         isOpen={modalOpen === "create" || modalOpen === "edit"}
         onClose={() => setModalOpen(null)}
@@ -429,7 +457,6 @@ const checkDisponibilidad = useCallback(async (id: number, fecha: string) => {
         cita={selectedCita}
       />
 
-      {/* --- MODAL DE CANCELACIÓN --- */}
       <CancelarCitaModal 
         isOpen={!!idCancelar}
         onClose={() => setIdCancelar(null)}
@@ -441,8 +468,8 @@ const checkDisponibilidad = useCallback(async (id: number, fecha: string) => {
           isOpen={isPacienteModalOpen} 
           onClose={() => setIsPacienteModalOpen(false)} 
           onSubmit={handleCrearPacienteRapido} 
-          pacienteEditar={null} // Siempre null para crear uno nuevo
-          catalogos={catalogosPaciente} // Usamos los catálogos del hook de pacientes
+          pacienteEditar={null} 
+          catalogos={catalogosPaciente} 
         />
       )}
     </div>
