@@ -36,10 +36,13 @@ export type TutorCompleto = Tutor & {
   Ocupacion_Tutor_OcupacionToOcupacion?: Ocupacion | null;
   EstadoCivil_Tutor_EstadoCivilToEstadoCivil?: EstadoCivil | null;
 
+  // Compatibilidad con respuestas antiguas o aliases previos del backend.
+  Ocupacion_Tutor?: Ocupacion | null;
+  EstadoCivil_Tutor?: EstadoCivil | null;
+
   Parentesco?: Parentesco | null;
   Tutor_PacienteMenor?: TutorPacienteMenorRelacion[];
 
-  // Compatibilidad con vistas antiguas o respuestas previas del backend.
   PacienteMenor?: PacienteMenorTutor[];
   Paciente_Menor?: PacienteMenorTutor[];
 };
@@ -118,6 +121,34 @@ const obtenerIdParentesco = (tutor: TutorCompleto) => {
     0;
 };
 
+const enriquecerTutorConCatalogos = (
+  tutor: TutorCompleto,
+  catalogos: Required<CatalogosTutores>,
+): TutorCompleto => {
+  const ocupacionId = Number(tutor.Ocupacion || 0);
+  const estadoCivilId = Number(tutor.EstadoCivil || 0);
+
+  const ocupacionDesdeCatalogo = catalogos.ocupaciones.find((ocupacion) => {
+    return ocupacion.ID_Ocupacion === ocupacionId;
+  }) || null;
+
+  const estadoCivilDesdeCatalogo = catalogos.estadosCiviles.find((estadoCivil) => {
+    return estadoCivil.ID_EstadoCivil === estadoCivilId;
+  }) || null;
+
+  return {
+    ...tutor,
+    Ocupacion_Tutor_OcupacionToOcupacion:
+      tutor.Ocupacion_Tutor_OcupacionToOcupacion ||
+      tutor.Ocupacion_Tutor ||
+      ocupacionDesdeCatalogo,
+    EstadoCivil_Tutor_EstadoCivilToEstadoCivil:
+      tutor.EstadoCivil_Tutor_EstadoCivilToEstadoCivil ||
+      tutor.EstadoCivil_Tutor ||
+      estadoCivilDesdeCatalogo,
+  };
+};
+
 export function useTutores() {
   const [tutores, setTutores] = useState<TutorCompleto[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -139,9 +170,12 @@ export function useTutores() {
         api.general.catalogos(),
       ]);
 
-      setTutores(Array.isArray(dataTutores) ? dataTutores as TutorCompleto[] : []);
-
       const catalogos = normalizarCatalogos(dataCatalogos);
+      const tutoresNormalizados = Array.isArray(dataTutores)
+        ? (dataTutores as TutorCompleto[]).map((tutor) => enriquecerTutorConCatalogos(tutor, catalogos))
+        : [];
+
+      setTutores(tutoresNormalizados);
       setOcupaciones(catalogos.ocupaciones);
       setEstadosCiviles(catalogos.estadosCiviles);
       setParentescos(catalogos.parentescos);
@@ -167,11 +201,15 @@ export function useTutores() {
       const nombreCompleto = normalizarTexto(`${tutor.Nombre} ${tutor.Apellido}`);
       const cedula = normalizarTexto(tutor.No_Cedula);
       const telefono = normalizarTexto(tutor.No_Telefono);
+      const ocupacion = normalizarTexto(tutor.Ocupacion_Tutor_OcupacionToOcupacion?.Nombre_DeOcupacion);
+      const estadoCivil = normalizarTexto(tutor.EstadoCivil_Tutor_EstadoCivilToEstadoCivil?.Nombre_EstadoCivil);
 
       return (
         nombreCompleto.includes(termino) ||
         cedula.includes(termino) ||
-        telefono.includes(termino)
+        telefono.includes(termino) ||
+        ocupacion.includes(termino) ||
+        estadoCivil.includes(termino)
       );
     });
   }, [tutores, busqueda]);

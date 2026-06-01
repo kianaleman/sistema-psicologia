@@ -3,6 +3,25 @@ import { useTutores, type TutorCompleto } from '../hooks/useTutores';
 import TutorFormModal from '../components/tutores/TutorFormModal';
 import PacientesListModal from '../components/tutores/PacientesListModal';
 
+type CatalogoOcupacion = {
+  ID_Ocupacion: number;
+  Nombre_DeOcupacion: string;
+};
+
+type CatalogoEstadoCivil = {
+  ID_EstadoCivil: number;
+  Nombre_EstadoCivil: string;
+};
+
+type TutorConRelacionesCompatibles = TutorCompleto & {
+  Ocupacion?: number | string | null;
+  EstadoCivil?: number | string | null;
+  Ocupacion_Tutor?: CatalogoOcupacion | null;
+  EstadoCivil_Tutor?: CatalogoEstadoCivil | null;
+  Ocupacion_Tutor_OcupacionToOcupacion?: CatalogoOcupacion | null;
+  EstadoCivil_Tutor_EstadoCivilToEstadoCivil?: CatalogoEstadoCivil | null;
+};
+
 const Icons = {
   UserGroup: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6"><path d="M5.5 5.25a7.5 7.5 0 0113 0c.27.085.52.203.738.351A8.25 8.25 0 0012 2a8.25 8.25 0 00-7.738 3.601.75.75 0 01.738-.351zM12 18a6 6 0 100-12 6 6 0 000 12z" /></svg>,
   Search: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-400"><path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" /></svg>,
@@ -20,15 +39,25 @@ function getParentesco(tutor: TutorCompleto) {
     'N/A';
 }
 
-function getOcupacion(tutor: TutorCompleto) {
-  return tutor.Ocupacion_Tutor_OcupacionToOcupacion?.Nombre_DeOcupacion ||
-    tutor.Ocupacion_Tutor?.Nombre_DeOcupacion ||
+function getOcupacion(tutor: TutorCompleto, ocupaciones: CatalogoOcupacion[] = []) {
+  const tutorCompatible = tutor as TutorConRelacionesCompatibles;
+  const ocupacionId = Number(tutorCompatible.Ocupacion);
+  const ocupacionCatalogo = ocupaciones.find((ocupacion) => ocupacion.ID_Ocupacion === ocupacionId);
+
+  return tutorCompatible.Ocupacion_Tutor_OcupacionToOcupacion?.Nombre_DeOcupacion ||
+    tutorCompatible.Ocupacion_Tutor?.Nombre_DeOcupacion ||
+    ocupacionCatalogo?.Nombre_DeOcupacion ||
     'N/A';
 }
 
-function getEstadoCivil(tutor: TutorCompleto) {
-  return tutor.EstadoCivil_Tutor_EstadoCivilToEstadoCivil?.Nombre_EstadoCivil ||
-    tutor.EstadoCivil_Tutor?.Nombre_EstadoCivil ||
+function getEstadoCivil(tutor: TutorCompleto, estadosCiviles: CatalogoEstadoCivil[] = []) {
+  const tutorCompatible = tutor as TutorConRelacionesCompatibles;
+  const estadoCivilId = Number(tutorCompatible.EstadoCivil);
+  const estadoCivilCatalogo = estadosCiviles.find((estadoCivil) => estadoCivil.ID_EstadoCivil === estadoCivilId);
+
+  return tutorCompatible.EstadoCivil_Tutor_EstadoCivilToEstadoCivil?.Nombre_EstadoCivil ||
+    tutorCompatible.EstadoCivil_Tutor?.Nombre_EstadoCivil ||
+    estadoCivilCatalogo?.Nombre_EstadoCivil ||
     'N/A';
 }
 
@@ -157,8 +186,8 @@ export default function Tutores() {
                 const nombreCompleto = `${tutor.Nombre} ${tutor.Apellido}`.trim();
                 const pacientes = getPacientesMenores(tutor);
                 const ubicacion = getUbicacion(tutor);
-                const ocupacion = getOcupacion(tutor);
-                const estadoCivil = getEstadoCivil(tutor);
+                const ocupacion = getOcupacion(tutor, catalogos.ocupaciones);
+                const estadoCivil = getEstadoCivil(tutor, catalogos.estadosCiviles);
 
                 return (
                   <tr key={tutor.ID_Tutor} className="hover:bg-slate-50 transition-colors group align-top">

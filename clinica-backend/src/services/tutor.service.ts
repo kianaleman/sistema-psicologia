@@ -1,57 +1,96 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
 
 const prisma = new PrismaClient();
+
+interface DireccionTutorDTO {
+  Pais?: string;
+  Barrio?: string;
+  Calle?: string;
+  ID_Municipio?: number;
+  municipioId?: number;
+}
 
 interface UpdateTutorDTO {
   Nombre: string;
   Apellido: string;
   No_Cedula: string;
-  codigoTelefonoId: number; // Nuevo requerimiento del catálogo
   No_Telefono: string;
-  ocupacionId: number;
-  estadoCivilId: number;
-  
-  // ❌ ID_Parentesco se eliminó: Ahora pertenece a la tabla intermedia (Tutor_PacienteMenor)
-  // ❌ DireccionTutor se eliminó: Ya no existe en el esquema de BD para Tutor
+
+  codigoTelefonoId?: number;
+  ID_CodigoTelefono?: number;
+
+  ocupacionId?: number;
+  Ocupacion?: number;
+
+  estadoCivilId?: number;
+  EstadoCivil?: number;
+
+  Direccion?: DireccionTutorDTO;
 }
+
+const tutorInclude = {
+  CodigoTelefonoPais: true,
+  Ocupacion_Tutor_OcupacionToOcupacion: true,
+  EstadoCivil_Tutor_EstadoCivilToEstadoCivil: true,
+  Direccion: {
+    include: {
+      Municipio: {
+        include: {
+          Departamento: true,
+        },
+      },
+    },
+  },
+  Tutor_PacienteMenor: {
+    include: {
+      Parentesco: true,
+      Paciente_Menor: {
+        include: {
+          Paciente: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.TutorInclude;
 
 const validarFormatoCedula = (cedula: string) => {
   const regex = /^\d{3}-\d{6}-\d{4}[A-Z]$/;
+
   if (!regex.test(cedula)) {
     throw new Error('Formato de cédula inválido. Debe ser XXX-XXXXXX-XXXXL');
   }
 };
 
-// Validar Teléfono Nica
 const validarTelefonoNica = (telefono: string) => {
   const limpio = telefono.replace(/[\s-]/g, '');
   const regex = /^[2578]\d{7}$/;
+
   if (!regex.test(limpio)) {
     throw new Error('Teléfono inválido. Debe ser de 8 dígitos e iniciar con 2, 5, 7 u 8.');
   }
+
   return limpio;
 };
 
+const obtenerNumeroValido = (...values: Array<number | string | null | undefined>) => {
+  for (const value of values) {
+    const numero = Number(value);
+
+    if (Number.isInteger(numero) && numero > 0) {
+      return numero;
+    }
+  }
+
+  return undefined;
+};
+
 export const TutorService = {
-  
   getAll: async () => {
     return await prisma.tutor.findMany({
-      include: {
-        // Relaciones directas (Nota: Si Prisma marca error en Ocupacion, verifica en tu schema 
-        // si lo nombró distinto al coincidir la columna y la tabla, ej: Ocupacion_relation)
-        CodigoTelefonoPais: true, 
-        
-        // La navegación hacia el paciente menor ahora se hace a través de la tabla intermedia
-        Tutor_PacienteMenor: { 
-          include: { 
-            Parentesco: true,
-            Paciente_Menor: { 
-                include: { Paciente: true } 
-            } 
-          } 
-        }
+      include: tutorInclude,
+      orderBy: {
+        Nombre: 'asc',
       },
-      orderBy: { Nombre: 'asc' }
     });
   },
 
@@ -59,43 +98,107 @@ export const TutorService = {
     validarFormatoCedula(data.No_Cedula);
     const telefonoLimpio = validarTelefonoNica(data.No_Telefono);
 
-    // Validación dinámica para evitar el error de "undefined" de TypeScript
-    const whereClause: any = { No_Cedula: data.No_Cedula };
+    const whereClause: Prisma.TutorWhereInput = {
+      No_Cedula: data.No_Cedula,
+    };
+
     if (id) {
-        whereClause.ID_Tutor = { not: id };
+      whereClause.ID_Tutor = {
+        not: id,
+      };
     }
 
     const cedulaDuplicada = await prisma.tutor.findFirst({
-        where: whereClause
+      where: whereClause,
     });
 
     if (cedulaDuplicada) {
-        throw new Error(`Error de duplicidad: La cédula ${data.No_Cedula} ya pertenece a otro Tutor.`);
+      throw new Error(`Error de duplicidad: La cédula ${data.No_Cedula} ya pertenece a otro Tutor.`);
     }
 
-    const existe = await prisma.tutor.findUnique({ where: { ID_Tutor: id } });
-    if (!existe) throw new Error('Tutor no encontrado');
+    const existe = await prisma.tutor.findUnique({
+      where: {
+        ID_Tutor: id,
+      },
+    });
 
-    return await prisma.tutor.update({
-      where: { ID_Tutor: id },
-      data: {
-        Nombre: data.Nombre,
-        Apellido: data.Apellido,
-        No_Cedula: data.No_Cedula,
-        ID_CodigoTelefono: data.codigoTelefonoId,
+    if (!existe) {
+      throw new Error('Tutor no encontrado');
+    }
+
+    const codigoTelefonoId = obtenerNumeroValido(data.codigoTelefonoId, data.ID_CodigoTelefono, existe.ID_CodigoTelefono);
+    const ocupacionId = obtenerNumeroValido(data.ocupacionId, data.Ocupacion);
+    const estadoCivilId = obtenerNumeroValido(data.estadoCivilId, data.EstadoCivil);
+
+    if (!codigoTelefonoId) {
+      throw new Error('Debe seleccionar un código telefónico válido.');
+    }
+
+    if (!ocupacionId) {
+      throw new Error('Debe seleccionar una ocupación válida.');
+    }
+
+    if (!estadoCivilId) {
+      throw new Error('Debe seleccionar un estado civil válido.');
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const tutorData: Prisma.TutorUncheckedUpdateInput = {
+        Nombre: data.Nombre.trim(),
+        Apellido: data.Apellido.trim(),
+        No_Cedula: data.No_Cedula.trim().toUpperCase(),
+        ID_CodigoTelefono: codigoTelefonoId,
         No_Telefono: telefonoLimpio,
-        // Al actualizar, pasamos directamente los números a las columnas foráneas
-        Ocupacion: data.ocupacionId,
-        EstadoCivil: data.estadoCivilId
+        Ocupacion: ocupacionId,
+        EstadoCivil: estadoCivilId,
+      };
+
+      await tx.tutor.update({
+        where: {
+          ID_Tutor: id,
+        },
+        data: tutorData,
+      });
+
+      if (data.Direccion && existe.ID_Direccion) {
+        const direccionData: Prisma.DireccionUncheckedUpdateInput = {};
+        const municipioId = obtenerNumeroValido(data.Direccion.ID_Municipio, data.Direccion.municipioId);
+
+        if (typeof data.Direccion.Barrio === 'string') {
+          direccionData.Barrio = data.Direccion.Barrio.trim();
+        }
+
+        if (typeof data.Direccion.Calle === 'string') {
+          direccionData.Calle = data.Direccion.Calle.trim();
+        }
+
+        if (municipioId) {
+          direccionData.ID_Municipio = municipioId;
+        }
+
+        if (Object.keys(direccionData).length > 0) {
+          await tx.direccion.update({
+            where: {
+              ID_Direccion: existe.ID_Direccion,
+            },
+            data: direccionData,
+          });
+        }
       }
     });
-  }
+
+    return await prisma.tutor.findUniqueOrThrow({
+      where: {
+        ID_Tutor: id,
+      },
+      include: tutorInclude,
+    });
+  },
 };
 
-export const createTutorService = async (tutorData: any) => {
-  const nuevoTutor = await prisma.tutor.create({
-    data: tutorData
+export const createTutorService = async (tutorData: Prisma.TutorUncheckedCreateInput) => {
+  return await prisma.tutor.create({
+    data: tutorData,
+    include: tutorInclude,
   });
-  
-  return nuevoTutor;
 };

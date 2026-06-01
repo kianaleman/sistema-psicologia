@@ -2,14 +2,14 @@ import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { useCitas } from "../hooks/useCitas";
 import { usePacientes } from "../hooks/usePacientes";
-import type { 
-  Cita, 
-  CreateCitaDTO, 
-  CreateSesionDTO, 
+import type {
+  Cita,
+  CreateCitaDTO,
+  CreateSesionDTO,
   CreatePacienteDTO,
-  Psicologo, 
-  Paciente, 
-  EstadoCitaCatalogo
+  Psicologo,
+  Paciente,
+  EstadoCitaCatalogo,
 } from "../types";
 
 import CitaFormModal from "../components/citas/CitaFormModal";
@@ -20,25 +20,102 @@ import PacienteFormModal from "../components/pacientes/PacienteFormModal";
 
 // Iconos SVG Inline
 const Icons = {
-  Search: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" /></svg>,
-  Calendar: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M5.75 2a.75.75 0 01.75.75V4h7V2.75a.75.75 0 011.5 0V4h.25A2.75 2.75 0 0118 6.75v8.5A2.75 2.75 0 0115.25 18H4.75A2.75 2.75 0 012 15.25v-8.5A2.75 2.75 0 014.75 4H5V2.75A.75.75 0 015.75 2zm-1 5.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25v-6.5c0-.69-.56-1.25-1.25-1.25H4.75z" clipRule="evenodd" /></svg>,
-  User: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path d="M10 8a3 3 0 100-6 3 3 0 000 6zM3.465 14.493a1.23 1.23 0 00.41 1.412A9.957 9.957 0 0010 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 00-13.074.003z" /></svg>,
-  Filter: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M2.628 1.601C5.028 1.206 7.49 1 10 1s4.973.206 7.372.601a.75.75 0 01.628.74v2.288a2.25 2.25 0 01-.659 1.59l-4.682 4.683a2.25 2.25 0 00-.659 1.59v3.037c0 .684-.31 1.33-.844 1.757l-1.937 1.55A.75.75 0 018 18.25v-5.757a2.25 2.25 0 00-.659-1.591L2.659 6.22A2.25 2.25 0 012 4.629V2.34a.75.75 0 01.628-.74z" clipRule="evenodd" /></svg>,
-  Plus: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>,
-  Ban: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" /></svg>
+  Search: () => (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className="w-4 h-4"
+    >
+      <path
+        fillRule="evenodd"
+        d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
+        clipRule="evenodd"
+      />
+    </svg>
+  ),
+  Calendar: () => (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className="w-4 h-4"
+    >
+      <path
+        fillRule="evenodd"
+        d="M5.75 2a.75.75 0 01.75.75V4h7V2.75a.75.75 0 011.5 0V4h.25A2.75 2.75 0 0118 6.75v8.5A2.75 2.75 0 0115.25 18H4.75A2.75 2.75 0 012 15.25v-8.5A2.75 2.75 0 014.75 4H5V2.75A.75.75 0 015.75 2zm-1 5.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25v-6.5c0-.69-.56-1.25-1.25-1.25H4.75z"
+        clipRule="evenodd"
+      />
+    </svg>
+  ),
+  User: () => (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className="w-4 h-4"
+    >
+      <path d="M10 8a3 3 0 100-6 3 3 0 000 6zM3.465 14.493a1.23 1.23 0 00.41 1.412A9.957 9.957 0 0010 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 00-13.074.003z" />
+    </svg>
+  ),
+  Filter: () => (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className="w-4 h-4"
+    >
+      <path
+        fillRule="evenodd"
+        d="M2.628 1.601C5.028 1.206 7.49 1 10 1s4.973.206 7.372.601a.75.75 0 01.628.74v2.288a2.25 2.25 0 01-.659 1.59l-4.682 4.683a2.25 2.25 0 00-.659 1.59v3.037c0 .684-.31 1.33-.844 1.757l-1.937 1.55A.75.75 0 018 18.25v-5.757a2.25 2.25 0 00-.659-1.591L2.659 6.22A2.25 2.25 0 012 4.629V2.34a.75.75 0 01.628-.74z"
+        clipRule="evenodd"
+      />
+    </svg>
+  ),
+  Plus: () => (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className="w-5 h-5"
+    >
+      <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+    </svg>
+  ),
+  Ban: () => (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className="w-4 h-4"
+    >
+      <path
+        fillRule="evenodd"
+        d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z"
+        clipRule="evenodd"
+      />
+    </svg>
+  ),
 };
 
 export default function Citas() {
-  const { citas, loading, filtros, setFiltro, catalogos, acciones } = useCitas();
-  const { catalogos: catalogosPaciente, acciones: accionesPaciente } = usePacientes();
+  const { citas, loading, filtros, setFiltro, catalogos, acciones } =
+    useCitas();
+  const { catalogos: catalogosPaciente, acciones: accionesPaciente } =
+    usePacientes();
 
   // Estados UI locales
-  const [modalOpen, setModalOpen] = useState<"create" | "edit" | "session" | "view" | null>(null);
+  const [modalOpen, setModalOpen] = useState<
+    "create" | "edit" | "session" | "view" | null
+  >(null);
   const [selectedCita, setSelectedCita] = useState<Cita | null>(null);
   const [idCancelar, setIdCancelar] = useState<number | null>(null);
   const [isPacienteModalOpen, setIsPacienteModalOpen] = useState(false);
 
-  const openModal = (type: "create" | "edit" | "session" | "view", cita?: Cita) => {
+  const openModal = (
+    type: "create" | "edit" | "session" | "view",
+    cita?: Cita,
+  ) => {
     setSelectedCita(cita || null);
     setModalOpen(type);
   };
@@ -59,15 +136,15 @@ export default function Citas() {
   const handleCrearPacienteRapido = async (data: CreatePacienteDTO) => {
     const success = await accionesPaciente.crearPaciente(data);
     if (success) {
-      setIsPacienteModalOpen(false); 
+      setIsPacienteModalOpen(false);
     }
     return success;
   };
 
   const confirmarCancelacion = async (motivoId: number, nota: string) => {
     if (idCancelar) {
-        await acciones.cancelarCita(idCancelar, motivoId, nota);
-        setIdCancelar(null); 
+      await acciones.cancelarCita(idCancelar, motivoId, nota);
+      setIdCancelar(null);
     }
   };
 
@@ -84,24 +161,24 @@ export default function Citas() {
   const formatearHora = (h: string) => {
     if (!h) return "--:--";
     const fecha = new Date(h);
-    return fecha.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit', 
-        hour12: true,
-        timeZone: 'UTC' 
+    return fecha.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: "UTC",
     });
   };
 
   const formatearFechaCompleta = (f: string) => {
     if (!f) return "Fecha no válida";
-    
+
     const fechaObj = new Date(f);
-    const opciones: Intl.DateTimeFormatOptions = { 
-        weekday: "long", 
-        day: "numeric", 
-        month: "long", 
-        year: "numeric",
-        timeZone: "UTC"
+    const opciones: Intl.DateTimeFormatOptions = {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
     };
 
     const fechaStr = fechaObj.toLocaleDateString("es-ES", opciones);
@@ -116,44 +193,54 @@ export default function Citas() {
     return "badge-ghost";
   };
 
-  const checkDisponibilidad = useCallback(async (id: number, fecha: string) => {
-    return await acciones.obtenerHorariosOcupados(id, fecha);
-  }, [acciones]); 
+  const checkDisponibilidad = useCallback(
+    async (id: number, fecha: string) => {
+      return await acciones.obtenerHorariosOcupados(id, fecha);
+    },
+    [acciones],
+  );
 
   // 👇 NUEVO DISEÑO MULTILÍNEA PARA LA DIRECCIÓN 👇
   const renderDireccion = (
-    dir: {
-      ID_Direccion?: number;
-      Calle?: string | null;
-      Barrio?: string | null;
-      Municipio?: {
-        Nombre_Municipio?: string;
-        Departamento?: {
-          Nombre_Departamento?: string;
-        } | null;
-      } | null;
-    } | null | undefined
+    dir:
+      | {
+          ID_Direccion?: number;
+          Calle?: string | null;
+          Barrio?: string | null;
+          Municipio?: {
+            Nombre_Municipio?: string;
+            Departamento?: {
+              Nombre_Departamento?: string;
+            } | null;
+          } | null;
+        }
+      | null
+      | undefined,
   ) => {
     if (!dir) return null;
 
     // CASO 1: Es la cita en la Clínica (ID 1)
     if (dir.ID_Direccion === 1) {
-        return (
-          <div className="flex items-start gap-2.5 text-xs mt-3 bg-blue-50/60 p-3 rounded-xl border border-blue-100 transition-all hover:bg-blue-100/50">
-            <span className="text-lg shrink-0 leading-none shadow-sm">🏥</span>
-            <div className="flex flex-col gap-0.5">
-              <span className="font-bold text-blue-900 leading-tight">Clínica Central</span>
-              <span className="text-blue-700/80 font-medium">Managua. C. Principal</span>
-            </div>
+      return (
+        <div className="flex items-start gap-2.5 text-xs mt-3 bg-blue-50/60 p-3 rounded-xl border border-blue-100 transition-all hover:bg-blue-100/50">
+          <span className="text-lg shrink-0 leading-none shadow-sm">🏥</span>
+          <div className="flex flex-col gap-0.5">
+            <span className="font-bold text-blue-900 leading-tight">
+              Clínica Central
+            </span>
+            <span className="text-blue-700/80 font-medium">
+              Managua. C. Principal
+            </span>
           </div>
-        );
-    } 
+        </div>
+      );
+    }
 
     // CASO 2: Es a Domicilio
-    const calle = dir.Calle || '';
-    const barrio = dir.Barrio ? `B° ${dir.Barrio}` : '';
-    const ciudad = dir.Municipio?.Nombre_Municipio || '';
-    const departamento = dir.Municipio?.Departamento?.Nombre_Departamento || '';
+    const calle = dir.Calle || "";
+    const barrio = dir.Barrio ? `B° ${dir.Barrio}` : "";
+    const ciudad = dir.Municipio?.Nombre_Municipio || "";
+    const departamento = dir.Municipio?.Departamento?.Nombre_Departamento || "";
 
     // Agrupamos la info de forma inteligente
     const linea1 = [calle, barrio].filter(Boolean).join(", ");
@@ -169,9 +256,7 @@ export default function Citas() {
           </span>
           {/* Línea 2: Lo general (Municipio y Departamento) */}
           {linea2 && (
-            <span className="text-slate-500 font-medium">
-              {linea2}
-            </span>
+            <span className="text-slate-500 font-medium">{linea2}</span>
           )}
         </div>
       </div>
@@ -202,7 +287,6 @@ export default function Citas() {
       {/* --- PANEL DE FILTROS --- */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-8">
         <div className="flex flex-col lg:flex-row gap-6 justify-between">
-          
           {/* Lado Izquierdo: Selectores de Tiempo */}
           <div className="flex flex-col gap-3">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
@@ -210,11 +294,19 @@ export default function Citas() {
             </span>
             <div className="flex flex-wrap items-center gap-3">
               <div className="join bg-slate-100 p-1 rounded-lg border border-slate-200">
-                {[{ id: "hoy", label: "Hoy" }, { id: "semana", label: "Semana" }, { id: "mes", label: "Mes" }, { id: "todos", label: "Todas" }, { id: "rango", label: "Rango" }].map((btn) => (
+                {[
+                  { id: "hoy", label: "Hoy" },
+                  { id: "semana", label: "Semana" },
+                  { id: "mes", label: "Mes" },
+                  { id: "todos", label: "Todas" },
+                  { id: "rango", label: "Rango" },
+                ].map((btn) => (
                   <button
                     key={btn.id}
                     className={`join-item btn btn-sm border-none transition-all capitalize font-medium ${
-                      filtros.periodo === btn.id ? "bg-white text-slate-900 shadow-sm" : "bg-transparent text-slate-500 hover:text-slate-700"
+                      filtros.periodo === btn.id
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "bg-transparent text-slate-500 hover:text-slate-700"
                     }`}
                     onClick={() => setFiltro("periodo", btn.id)}
                   >
@@ -226,9 +318,19 @@ export default function Citas() {
               {/* Selector de Rango Condicional */}
               {filtros.periodo === "rango" && (
                 <div className="flex items-center gap-2 animate-fade-in bg-white p-1 rounded-lg border border-slate-200">
-                  <input type="date" className="input input-xs bg-transparent focus:outline-none font-medium text-slate-600" value={filtros.fechaInicio} onChange={(e) => setFiltro("fechaInicio", e.target.value)} />
+                  <input
+                    type="date"
+                    className="input input-xs bg-transparent focus:outline-none font-medium text-slate-600"
+                    value={filtros.fechaInicio}
+                    onChange={(e) => setFiltro("fechaInicio", e.target.value)}
+                  />
                   <span className="text-slate-300">➔</span>
-                  <input type="date" className="input input-xs bg-transparent focus:outline-none font-medium text-slate-600" value={filtros.fechaFin} onChange={(e) => setFiltro("fechaFin", e.target.value)} />
+                  <input
+                    type="date"
+                    className="input input-xs bg-transparent focus:outline-none font-medium text-slate-600"
+                    value={filtros.fechaFin}
+                    onChange={(e) => setFiltro("fechaFin", e.target.value)}
+                  />
                 </div>
               )}
             </div>
@@ -237,38 +339,86 @@ export default function Citas() {
           {/* Lado Derecho: Filtros Específicos */}
           <div className="flex flex-col gap-3 flex-1">
             <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                 <Icons.Filter /> Criterios
-                </span>
-                {(filtros.estado || filtros.paciente || filtros.psicologo || filtros.periodo !== "todos") && (
-                    <button 
-                        onClick={() => { setFiltro("estado", ""); setFiltro("paciente", ""); setFiltro("psicologo", ""); setFiltro("periodo", "todos"); }}
-                        className="text-xs font-medium text-blue-500 hover:text-blue-700 transition-colors hover:underline"
-                    >
-                        Limpiar filtros
-                    </button>
-                )}
+              </span>
+              {(filtros.estado ||
+                filtros.paciente ||
+                filtros.psicologo ||
+                filtros.periodo !== "todos") && (
+                <button
+                  onClick={() => {
+                    setFiltro("estado", "");
+                    setFiltro("paciente", "");
+                    setFiltro("psicologo", "");
+                    setFiltro("periodo", "todos");
+                  }}
+                  className="text-xs font-medium text-blue-500 hover:text-blue-700 transition-colors hover:underline"
+                >
+                  Limpiar filtros
+                </button>
+              )}
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {/* Doctor */}
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400"><Icons.User /></div>
-                <input type="text" list="lista-doctores" placeholder="Doctor..." className="input input-bordered input-sm w-full pl-9 bg-slate-50 focus:bg-white transition-colors" value={filtros.psicologo} onChange={(e) => setFiltro("psicologo", e.target.value)} />
-                <datalist id="lista-doctores">{catalogos.psicologos.map((p: Psicologo) => (<option key={p.ID_Psicologo} value={`${p.Nombre} ${p.Apellido}`} />))}</datalist>
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <Icons.User />
+                </div>
+                <input
+                  type="text"
+                  list="lista-doctores"
+                  placeholder="Doctor..."
+                  className="input input-bordered input-sm w-full pl-9 bg-slate-50 focus:bg-white transition-colors"
+                  value={filtros.psicologo}
+                  onChange={(e) => setFiltro("psicologo", e.target.value)}
+                />
+                <datalist id="lista-doctores">
+                  {catalogos.psicologos.map((p: Psicologo) => (
+                    <option
+                      key={p.ID_Psicologo}
+                      value={`${p.Nombre} ${p.Apellido}`}
+                    />
+                  ))}
+                </datalist>
               </div>
 
               {/* Paciente */}
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400"><Icons.Search /></div>
-                <input type="text" list="lista-pacientes" placeholder="Paciente..." className="input input-bordered input-sm w-full pl-9 bg-slate-50 focus:bg-white transition-colors" value={filtros.paciente} onChange={(e) => setFiltro("paciente", e.target.value)} />
-                <datalist id="lista-pacientes">{catalogos.pacientes.map((p: Paciente) => (<option key={p.ID_Paciente} value={`${p.Nombre} ${p.Apellido}`} />))}</datalist>
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <Icons.Search />
+                </div>
+                <input
+                  type="text"
+                  list="lista-pacientes"
+                  placeholder="Paciente..."
+                  className="input input-bordered input-sm w-full pl-9 bg-slate-50 focus:bg-white transition-colors"
+                  value={filtros.paciente}
+                  onChange={(e) => setFiltro("paciente", e.target.value)}
+                />
+                <datalist id="lista-pacientes">
+                  {catalogos.pacientes.map((p: Paciente) => (
+                    <option
+                      key={p.ID_Paciente}
+                      value={`${p.Nombre} ${p.Apellido}`}
+                    />
+                  ))}
+                </datalist>
               </div>
 
               {/* Estado */}
-              <select className="select select-bordered select-sm bg-slate-50 focus:bg-white w-full text-slate-600" value={filtros.estado} onChange={(e) => setFiltro("estado", e.target.value)}>
+              <select
+                className="select select-bordered select-sm bg-slate-50 focus:bg-white w-full text-slate-600"
+                value={filtros.estado}
+                onChange={(e) => setFiltro("estado", e.target.value)}
+              >
                 <option value="">Todos los estados</option>
-                {catalogos.estadosCita.map((e: EstadoCitaCatalogo) => (<option key={e.ID_EstadoCita} value={e.ID_EstadoCita}>{e.NombreEstado}</option>))}
+                {catalogos.estadosCita.map((e: EstadoCitaCatalogo) => (
+                  <option key={e.ID_EstadoCita} value={e.ID_EstadoCita}>
+                    {e.NombreEstado}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -279,13 +429,16 @@ export default function Citas() {
       {loading ? (
         <div className="text-center py-32">
           <span className="loading loading-spinner loading-lg text-primary"></span>
-          <p className="text-slate-400 mt-4 text-sm animate-pulse">Cargando agenda...</p>
+          <p className="text-slate-400 mt-4 text-sm animate-pulse">
+            Cargando agenda...
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {citas.map((cita) => {
             const esProgramada = cita.ID_EstadoCita === 1;
-            const esCancelada = cita.ID_EstadoCita === 3 || cita.ID_EstadoCita === 4;
+            const esCancelada =
+              cita.ID_EstadoCita === 3 || cita.ID_EstadoCita === 4;
 
             return (
               <div
@@ -301,7 +454,7 @@ export default function Citas() {
                   </span>
                   <div
                     className={`badge ${getEstadoColor(
-                      cita.EstadoCita?.NombreEstado || ""
+                      cita.EstadoCita?.NombreEstado || "",
                     )} font-bold border-none h-auto py-1 text-center leading-tight`}
                   >
                     {cita.EstadoCita?.NombreEstado}
@@ -346,19 +499,21 @@ export default function Citas() {
 
                     {/* Direccion o Motivo Cancelación */}
                     {esCancelada ? (
-                        <div className="mt-2 p-2 bg-rose-50 border border-rose-100 rounded-lg">
-                            <div className="flex items-center gap-1.5 text-rose-700 font-bold text-xs mb-1">
-                                <Icons.Ban />
-                                <span>{cita.MotivoCancelacion?.Motivo || 'Cancelada'}</span>
-                            </div>
-                            {cita.NotasCancelacion && (
-                                <p className="text-xs text-rose-600/80 italic leading-snug">
-                                    "{cita.NotasCancelacion}"
-                                </p>
-                            )}
+                      <div className="mt-2 p-2 bg-rose-50 border border-rose-100 rounded-lg">
+                        <div className="flex items-center gap-1.5 text-rose-700 font-bold text-xs mb-1">
+                          <Icons.Ban />
+                          <span>
+                            {cita.MotivoCancelacion?.Motivo || "Cancelada"}
+                          </span>
                         </div>
+                        {cita.NotasCancelacion && (
+                          <p className="text-xs text-rose-600/80 italic leading-snug">
+                            "{cita.NotasCancelacion}"
+                          </p>
+                        )}
+                      </div>
                     ) : (
-                        cita.Direccion && renderDireccion(cita.Direccion)
+                      cita.Direccion && renderDireccion(cita.Direccion)
                     )}
                   </div>
                 </div>
@@ -414,12 +569,27 @@ export default function Citas() {
           {citas.length === 0 && (
             <div className="col-span-full flex flex-col items-center justify-center py-24 bg-white rounded-3xl border border-dashed border-slate-300">
               <div className="bg-slate-50 p-6 rounded-full mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 text-slate-300">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                  stroke="currentColor"
+                  className="w-12 h-12 text-slate-300"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z"
+                  />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-slate-600">No hay citas encontradas</h3>
-              <p className="text-slate-400 font-medium mb-6">Prueba cambiando los filtros de búsqueda</p>
+              <h3 className="text-lg font-bold text-slate-600">
+                No hay citas encontradas
+              </h3>
+              <p className="text-slate-400 font-medium mb-6">
+                Prueba cambiando los filtros de búsqueda
+              </p>
               <button
                 className="btn btn-outline btn-sm text-blue-600 border-blue-200 hover:border-blue-600 hover:bg-blue-50"
                 onClick={() => setFiltro("periodo", "todos")}
@@ -432,7 +602,7 @@ export default function Citas() {
       )}
 
       {/* MODALES REUTILIZABLES */}
-      
+
       <CitaFormModal
         isOpen={modalOpen === "create" || modalOpen === "edit"}
         onClose={() => setModalOpen(null)}
@@ -447,6 +617,8 @@ export default function Citas() {
         isOpen={modalOpen === "session"}
         onClose={() => setModalOpen(null)}
         onSubmit={handleFinalizarSesion}
+        onAgendarSeguimiento={acciones.crearCita}
+        onCheckDisponibilidad={checkDisponibilidad}
         cita={selectedCita}
         catalogos={catalogos}
       />
@@ -457,19 +629,19 @@ export default function Citas() {
         cita={selectedCita}
       />
 
-      <CancelarCitaModal 
+      <CancelarCitaModal
         isOpen={!!idCancelar}
         onClose={() => setIdCancelar(null)}
         onConfirm={confirmarCancelacion}
       />
 
       {isPacienteModalOpen && (
-        <PacienteFormModal 
-          isOpen={isPacienteModalOpen} 
-          onClose={() => setIsPacienteModalOpen(false)} 
-          onSubmit={handleCrearPacienteRapido} 
-          pacienteEditar={null} 
-          catalogos={catalogosPaciente} 
+        <PacienteFormModal
+          isOpen={isPacienteModalOpen}
+          onClose={() => setIsPacienteModalOpen(false)}
+          onSubmit={handleCrearPacienteRapido}
+          pacienteEditar={null}
+          catalogos={catalogosPaciente}
         />
       )}
     </div>

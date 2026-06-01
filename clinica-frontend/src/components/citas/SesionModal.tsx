@@ -4,7 +4,11 @@ import type {
   ViaAdministracion, 
   TipoDeTerapia, 
   ExploracionPsicologica,
-  CreateSesionDTO 
+  CreateSesionDTO,
+  CreateCitaDTO,
+  TipoCitaCatalogo,
+  MetodoPago,
+  Banco,
 } from "../../types";
 import { toast } from "sonner";
 
@@ -20,18 +24,35 @@ interface TratamientoLocal {
   tipoTerapiaId: string;
 }
 
+interface SeguimientoForm {
+  fecha: string;
+  hora: string;
+  tipoCitaId: string;
+  direccionId: string;
+  motivo: string;
+  precio: string;
+  metodoPagoId: string;
+  bancoId: string;
+  numeroReferencia: string;
+}
+
 // 2. Tipamos estrictamente los catálogos que recibe el Modal (Adiós any)
 interface CatalogosSesion {
   viasAdmin?: ViaAdministracion[];
   tiposTerapia?: TipoDeTerapia[];
   exploraciones?: ExploracionPsicologica[];
+  tiposCita?: TipoCitaCatalogo[];
+  metodosPago?: MetodoPago[];
+  bancos?: Banco[];
 }
 
 // 3. Tipamos las Props del componente
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: CreateSesionDTO) => Promise<void>; 
+  onSubmit: (data: CreateSesionDTO) => Promise<void>;
+  onAgendarSeguimiento?: (data: CreateCitaDTO) => Promise<boolean>;
+  onCheckDisponibilidad?: (psicologoId: number, fecha: string) => Promise<string[]>;
   cita: Cita | null;
   catalogos: CatalogosSesion;
 }
@@ -65,7 +86,52 @@ const initialTratamiento: TratamientoLocal = {
   tipoTerapiaId: "",
 };
 
-export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos }: Props) {
+const crearFechaInput = (fecha: Date) => {
+  const year = fecha.getFullYear();
+  const month = String(fecha.getMonth() + 1).padStart(2, "0");
+  const day = String(fecha.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const getFechaMananaInput = () => {
+  const manana = new Date();
+  manana.setDate(manana.getDate() + 1);
+
+  return crearFechaInput(manana);
+};
+
+const getMetodoPagoId = (metodo: MetodoPago) => {
+  return Number(metodo.ID_Metodo_Pago || 0);
+};
+
+const crearSeguimientoInicial = (cita: Cita | null, catalogos: CatalogosSesion): SeguimientoForm => {
+  const tipoCitaInicial = catalogos.tiposCita?.[0]?.ID_TipoCita || cita?.ID_TipoCita || 0;
+  const primerMetodoPago = catalogos.metodosPago?.[0];
+  const metodoPagoInicial = primerMetodoPago ? getMetodoPagoId(primerMetodoPago) : 1;
+
+  return {
+    fecha: getFechaMananaInput(),
+    hora: "",
+    tipoCitaId: tipoCitaInicial ? String(tipoCitaInicial) : "",
+    direccionId: cita?.ID_Direccion ? String(cita.ID_Direccion) : "1",
+    motivo: "Seguimiento de sesión clínica",
+    precio: "",
+    metodoPagoId: String(metodoPagoInicial || 1),
+    bancoId: "",
+    numeroReferencia: "",
+  };
+};
+
+export default function SesionModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  onAgendarSeguimiento,
+  onCheckDisponibilidad,
+  cita,
+  catalogos,
+}: Props) {
   const [datosSesion, setDatosSesion] = useState({
     observaciones: "",
     diagnostico: "",
@@ -78,6 +144,11 @@ export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos
   const [horaInicioSistema, setHoraInicioSistema] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [mostrarConfirmacionFechaFutura, setMostrarConfirmacionFechaFutura] = useState(false);
+  const [mostrarSeguimiento, setMostrarSeguimiento] = useState(false);
+  const [seguimientoForm, setSeguimientoForm] = useState<SeguimientoForm>(() => crearSeguimientoInicial(null, catalogos));
+  const [horariosOcupados, setHorariosOcupados] = useState<string[]>([]);
+  const [agendandoSeguimiento, setAgendandoSeguimiento] = useState(false);
+  const [seguimientoAgendado, setSeguimientoAgendado] = useState(false);
 
   const obtenerFechaCita = (fecha?: string | Date | null) => {
     if (!fecha) return null;
@@ -123,7 +194,12 @@ export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos
     setSelectedExploraciones(new Set());
     setFormTratamiento(initialTratamiento);
     setGuardando(false);
-  }, []);
+    setMostrarSeguimiento(false);
+    setSeguimientoForm(crearSeguimientoInicial(cita, catalogos));
+    setHorariosOcupados([]);
+    setAgendandoSeguimiento(false);
+    setSeguimientoAgendado(false);
+  }, [cita, catalogos]);
 
   useEffect(() => {
     if (!isOpen || !cita?.ID_Cita) return;
@@ -139,6 +215,27 @@ export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos
     setMostrarConfirmacionFechaFutura(false);
     inicializarSesion(cita.ID_Cita);
   }, [isOpen, cita?.ID_Cita, cita?.FechaCita, inicializarSesion]);
+
+  useEffect(() => {
+    if (!mostrarSeguimiento || !seguimientoForm.fecha || !cita?.ID_Psicologo || !onCheckDisponibilidad) {
+      setHorariosOcupados([]);
+      return;
+    }
+
+    let isMounted = true;
+
+    onCheckDisponibilidad(cita.ID_Psicologo, seguimientoForm.fecha)
+      .then((horarios) => {
+        if (isMounted) setHorariosOcupados(horarios);
+      })
+      .catch(() => {
+        if (isMounted) setHorariosOcupados([]);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [mostrarSeguimiento, seguimientoForm.fecha, cita?.ID_Psicologo, onCheckDisponibilidad]);
 
   const viaMap = useMemo(
     () =>
@@ -163,6 +260,21 @@ export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos
         })
       ),
     [catalogos.tiposTerapia]
+  );
+
+  const metodoPagoRequiereReferencia = Number(seguimientoForm.metodoPagoId) !== 1;
+  const horarioSeleccionadoOcupado = horariosOcupados.includes(seguimientoForm.hora);
+  const puedeAgendarSeguimiento = Boolean(
+    onAgendarSeguimiento &&
+    cita?.ID_Paciente &&
+    cita?.ID_Psicologo &&
+    seguimientoForm.fecha &&
+    seguimientoForm.hora &&
+    seguimientoForm.tipoCitaId &&
+    seguimientoForm.precio &&
+    seguimientoForm.metodoPagoId &&
+    !horarioSeleccionadoOcupado &&
+    (!metodoPagoRequiereReferencia || (seguimientoForm.bancoId && seguimientoForm.numeroReferencia.trim()))
   );
 
   const limpiarInicioSesion = () => {
@@ -370,6 +482,68 @@ export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos
       else n.add(id);
       return n;
     });
+  };
+
+  const handleAgendarSeguimiento = async () => {
+    if (!onAgendarSeguimiento) {
+      toast.error("No se configuró la acción para agendar seguimiento");
+      return;
+    }
+
+    if (!cita.ID_Paciente || !cita.ID_Psicologo) {
+      toast.error("La cita actual no tiene paciente o psicólogo asociado");
+      return;
+    }
+
+    const precio = Number(seguimientoForm.precio);
+    const metodoPagoId = Number(seguimientoForm.metodoPagoId);
+    const tipoCitaId = Number(seguimientoForm.tipoCitaId);
+    const direccionId = Number(seguimientoForm.direccionId || cita.ID_Direccion || 1);
+    const bancoId = seguimientoForm.bancoId ? Number(seguimientoForm.bancoId) : undefined;
+
+    if (!seguimientoForm.fecha) return toast.error("Selecciona la fecha de la próxima cita");
+    if (!seguimientoForm.hora) return toast.error("Selecciona la hora de la próxima cita");
+    if (horarioSeleccionadoOcupado) return toast.error("El psicólogo ya tiene una cita en ese horario");
+    if (!tipoCitaId) return toast.error("Selecciona el tipo de cita");
+    if (!Number.isFinite(precio) || precio < 0) return toast.error("Ingresa un precio válido");
+    if (!metodoPagoId) return toast.error("Selecciona un método de pago");
+
+    if (metodoPagoRequiereReferencia && (!bancoId || !seguimientoForm.numeroReferencia.trim())) {
+      toast.error("Selecciona banco e ingresa número de referencia");
+      return;
+    }
+
+    const payload: CreateCitaDTO = {
+      ID_Paciente: cita.ID_Paciente,
+      ID_Psicologo: cita.ID_Psicologo,
+      ID_TipoCita: tipoCitaId,
+      ID_EstadoCita: 1,
+      ID_Direccion: direccionId,
+      FechaCita: seguimientoForm.fecha,
+      HoraCita: seguimientoForm.hora,
+      MotivoConsulta: seguimientoForm.motivo.trim() || "Seguimiento clínico",
+      Precio: precio,
+      ID_MetodoPago: metodoPagoId,
+      ID_Divisa: 1,
+      ...(metodoPagoRequiereReferencia
+        ? {
+            ID_Banco: Number(seguimientoForm.bancoId),
+            Numero_Referencia: seguimientoForm.numeroReferencia.trim(),
+          }
+        : {}),
+    };
+
+    try {
+      setAgendandoSeguimiento(true);
+      const success = await onAgendarSeguimiento(payload);
+
+      if (success) {
+        setSeguimientoAgendado(true);
+        setMostrarSeguimiento(false);
+      }
+    } finally {
+      setAgendandoSeguimiento(false);
+    }
   };
 
   return (
@@ -611,6 +785,174 @@ export default function SesionModal({ isOpen, onClose, onSubmit, cita, catalogos
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white p-5 rounded-xl border border-blue-200 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div>
+                <h4 className="font-bold text-blue-800 text-sm uppercase flex items-center gap-2">
+                  Próxima cita de seguimiento
+                </h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  Agenda una nueva cita para el mismo paciente y el mismo psicólogo sin cerrar esta sesión.
+                </p>
+              </div>
+
+              {seguimientoAgendado ? (
+                <span className="badge badge-success text-white">Seguimiento agendado</span>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline btn-primary"
+                  onClick={() => setMostrarSeguimiento((prev) => !prev)}
+                  disabled={guardando || agendandoSeguimiento}
+                >
+                  {mostrarSeguimiento ? "Ocultar formulario" : "+ Agendar seguimiento"}
+                </button>
+              )}
+            </div>
+
+            {mostrarSeguimiento && !seguimientoAgendado && (
+              <div className="mt-5 grid grid-cols-1 md:grid-cols-12 gap-3 bg-blue-50/40 border border-blue-100 rounded-xl p-4">
+                <div className="md:col-span-3">
+                  <label className="label-text text-xs text-slate-500 font-bold">Fecha</label>
+                  <input
+                    type="date"
+                    className="input input-bordered input-sm w-full bg-white"
+                    value={seguimientoForm.fecha}
+                    min={crearFechaInput(new Date())}
+                    onChange={(event) => setSeguimientoForm({ ...seguimientoForm, fecha: event.target.value, hora: "" })}
+                    disabled={agendandoSeguimiento}
+                  />
+                </div>
+
+                <div className="md:col-span-3">
+                  <label className="label-text text-xs text-slate-500 font-bold">Hora</label>
+                  <input
+                    type="time"
+                    step={60}
+                    className={`input input-bordered input-sm w-full bg-white ${
+                      horarioSeleccionadoOcupado ? "border-red-400 focus:border-red-500" : ""
+                    }`}
+                    value={seguimientoForm.hora}
+                    onChange={(event) => setSeguimientoForm({ ...seguimientoForm, hora: event.target.value })}
+                    disabled={agendandoSeguimiento || !seguimientoForm.fecha}
+                  />
+                  {horarioSeleccionadoOcupado && (
+                    <p className="text-[11px] text-red-500 mt-1">
+                      El psicólogo ya tiene una cita registrada exactamente a esa hora.
+                    </p>
+                  )}
+                </div>
+
+                <div className="md:col-span-3">
+                  <label className="label-text text-xs text-slate-500 font-bold">Tipo de cita</label>
+                  <select
+                    className="select select-bordered select-sm w-full bg-white"
+                    value={seguimientoForm.tipoCitaId}
+                    onChange={(event) => setSeguimientoForm({ ...seguimientoForm, tipoCitaId: event.target.value })}
+                    disabled={agendandoSeguimiento}
+                  >
+                    <option value="">Seleccionar...</option>
+                    {catalogos.tiposCita?.map((tipo) => (
+                      <option key={tipo.ID_TipoCita} value={tipo.ID_TipoCita}>
+                        {tipo.Nombre_DeCita}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="md:col-span-3">
+                  <label className="label-text text-xs text-slate-500 font-bold">Precio</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="input input-bordered input-sm w-full bg-white"
+                    placeholder="0.00"
+                    value={seguimientoForm.precio}
+                    onChange={(event) => setSeguimientoForm({ ...seguimientoForm, precio: event.target.value })}
+                    disabled={agendandoSeguimiento}
+                  />
+                </div>
+
+                <div className="md:col-span-4">
+                  <label className="label-text text-xs text-slate-500 font-bold">Método de pago</label>
+                  <select
+                    className="select select-bordered select-sm w-full bg-white"
+                    value={seguimientoForm.metodoPagoId}
+                    onChange={(event) => setSeguimientoForm({ ...seguimientoForm, metodoPagoId: event.target.value, bancoId: "", numeroReferencia: "" })}
+                    disabled={agendandoSeguimiento}
+                  >
+                    <option value="">Seleccionar...</option>
+                    {catalogos.metodosPago?.map((metodo) => (
+                      <option key={getMetodoPagoId(metodo)} value={getMetodoPagoId(metodo)}>
+                        {metodo.Nombre_Metodo}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {metodoPagoRequiereReferencia && (
+                  <>
+                    <div className="md:col-span-4">
+                      <label className="label-text text-xs text-slate-500 font-bold">Banco</label>
+                      <select
+                        className="select select-bordered select-sm w-full bg-white"
+                        value={seguimientoForm.bancoId}
+                        onChange={(event) => setSeguimientoForm({ ...seguimientoForm, bancoId: event.target.value })}
+                        disabled={agendandoSeguimiento}
+                      >
+                        <option value="">Seleccionar...</option>
+                        {catalogos.bancos?.map((banco) => (
+                          <option key={banco.ID_Banco} value={banco.ID_Banco}>
+                            {banco.Nombre_Banco}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="md:col-span-4">
+                      <label className="label-text text-xs text-slate-500 font-bold">Referencia</label>
+                      <input
+                        className="input input-bordered input-sm w-full bg-white"
+                        placeholder="Número de referencia"
+                        value={seguimientoForm.numeroReferencia}
+                        onChange={(event) => setSeguimientoForm({ ...seguimientoForm, numeroReferencia: event.target.value })}
+                        disabled={agendandoSeguimiento}
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div className="md:col-span-12">
+                  <label className="label-text text-xs text-slate-500 font-bold">Motivo de seguimiento</label>
+                  <textarea
+                    className="textarea textarea-bordered textarea-sm w-full bg-white min-h-[80px]"
+                    value={seguimientoForm.motivo}
+                    onChange={(event) => setSeguimientoForm({ ...seguimientoForm, motivo: event.target.value })}
+                    disabled={agendandoSeguimiento}
+                  />
+                </div>
+
+                {horarioSeleccionadoOcupado && (
+                  <div className="md:col-span-12 text-xs text-red-600 font-medium">
+                    El horario seleccionado ya está ocupado para este psicólogo.
+                  </div>
+                )}
+
+                <div className="md:col-span-12 flex justify-end">
+                  <button
+                    type="button"
+                    className="btn btn-sm bg-blue-600 text-white hover:bg-blue-700"
+                    onClick={handleAgendarSeguimiento}
+                    disabled={agendandoSeguimiento || !puedeAgendarSeguimiento}
+                  >
+                    {agendandoSeguimiento ? <span className="loading loading-spinner loading-xs" /> : "Agendar nueva cita"}
+                  </button>
+                </div>
               </div>
             )}
           </div>
