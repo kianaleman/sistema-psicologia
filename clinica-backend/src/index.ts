@@ -26,7 +26,7 @@ app.use(helmet());
 
 const authLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 2000,
+  max: 200,
   message: {
     error: 'Demasiados intentos de inicio de sesión, intenta de nuevo en 1 hora.',
   },
