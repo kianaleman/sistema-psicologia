@@ -18,6 +18,7 @@ import Configuracion from './pages/Configuracion';
 import PacienteDetalle from './pages/PacienteDetalle';
 import ForgotPassword from './pages/ForgotPassword';
 import CambiarPasswordDefault from './pages/CambiarPasswordDefault';
+import ResetPassword from './pages/ResetPassword';
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
         {/* RUTAS PUBLICAS */}
         <Route path="/" element={<Presentacion />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         {/* RUTAS PROTEGIDAS */}
         <Route element={<ProtectedRoute />}>

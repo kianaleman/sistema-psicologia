@@ -15,6 +15,7 @@ const Icons = {
   Search: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-400"><path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" /></svg>,
   Doctor: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v3.5h3.5a.75.75 0 010 1.5h-3.5v3.5a.75.75 0 01-1.5 0v-3.5h-3.5a.75.75 0 010-1.5h3.5v-3.5A.75.75 0 0110 5z" clipRule="evenodd" /></svg>,
   Edit: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" /><path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" /></svg>,
+  Key: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M8 7a5 5 0 117.905 4.06l-1.482 1.481a.75.75 0 01-.53.22H12.75v1.145a.75.75 0 01-.75.75h-1.144V15.8a.75.75 0 01-.75.75H8.96l-1.02 1.02A.75.75 0 017.41 17.8H4.75A2.75 2.75 0 012 15.05v-2.66a.75.75 0 01.22-.53l3.72-3.72A5.02 5.02 0 018 7zm5-2a2 2 0 100 4 2 2 0 000-4z" clipRule="evenodd" /></svg>,
   Empty: () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 mb-2 opacity-50"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>,
 };
 
@@ -59,6 +60,7 @@ export default function Psicologos() {
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [selectedPsicologo, setSelectedPsicologo] = useState<PsicologoCompleto | null>(null);
   const [credencialesTemporales, setCredencialesTemporales] = useState<CredencialesTemporales | null>(null);
+  const [restableciendoId, setRestableciendoId] = useState<number | null>(null);
 
   const handleOpenNuevo = () => {
     setSelectedPsicologo(null);
@@ -94,6 +96,30 @@ export default function Psicologos() {
     return false;
   };
 
+  const handleRestablecerPassword = async (psicologo: PsicologoCompleto) => {
+    if (!psicologo.ID_Usuario) {
+      toast.warning('Este psicólogo no tiene un usuario vinculado.');
+      return;
+    }
+
+    const nombreCompleto = `${psicologo.Nombre} ${psicologo.Apellido}`.trim();
+    const confirmado = window.confirm(
+      `Se generará una nueva contraseña temporal para ${nombreCompleto}. El usuario deberá cambiarla al iniciar sesión. ¿Deseas continuar?`
+    );
+
+    if (!confirmado) return;
+
+    setRestableciendoId(psicologo.ID_Psicologo);
+
+    const credenciales = await acciones.restablecerPasswordUsuario(psicologo.ID_Usuario);
+
+    if (credenciales) {
+      setCredencialesTemporales(credenciales);
+    }
+
+    setRestableciendoId(null);
+  };
+
   const copiarCredenciales = async () => {
     if (!credencialesTemporales) return;
 
@@ -105,7 +131,6 @@ export default function Psicologos() {
 
   return (
     <div className="w-full max-w-full min-w-0 px-4 sm:px-6 lg:px-8 py-8 animate-fade-in-up overflow-x-hidden">
-      {/* ENCABEZADO */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4 mb-8 min-w-0">
         <div className="min-w-0">
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight font-serif flex items-center gap-3">
@@ -127,7 +152,6 @@ export default function Psicologos() {
         </button>
       </div>
 
-      {/* FILTROS */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-8 w-full max-w-full min-w-0 overflow-hidden">
         <div className="flex flex-col xl:flex-row gap-5 xl:items-end min-w-0">
           <div className="flex-1 relative min-w-0 w-full">
@@ -165,16 +189,15 @@ export default function Psicologos() {
         </div>
       </div>
 
-      {/* TABLA */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden w-full max-w-full min-w-0">
         <div className="w-full max-w-full overflow-x-auto">
-          <table className="table table-fixed w-full min-w-[960px]">
+          <table className="table table-fixed w-full min-w-[1040px]">
             <colgroup>
               <col className="w-[260px]" />
               <col className="w-[150px]" />
               <col className="w-[220px]" />
               <col className="w-[250px]" />
-              <col className="w-[120px]" />
+              <col className="w-[160px]" />
             </colgroup>
 
             <thead className="bg-slate-50 border-b border-slate-200">
@@ -200,6 +223,8 @@ export default function Psicologos() {
                 const nombreCompleto = `Dr. ${psicologo.Nombre} ${psicologo.Apellido}`;
                 const especialidades = getEspecialidades(psicologo);
                 const direccion = getDireccion(psicologo);
+                const tieneUsuario = Boolean(psicologo.ID_Usuario);
+                const restableciendo = restableciendoId === psicologo.ID_Psicologo;
 
                 return (
                   <tr key={psicologo.ID_Psicologo} className="hover:bg-slate-50 transition-colors group align-top">
@@ -254,14 +279,30 @@ export default function Psicologos() {
                     </td>
 
                     <td className="py-4 text-center pr-6">
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-ghost text-slate-500 hover:text-blue-600 hover:bg-blue-50 tooltip"
-                        data-tip="Editar Datos"
-                        onClick={() => handleOpenEditar(psicologo)}
-                      >
-                        <Icons.Edit />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost text-slate-500 hover:text-blue-600 hover:bg-blue-50 tooltip"
+                          data-tip="Editar Datos"
+                          onClick={() => handleOpenEditar(psicologo)}
+                        >
+                          <Icons.Edit />
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost text-slate-500 hover:text-amber-600 hover:bg-amber-50 tooltip"
+                          data-tip={tieneUsuario ? 'Restablecer contraseña' : 'Sin usuario vinculado'}
+                          onClick={() => handleRestablecerPassword(psicologo)}
+                          disabled={!tieneUsuario || restableciendo}
+                        >
+                          {restableciendo ? (
+                            <span className="loading loading-spinner loading-xs"></span>
+                          ) : (
+                            <Icons.Key />
+                          )}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -297,7 +338,7 @@ export default function Psicologos() {
             <h3 className="font-bold text-xl text-slate-900">Credenciales temporales</h3>
 
             <p className="text-sm text-slate-500 mt-2">
-              Guarda estas credenciales antes de cerrar este cuadro. La contraseña temporal solo se muestra después de crear el psicólogo.
+              Guarda estas credenciales antes de cerrar este cuadro. La contraseña temporal solo se muestra una vez. El usuario deberá cambiarla al iniciar sesión.
             </p>
 
             <div className="mt-5 space-y-3 bg-slate-50 border border-slate-200 rounded-xl p-4">

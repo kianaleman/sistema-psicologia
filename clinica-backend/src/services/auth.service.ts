@@ -47,6 +47,10 @@ interface CambiarPasswordDTO {
   passwordNuevaRaw: string;
 }
 
+interface AdminResetPasswordDTO {
+  idUsuario: number;
+}
+
 type UsuarioTokenData = {
   idUsuario: number;
   email: string;
@@ -61,6 +65,12 @@ const firmarToken = (payload: UsuarioTokenData) => {
   return jwt.sign(payload, JWT_SECRET as jwt.Secret, {
     expiresIn,
   });
+};
+
+const generarPasswordTemporal = () => {
+  const random = crypto.randomBytes(5).toString('hex');
+
+  return `Res-${random}-1A`;
 };
 
 const construirSesionUsuario = async (idUsuario: number) => {
@@ -156,7 +166,7 @@ export const AuthService = {
       throw new Error('Debe vincular un perfil de psicólogo para usuarios con rol Psicologo.');
     }
 
-    const passwordTemporal = crypto.randomBytes(5).toString('hex');
+    const passwordTemporal = generarPasswordTemporal();
     const passwordHash = await bcrypt.hash(passwordTemporal, 10);
 
     return await prisma.$transaction(async (tx) => {
@@ -285,6 +295,92 @@ export const AuthService = {
     return {
       message: 'Contraseña actualizada correctamente. Ya puede utilizar el sistema.',
       ...(await construirSesionUsuario(data.idUsuario)),
+    };
+  },
+
+  restablecerPasswordAdmin: async (data: AdminResetPasswordDTO) => {
+    const usuario = await prisma.usuario.findUnique({
+      where: {
+        ID_Usuario: data.idUsuario,
+      },
+      include: {
+        Usuario_Rol: {
+          include: {
+            Rol: {
+              select: {
+                Nombre_Rol: true,
+              },
+            },
+          },
+        },
+        Psicologo: {
+          select: {
+            ID_Psicologo: true,
+            Nombre: true,
+            Apellido: true,
+          },
+        },
+      },
+    });
+
+    if (!usuario) {
+      throw new Error('Usuario no encontrado.');
+    }
+
+    if (!usuario.Activo) {
+      throw new Error('No se puede restablecer la contraseña de una cuenta desactivada.');
+    }
+
+    const passwordTemporal = generarPasswordTemporal();
+    const nuevoHash = await bcrypt.hash(passwordTemporal, 10);
+
+    const usuarioActualizado = await prisma.usuario.update({
+      where: {
+        ID_Usuario: usuario.ID_Usuario,
+      },
+      data: {
+        PasswordHash: nuevoHash,
+        RequiereCambioPassword: true,
+        Verificado: true,
+        ResetToken: null,
+        ResetTokenExpire: null,
+      },
+      include: {
+        Usuario_Rol: {
+          include: {
+            Rol: {
+              select: {
+                Nombre_Rol: true,
+              },
+            },
+          },
+        },
+        Psicologo: {
+          select: {
+            ID_Psicologo: true,
+            Nombre: true,
+            Apellido: true,
+          },
+        },
+      },
+    });
+
+    return {
+      message: 'Contraseña temporal generada correctamente.',
+      usuario: {
+        id: usuarioActualizado.ID_Usuario,
+        email: usuarioActualizado.Email,
+        roles: usuarioActualizado.Usuario_Rol.map((usuarioRol) => usuarioRol.Rol.Nombre_Rol),
+        idPsicologo: usuarioActualizado.Psicologo?.ID_Psicologo || null,
+        nombre: usuarioActualizado.Psicologo
+          ? `${usuarioActualizado.Psicologo.Nombre} ${usuarioActualizado.Psicologo.Apellido}`
+          : 'Administrador/Recepcionista',
+        requiereCambioPassword: usuarioActualizado.RequiereCambioPassword,
+      },
+      credenciales: {
+        email: usuarioActualizado.Email,
+        passwordTemporal,
+      },
     };
   },
 

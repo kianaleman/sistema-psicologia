@@ -134,14 +134,29 @@ interface PsicologoUpdateBody extends Partial<Psicologo> {
   especialidadIds?: number[];
 }
 
+interface CredencialesTemporalesResponse {
+  email: string;
+  passwordTemporal: string;
+}
+
 interface PsicologoCreateResponse {
   psicologo: Psicologo & {
     Email?: string | null;
   };
-  credenciales: {
+  credenciales: CredencialesTemporalesResponse;
+}
+
+interface AdminResetPasswordResponse {
+  message: string;
+  usuario: {
+    id: number;
     email: string;
-    passwordTemporal: string;
+    roles: string[];
+    idPsicologo: number | null;
+    nombre: string;
+    requiereCambioPassword: boolean;
   };
+  credenciales: CredencialesTemporalesResponse;
 }
 
 export const api = {
@@ -159,6 +174,9 @@ export const api = {
     cambiarPasswordDefault: (passwordNuevaRaw: string) => request<CambiarPasswordResponse>('/auth/cambiar-password-default', {
       method: 'POST',
       body: JSON.stringify({ passwordNuevaRaw }),
+    }),
+    restablecerPasswordAdmin: (idUsuario: number) => request<AdminResetPasswordResponse>(`/auth/admin/reset-password/${idUsuario}`, {
+      method: 'POST',
     }),
   },
 

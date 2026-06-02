@@ -51,3 +51,11 @@ export const resetPasswordSchema = z.object({
     passwordNuevaRaw: passwordSchema,
   }),
 });
+
+export const adminResetPasswordSchema = z.object({
+  params: z.object({
+    idUsuario: z.coerce.number({
+      message: 'El ID del usuario es obligatorio',
+    }).int('El ID del usuario debe ser entero').positive('El ID del usuario debe ser válido'),
+  }),
+});

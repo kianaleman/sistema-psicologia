@@ -15,14 +15,10 @@ export interface PsicologoEspecialidadRelacion {
   Especialidad?: Especialidad;
 }
 
-// Usamos Omit porque Psicologo ya define Direccion como Direccion | undefined.
-// La respuesta del backend puede devolver Direccion como null.
 export type PsicologoCompleto = Omit<Psicologo, 'Direccion'> & {
   Direccion?: Direccion | null;
-
-  // Este campo existe en la UI/backend, pero no esta declarado en la interfaz Psicologo base.
+  ID_Usuario?: number | null;
   Email?: string | null;
-
   Psicologo_EspecialidadPsicologo?: PsicologoEspecialidadRelacion[];
 };
 
@@ -35,6 +31,19 @@ export interface CredencialesTemporales {
 
 export interface CrearPsicologoResponse {
   psicologo: PsicologoCompleto;
+  credenciales: CredencialesTemporales;
+}
+
+export interface ResetPasswordAdminResponse {
+  message: string;
+  usuario: {
+    id: number;
+    email: string;
+    roles: string[];
+    idPsicologo: number | null;
+    nombre: string;
+    requiereCambioPassword: boolean;
+  };
   credenciales: CredencialesTemporales;
 }
 
@@ -141,9 +150,6 @@ const construirPayload = (data: PsicologoFormData): PsicologoPayload => ({
 const adaptarPayloadCrear = (payload: PsicologoPayload): PsicologoCreateRequest => {
   return {
     ...payload,
-
-    // ID_Direccion es requerido por el tipo base Psicologo, pero cuando se crea desde este formulario
-    // el backend recibe el objeto direccion y resuelve o crea la direccion correspondiente.
     ID_Direccion: 0,
   } as PsicologoCreateRequest;
 };
@@ -170,6 +176,14 @@ const esCrearPsicologoResponse = (value: unknown): value is CrearPsicologoRespon
   if (!esObjeto(value)) return false;
 
   return esObjeto(value.psicologo) && esCredencialesTemporales(value.credenciales);
+};
+
+const esResetPasswordAdminResponse = (value: unknown): value is ResetPasswordAdminResponse => {
+  if (!esObjeto(value)) return false;
+
+  return typeof value.message === 'string' &&
+    esObjeto(value.usuario) &&
+    esCredencialesTemporales(value.credenciales);
 };
 
 export function usePsicologos() {
@@ -280,6 +294,27 @@ export function usePsicologos() {
     }
   };
 
+  const restablecerPasswordUsuario = async (idUsuario: number): Promise<CredencialesTemporales | null> => {
+    try {
+      const response = await api.auth.restablecerPasswordAdmin(idUsuario);
+
+      if (!esResetPasswordAdminResponse(response)) {
+        toast.warning('La contraseña fue restablecida, pero el backend no devolvió credenciales temporales.');
+        return null;
+      }
+
+      toast.success('Contraseña temporal generada correctamente');
+      await loadData();
+
+      return response.credenciales;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error al restablecer contraseña';
+      toast.error(message);
+
+      return null;
+    }
+  };
+
   return {
     psicologos: psicologosFiltrados,
     loading,
@@ -296,6 +331,7 @@ export function usePsicologos() {
     acciones: {
       crearPsicologo,
       actualizarPsicologo,
+      restablecerPasswordUsuario,
       reload: loadData,
     },
   };

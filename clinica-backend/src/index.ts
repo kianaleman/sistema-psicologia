@@ -57,7 +57,7 @@ app.use(helmet());
 // Para evitar ataques de fuerza bruta adivinando contraseñas.
 const authLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // Ventana de 1 hora
-  max: 100, // Solo permite 5 intentos fallidos/peticiones por hora por IP
+  max: 2000, // Solo permite 5 intentos fallidos/peticiones por hora por IP
   message: { 
     error: 'Demasiados intentos de inicio de sesión, intenta de nuevo en 1 hora.' 
   }

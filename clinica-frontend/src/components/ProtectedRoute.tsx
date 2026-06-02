@@ -1,7 +1,12 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 
+type RolLike = string | { Nombre_Rol?: string; nombre?: string; name?: string };
+
 type UsuarioSesion = {
-  roles?: string[];
+  roles?: RolLike[];
+  rol?: RolLike;
+  role?: RolLike;
+  Rol?: RolLike;
   requiereCambioPassword?: boolean;
   esAdmin?: boolean;
   esPsicologo?: boolean;
@@ -9,10 +14,37 @@ type UsuarioSesion = {
 };
 
 const ROLES = {
-  ADMINISTRADOR: 'Administrador',
-  PSICOLOGO: 'Psicologo',
-  RECEPCION: 'Recepcion',
+  ADMINISTRADOR: 'administrador',
+  PSICOLOGO: 'psicologo',
+  RECEPCION: 'recepcion',
 } as const;
+
+const RUTAS_BASE_AUTENTICADAS = [
+  '/dashboard',
+  '/citas',
+  '/pacientes',
+  '/tutores',
+  '/facturacion',
+  '/historial',
+];
+
+const normalizarTexto = (value: string) => {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+};
+
+const obtenerNombreRol = (rol: RolLike | undefined | null) => {
+  if (!rol) return '';
+
+  if (typeof rol === 'string') {
+    return normalizarTexto(rol);
+  }
+
+  return normalizarTexto(rol.Nombre_Rol || rol.nombre || rol.name || '');
+};
 
 const getUsuarioSesion = () => {
   const usuarioRaw = localStorage.getItem('usuario');
@@ -27,28 +59,49 @@ const getUsuarioSesion = () => {
   }
 };
 
-const tieneRol = (usuario: UsuarioSesion | null, rol: string) => {
-  return usuario?.roles?.includes(rol) || false;
+const getRolesNormalizados = (usuario: UsuarioSesion | null) => {
+  if (!usuario) return [];
+
+  const roles = [
+    ...(Array.isArray(usuario.roles) ? usuario.roles : []),
+    usuario.rol,
+    usuario.role,
+    usuario.Rol,
+  ];
+
+  return roles
+    .map(obtenerNombreRol)
+    .filter(Boolean);
 };
 
 const getPermisosUsuario = (usuario: UsuarioSesion | null) => {
-  const esAdmin = Boolean(usuario?.esAdmin || tieneRol(usuario, ROLES.ADMINISTRADOR));
-  const esPsicologo = Boolean(usuario?.esPsicologo || tieneRol(usuario, ROLES.PSICOLOGO));
-  const esRecepcion = Boolean(usuario?.esRecepcion || tieneRol(usuario, ROLES.RECEPCION));
+  const roles = getRolesNormalizados(usuario);
+
+  const esAdmin = Boolean(usuario?.esAdmin || roles.includes(ROLES.ADMINISTRADOR));
+  const esPsicologo = Boolean(usuario?.esPsicologo || roles.includes(ROLES.PSICOLOGO));
+  const esRecepcion = Boolean(usuario?.esRecepcion || roles.includes(ROLES.RECEPCION));
 
   return {
     esAdmin,
     esPsicologo,
     esRecepcion,
+    tieneRolReconocido: esAdmin || esPsicologo || esRecepcion,
   };
 };
 
-const puedeAccederRuta = (pathname: string, usuario: UsuarioSesion | null) => {
-  const { esAdmin, esPsicologo, esRecepcion } = getPermisosUsuario(usuario);
+const iniciaConRuta = (pathname: string, rutas: string[]) => {
+  return rutas.some((ruta) => pathname === ruta || pathname.startsWith(`${ruta}/`));
+};
 
-  if (esAdmin) return true;
+const puedeAccederRuta = (pathname: string, usuario: UsuarioSesion | null) => {
+  const { esAdmin, esPsicologo, esRecepcion, tieneRolReconocido } = getPermisosUsuario(usuario);
 
   if (pathname.startsWith('/cambiar-password-default')) return true;
+  if (esAdmin) return true;
+
+  if (!tieneRolReconocido) {
+    return iniciaConRuta(pathname, RUTAS_BASE_AUTENTICADAS);
+  }
 
   if (pathname.startsWith('/dashboard')) return esPsicologo || esRecepcion;
   if (pathname.startsWith('/citas')) return esPsicologo || esRecepcion;

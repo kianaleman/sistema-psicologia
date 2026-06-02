@@ -3,8 +3,13 @@ import { Link, useLocation, Outlet } from 'react-router-dom';
 import { Toaster, toast } from 'sonner';
 import logoClinica from '../assets/logo-clinica.png';
 
+type RolLike = string | { Nombre_Rol?: string; nombre?: string; name?: string };
+
 type UsuarioSesion = {
-  roles?: string[];
+  roles?: RolLike[];
+  rol?: RolLike;
+  role?: RolLike;
+  Rol?: RolLike;
   esAdmin?: boolean;
   esPsicologo?: boolean;
   esRecepcion?: boolean;
@@ -18,10 +23,28 @@ type NavItemProps = {
 };
 
 const ROLES = {
-  ADMINISTRADOR: 'Administrador',
-  PSICOLOGO: 'Psicologo',
-  RECEPCION: 'Recepcion',
+  ADMINISTRADOR: 'administrador',
+  PSICOLOGO: 'psicologo',
+  RECEPCION: 'recepcion',
 } as const;
+
+const normalizarTexto = (value: string) => {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+};
+
+const obtenerNombreRol = (rol: RolLike | undefined | null) => {
+  if (!rol) return '';
+
+  if (typeof rol === 'string') {
+    return normalizarTexto(rol);
+  }
+
+  return normalizarTexto(rol.Nombre_Rol || rol.nombre || rol.name || '');
+};
 
 const getUsuarioSesion = (): UsuarioSesion | null => {
   const usuarioRaw = localStorage.getItem('usuario');
@@ -36,14 +59,38 @@ const getUsuarioSesion = (): UsuarioSesion | null => {
   }
 };
 
-const tieneRol = (usuario: UsuarioSesion | null, rol: string) => {
-  return usuario?.roles?.includes(rol) || false;
+const getRolesNormalizados = (usuario: UsuarioSesion | null) => {
+  if (!usuario) return [];
+
+  const roles = [
+    ...(Array.isArray(usuario.roles) ? usuario.roles : []),
+    usuario.rol,
+    usuario.role,
+    usuario.Rol,
+  ];
+
+  return roles
+    .map(obtenerNombreRol)
+    .filter(Boolean);
 };
 
 const getPermisosUsuario = (usuario: UsuarioSesion | null) => {
-  const esAdmin = Boolean(usuario?.esAdmin || tieneRol(usuario, ROLES.ADMINISTRADOR));
-  const esPsicologo = Boolean(usuario?.esPsicologo || tieneRol(usuario, ROLES.PSICOLOGO));
-  const esRecepcion = Boolean(usuario?.esRecepcion || tieneRol(usuario, ROLES.RECEPCION));
+  const roles = getRolesNormalizados(usuario);
+
+  const esAdmin = Boolean(
+    usuario?.esAdmin ||
+    roles.includes(ROLES.ADMINISTRADOR)
+  );
+
+  const esPsicologo = Boolean(
+    usuario?.esPsicologo ||
+    roles.includes(ROLES.PSICOLOGO)
+  );
+
+  const esRecepcion = Boolean(
+    usuario?.esRecepcion ||
+    roles.includes(ROLES.RECEPCION)
+  );
 
   return {
     esAdmin,

@@ -60,6 +60,27 @@ export const cambiarPasswordForzado = async (req: Request, res: Response): Promi
   }
 };
 
+export const restablecerPasswordAdmin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const idUsuario = Number(req.params.idUsuario);
+
+    if (!Number.isInteger(idUsuario) || idUsuario <= 0) {
+      res.status(400).json({ error: 'El ID del usuario no es válido' });
+      return;
+    }
+
+    const result = await AuthService.restablecerPasswordAdmin({
+      idUsuario,
+    });
+
+    res.json(result);
+  } catch (error: unknown) {
+    res.status(400).json({
+      error: getErrorMessage(error, 'Error al restablecer la contraseña del usuario'),
+    });
+  }
+};
+
 export const forgotPassword = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email } = req.body as { email?: string };

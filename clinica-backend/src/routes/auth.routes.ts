@@ -5,6 +5,7 @@ import {
   cambiarPasswordForzado,
   forgotPassword,
   resetPassword,
+  restablecerPasswordAdmin,
 } from '../controllers/auth.controller.js';
 import {
   bloquearSiRequiereCambioPassword,
@@ -19,6 +20,7 @@ import {
   cambiarPasswordSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  adminResetPasswordSchema,
 } from '../schemas/auth.schema.js';
 
 const router: Router = Router();
@@ -34,5 +36,11 @@ router.post('/cambiar-password-default', validateSchema(cambiarPasswordSchema), 
 router.use(bloquearSiRequiereCambioPassword);
 
 router.post('/register', permitirRoles(ROLES.ADMINISTRADOR), validateSchema(registerSchema), register);
+router.post(
+  '/admin/reset-password/:idUsuario',
+  permitirRoles(ROLES.ADMINISTRADOR),
+  validateSchema(adminResetPasswordSchema),
+  restablecerPasswordAdmin
+);
 
 export default router;
