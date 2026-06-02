@@ -40,7 +40,10 @@ const getStatusFromError = (message: string) => {
     lowerMessage.includes('duplicidad') ||
     lowerMessage.includes('formato de cédula') ||
     lowerMessage.includes('teléfono inválido') ||
-    lowerMessage.includes('debe seleccionar')
+    lowerMessage.includes('debe seleccionar') ||
+    lowerMessage.includes('dirección') ||
+    lowerMessage.includes('barrio') ||
+    lowerMessage.includes('municipio')
   ) {
     return 400;
   }

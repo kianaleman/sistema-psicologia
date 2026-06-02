@@ -1,0 +1,54 @@
+﻿feat(tutores): mejorar edicion de direccion y diseño del modal
+
+Backend:
+- clinica-backend/src/controllers/tutor.controller.ts
+  - Normaliza el payload de Direccion recibido desde el frontend.
+  - Acepta compatibilidad con ID_Municipio y municipioId.
+  - Incluye Pais, Barrio y Calle dentro del payload de actualizacion.
+  - Mejora el mapeo de errores relacionados con direccion, municipio y barrio.
+  - Mantiene validaciones de permisos para actualizar tutores.
+
+- clinica-backend/src/services/tutor.service.ts
+  - Agrega construccion validada de Direccion para tutores.
+  - Valida que exista municipio valido antes de guardar direccion.
+  - Valida que Pais y Barrio no esten vacios.
+  - Actualiza Pais, Barrio, Calle e ID_Municipio en la direccion existente.
+  - Crea una direccion nueva y la vincula al tutor si el tutor no tenia ID_Direccion.
+  - Mantiene validacion de cedula, telefono, codigo telefonico, ocupacion y estado civil.
+  - Conserva include de Direccion con Municipio y Departamento para cargar la cascada en frontend.
+
+- clinica-backend/src/schemas/tutor.schema.ts
+  - Agrega validacion de Direccion en updateTutorSchema.
+  - Permite Pais, Barrio, Calle, ID_Municipio y municipioId.
+  - Mantiene validaciones existentes de datos personales, ocupacion, estado civil y codigo telefonico.
+
+Frontend:
+- clinica-frontend/src/hooks/useTutores.ts
+  - Agrega carga de catalogos de paises, departamentos y municipios.
+  - Extiende TutorFormData para manejar paisId, departamentoId y municipioId.
+  - Carga la direccion del tutor en formato de cascada al editar.
+  - Obtiene departamento y municipio desde Direccion.Municipio.
+  - Resuelve el pais actual desde Direccion.Pais.
+  - Al guardar, envia Direccion con Pais, Barrio, Calle, ID_Municipio y municipioId.
+  - Mantiene compatibilidad con la estructura previa de Direccion.
+  - Refresca la lista de tutores despues de actualizar.
+
+- clinica-frontend/src/components/tutores/TutorFormModal.tsx
+  - Reemplaza captura manual de ID Municipio por seleccion en cascada.
+  - Agrega selects para Pais, Departamento y Municipio.
+  - Filtra municipios segun el departamento seleccionado.
+  - Limpia departamento y municipio cuando cambia el pais.
+  - Limpia municipio cuando cambia el departamento.
+  - Valida pais, departamento, municipio y barrio antes de enviar.
+  - Mejora el diseño visual del modal.
+  - Agrega header moderno con informacion del tutor.
+  - Organiza el formulario en tarjetas visuales.
+  - Separa datos personales, informacion adicional y direccion.
+  - Agrega iconos en secciones y campos clave.
+  - Agrega resumen visual de ubicacion.
+  - Mejora estilos de inputs, selects, foco y botones.
+  - Mantiene la logica de formateo de cedula y validacion de telefono.
+
+Limpieza:
+- commit-auth-reset.txt
+  - Elimina archivo temporal de mensaje de commit anterior.

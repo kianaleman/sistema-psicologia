@@ -7,6 +7,9 @@ import type {
   EstadoCivil,
   Parentesco,
   Direccion,
+  Pais,
+  Departamento,
+  Municipio,
 } from '../types';
 
 export interface PacienteMenorTutor {
@@ -57,6 +60,9 @@ export interface TutorFormData {
   EstadoCivil: number;
   Direccion: {
     Pais: string;
+    paisId: string;
+    departamentoId: string;
+    municipioId: string;
     Barrio: string;
     Calle: string;
     ID_Municipio: number;
@@ -67,6 +73,9 @@ type CatalogosTutores = {
   ocupaciones?: Ocupacion[];
   estadosCiviles?: EstadoCivil[];
   parentescos?: Parentesco[];
+  paises?: Pais[];
+  departamentos?: Departamento[];
+  municipios?: Municipio[];
 };
 
 export const initialTutorForm: TutorFormData = {
@@ -79,6 +88,9 @@ export const initialTutorForm: TutorFormData = {
   EstadoCivil: 0,
   Direccion: {
     Pais: '',
+    paisId: '',
+    departamentoId: '',
+    municipioId: '',
     Barrio: '',
     Calle: '',
     ID_Municipio: 0,
@@ -95,6 +107,9 @@ const normalizarCatalogos = (catalogos: unknown): Required<CatalogosTutores> => 
       ocupaciones: [],
       estadosCiviles: [],
       parentescos: [],
+      paises: [],
+      departamentos: [],
+      municipios: [],
     };
   }
 
@@ -104,6 +119,9 @@ const normalizarCatalogos = (catalogos: unknown): Required<CatalogosTutores> => 
     ocupaciones: Array.isArray(data.ocupaciones) ? data.ocupaciones : [],
     estadosCiviles: Array.isArray(data.estadosCiviles) ? data.estadosCiviles : [],
     parentescos: Array.isArray(data.parentescos) ? data.parentescos : [],
+    paises: Array.isArray(data.paises) ? data.paises : [],
+    departamentos: Array.isArray(data.departamentos) ? data.departamentos : [],
+    municipios: Array.isArray(data.municipios) ? data.municipios : [],
   };
 };
 
@@ -119,6 +137,25 @@ const obtenerIdParentesco = (tutor: TutorCompleto) => {
     obtenerParentescoPrincipal(tutor)?.ID_Parentesco ||
     tutor.Tutor_PacienteMenor?.[0]?.ID_Parentesco ||
     0;
+};
+
+const getPaisIdDesdeDireccion = (direccion: Direccion | null | undefined, paises: Pais[]) => {
+  const paisDireccion = direccion?.Pais?.trim().toLowerCase();
+
+  if (paisDireccion) {
+    const paisEncontrado = paises.find((pais) => pais.Nombre_Pais.trim().toLowerCase() === paisDireccion);
+
+    if (paisEncontrado) return paisEncontrado.ID_Pais.toString();
+  }
+
+  return paises.length === 1 ? paises[0].ID_Pais.toString() : '';
+};
+
+const getNombrePais = (paisId: string, paises: Pais[], fallback: string) => {
+  const id = Number(paisId);
+  const pais = paises.find((item) => item.ID_Pais === id);
+
+  return pais?.Nombre_Pais || fallback || '';
 };
 
 const enriquecerTutorConCatalogos = (
@@ -157,6 +194,9 @@ export function useTutores() {
   const [ocupaciones, setOcupaciones] = useState<Ocupacion[]>([]);
   const [estadosCiviles, setEstadosCiviles] = useState<EstadoCivil[]>([]);
   const [parentescos, setParentescos] = useState<Parentesco[]>([]);
+  const [paises, setPaises] = useState<Pais[]>([]);
+  const [departamentos, setDepartamentos] = useState<Departamento[]>([]);
+  const [municipios, setMunicipios] = useState<Municipio[]>([]);
 
   const [tutorSeleccionado, setTutorSeleccionado] = useState<TutorCompleto | null>(null);
   const [formData, setFormData] = useState<TutorFormData>(initialTutorForm);
@@ -179,10 +219,19 @@ export function useTutores() {
       setOcupaciones(catalogos.ocupaciones);
       setEstadosCiviles(catalogos.estadosCiviles);
       setParentescos(catalogos.parentescos);
+      setPaises(catalogos.paises);
+      setDepartamentos(catalogos.departamentos);
+      setMunicipios(catalogos.municipios);
     } catch (error: unknown) {
       console.error('Error al cargar la lista de tutores:', error);
       toast.error('Error al cargar la lista de tutores');
       setTutores([]);
+      setOcupaciones([]);
+      setEstadosCiviles([]);
+      setParentescos([]);
+      setPaises([]);
+      setDepartamentos([]);
+      setMunicipios([]);
     } finally {
       setLoading(false);
     }
@@ -215,6 +264,17 @@ export function useTutores() {
   }, [tutores, busqueda]);
 
   const prepareEdit = (tutor: TutorCompleto) => {
+    const paisId = getPaisIdDesdeDireccion(tutor.Direccion, paises);
+    const departamentoId =
+      tutor.Direccion?.Municipio?.ID_Departamento?.toString() ||
+      tutor.Direccion?.Municipio?.Departamento?.ID_Departamento?.toString() ||
+      '';
+
+    const municipioId =
+      tutor.Direccion?.ID_Municipio?.toString() ||
+      tutor.Direccion?.Municipio?.ID_Municipio?.toString() ||
+      '';
+
     setTutorSeleccionado(tutor);
     setFormData({
       Nombre: tutor.Nombre || '',
@@ -225,10 +285,13 @@ export function useTutores() {
       Ocupacion: Number(tutor.Ocupacion || 0),
       EstadoCivil: Number(tutor.EstadoCivil || 0),
       Direccion: {
-        Pais: tutor.Direccion?.Pais || '',
+        Pais: tutor.Direccion?.Pais || getNombrePais(paisId, paises, ''),
+        paisId,
+        departamentoId,
+        municipioId,
         Barrio: tutor.Direccion?.Barrio || '',
         Calle: tutor.Direccion?.Calle || '',
-        ID_Municipio: Number(tutor.Direccion?.ID_Municipio || 0),
+        ID_Municipio: Number(municipioId || 0),
       },
     });
   };
@@ -237,7 +300,21 @@ export function useTutores() {
     if (!tutorSeleccionado) return false;
 
     try {
-      await api.tutores.update(tutorSeleccionado.ID_Tutor, formData);
+      const municipioId = Number(formData.Direccion.municipioId || formData.Direccion.ID_Municipio || 0);
+      const pais = getNombrePais(formData.Direccion.paisId, paises, formData.Direccion.Pais);
+
+      const payload = {
+        ...formData,
+        Direccion: {
+          Pais: pais,
+          Barrio: formData.Direccion.Barrio.trim(),
+          Calle: formData.Direccion.Calle.trim(),
+          ID_Municipio: municipioId,
+          municipioId,
+        },
+      };
+
+      await api.tutores.update(tutorSeleccionado.ID_Tutor, payload);
       toast.success('Tutor actualizado exitosamente');
       await loadData();
 
@@ -259,6 +336,9 @@ export function useTutores() {
       ocupaciones,
       estadosCiviles,
       parentescos,
+      paises,
+      departamentos,
+      municipios,
     },
     formData,
     setFormData,

@@ -113,6 +113,29 @@ const obtenerNumeroValido = (...values: Array<number | string | null | undefined
   return undefined;
 };
 
+const construirDireccionData = (direccion: DireccionTutorDTO): Prisma.DireccionUncheckedCreateInput => {
+  const municipioId = obtenerNumeroValido(direccion.ID_Municipio, direccion.municipioId);
+
+  if (!municipioId) {
+    throw new Error('Debe seleccionar un municipio válido para la dirección del tutor.');
+  }
+
+  if (!direccion.Pais?.trim()) {
+    throw new Error('Debe seleccionar un país válido para la dirección del tutor.');
+  }
+
+  if (!direccion.Barrio?.trim()) {
+    throw new Error('El barrio de la dirección del tutor es obligatorio.');
+  }
+
+  return {
+    Pais: direccion.Pais.trim(),
+    Barrio: direccion.Barrio.trim(),
+    Calle: direccion.Calle?.trim() || null,
+    ID_Municipio: municipioId,
+  };
+};
+
 export const TutorService = {
   getAll: async (usuario?: AuthUserPayload) => {
     validarPuedeVerTutores(usuario);
@@ -186,38 +209,31 @@ export const TutorService = {
         EstadoCivil: estadoCivilId,
       };
 
-      await tx.tutor.update({
-        where: {
-          ID_Tutor: id,
-        },
-        data: tutorData,
-      });
+      if (data.Direccion) {
+        const direccionData = construirDireccionData(data.Direccion);
 
-      if (data.Direccion && existe.ID_Direccion) {
-        const direccionData: Prisma.DireccionUncheckedUpdateInput = {};
-        const municipioId = obtenerNumeroValido(data.Direccion.ID_Municipio, data.Direccion.municipioId);
-
-        if (typeof data.Direccion.Barrio === 'string') {
-          direccionData.Barrio = data.Direccion.Barrio.trim();
-        }
-
-        if (typeof data.Direccion.Calle === 'string') {
-          direccionData.Calle = data.Direccion.Calle.trim();
-        }
-
-        if (municipioId) {
-          direccionData.ID_Municipio = municipioId;
-        }
-
-        if (Object.keys(direccionData).length > 0) {
+        if (existe.ID_Direccion) {
           await tx.direccion.update({
             where: {
               ID_Direccion: existe.ID_Direccion,
             },
             data: direccionData,
           });
+        } else {
+          const direccionCreada = await tx.direccion.create({
+            data: direccionData,
+          });
+
+          tutorData.ID_Direccion = direccionCreada.ID_Direccion;
         }
       }
+
+      await tx.tutor.update({
+        where: {
+          ID_Tutor: id,
+        },
+        data: tutorData,
+      });
     });
 
     return await prisma.tutor.findUniqueOrThrow({
