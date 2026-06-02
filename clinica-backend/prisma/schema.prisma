@@ -394,6 +394,36 @@ model Usuario {
   RequiereCambioPassword Boolean       @default(true)
   Psicologo              Psicologo?
   Usuario_Rol            Usuario_Rol[]
+  AuditoriaSistema AuditoriaSistema[]
+}
+
+model AuditoriaSistema {
+  ID_Auditoria Int      @id @default(autoincrement())
+
+  ID_Usuario   Int?
+  UsuarioEmail String?  @db.VarChar(100)
+  Roles        String?  @db.VarChar(255)
+
+  Accion       String   @db.VarChar(80)
+  Modulo       String   @db.VarChar(80)
+  Entidad      String?  @db.VarChar(80)
+  ID_Entidad   Int?
+
+  MetodoHTTP   String?  @db.VarChar(10)
+  Ruta         String?  @db.VarChar(255)
+  Ip           String?  @db.VarChar(80)
+  UserAgent    String?  @db.VarChar(500)
+
+  Resultado    String   @db.VarChar(20)
+  CodigoEstado Int?
+  Mensaje      String?  @db.VarChar(500)
+
+  DatosAntes   String?  @db.NVarChar(Max)
+  DatosDespues String?  @db.NVarChar(Max)
+
+  FechaHora    DateTime @default(now()) @db.DateTime
+
+  Usuario      Usuario? @relation(fields: [ID_Usuario], references: [ID_Usuario], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model Usuario_Rol {

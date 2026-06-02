@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
+import { AuditoriaService } from '../services/auditoria.service.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -33,6 +34,24 @@ declare global {
     }
   }
 }
+
+const registrarFalloSeguridad = (
+  req: Request,
+  accion: string,
+  mensaje: string,
+  codigoEstado: number,
+  datosDespues?: unknown
+) => {
+  void AuditoriaService.registrarDesdeRequest(req, {
+    accion,
+    modulo: 'SEGURIDAD',
+    entidad: 'Auth',
+    resultado: 'FALLO',
+    codigoEstado,
+    mensaje,
+    datosDespues,
+  });
+};
 
 const obtenerRoles = (payload: JwtPayload) => {
   if (!Array.isArray(payload.roles)) return [];
@@ -76,14 +95,18 @@ export const verificarToken = (req: Request, res: Response, next: NextFunction):
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Acceso denegado. No se proporcionó un token válido.' });
+    const mensaje = 'Acceso denegado. No se proporcionó un token válido.';
+    registrarFalloSeguridad(req, 'ACCESO_SIN_TOKEN', mensaje, 401);
+    res.status(401).json({ error: mensaje });
     return;
   }
 
   const token = authHeader.split(' ')[1];
 
   if (!token) {
-    res.status(401).json({ error: 'Acceso denegado. Token malformado o vacío.' });
+    const mensaje = 'Acceso denegado. Token malformado o vacío.';
+    registrarFalloSeguridad(req, 'TOKEN_MALFORMADO', mensaje, 401);
+    res.status(401).json({ error: mensaje });
     return;
   }
 
@@ -91,28 +114,49 @@ export const verificarToken = (req: Request, res: Response, next: NextFunction):
     const payload = jwt.verify(token, JWT_SECRET);
 
     if (typeof payload === 'string') {
-      res.status(403).json({ error: 'Token inválido o expirado.' });
+      const mensaje = 'Token inválido o expirado.';
+      registrarFalloSeguridad(req, 'TOKEN_INVALIDO', mensaje, 403);
+      res.status(403).json({ error: mensaje });
       return;
     }
 
     req.user = construirUsuarioAutenticado(payload);
     next();
   } catch {
-    res.status(403).json({ error: 'Token inválido o expirado.' });
+    const mensaje = 'Token inválido o expirado.';
+    registrarFalloSeguridad(req, 'TOKEN_INVALIDO', mensaje, 403);
+    res.status(403).json({ error: mensaje });
   }
 };
 
 export const permitirRoles = (...rolesPermitidos: RolSistema[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
-      res.status(401).json({ error: 'Acceso no autorizado.' });
+      const mensaje = 'Acceso no autorizado.';
+      registrarFalloSeguridad(req, 'ACCESO_NO_AUTORIZADO', mensaje, 401, { rolesPermitidos });
+      res.status(401).json({ error: mensaje });
       return;
     }
 
     const tieneRolPermitido = rolesPermitidos.some((rol) => req.user?.roles.includes(rol));
 
     if (!tieneRolPermitido) {
-      res.status(403).json({ error: 'No tiene permisos para realizar esta acción.' });
+      const mensaje = 'No tiene permisos para realizar esta acción.';
+
+      void AuditoriaService.registrarDesdeRequest(req, {
+        accion: 'ACCESO_DENEGADO_ROL',
+        modulo: 'SEGURIDAD',
+        entidad: 'Auth',
+        resultado: 'FALLO',
+        codigoEstado: 403,
+        mensaje,
+        datosDespues: {
+          rolesUsuario: req.user.roles,
+          rolesPermitidos,
+        },
+      });
+
+      res.status(403).json({ error: mensaje });
       return;
     }
 
@@ -122,8 +166,19 @@ export const permitirRoles = (...rolesPermitidos: RolSistema[]) => {
 
 export const bloquearSiRequiereCambioPassword = (req: Request, res: Response, next: NextFunction): void => {
   if (req.user?.requiereCambioPassword) {
+    const mensaje = 'Debe cambiar la contraseña temporal antes de continuar.';
+
+    void AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'ACCESO_BLOQUEADO_PASSWORD_TEMPORAL',
+      modulo: 'SEGURIDAD',
+      entidad: 'Auth',
+      resultado: 'FALLO',
+      codigoEstado: 403,
+      mensaje,
+    });
+
     res.status(403).json({
-      error: 'Debe cambiar la contraseña temporal antes de continuar.',
+      error: mensaje,
       requiereCambioPassword: true,
     });
     return;
@@ -134,8 +189,19 @@ export const bloquearSiRequiereCambioPassword = (req: Request, res: Response, ne
 
 export const requierePsicologoAsignado = (req: Request, res: Response, next: NextFunction): void => {
   if (req.user?.esPsicologo && !req.user.idPsicologo) {
+    const mensaje = 'El usuario psicólogo no tiene un perfil de psicólogo vinculado.';
+
+    void AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'ACCESO_BLOQUEADO_PSICOLOGO_NO_VINCULADO',
+      modulo: 'SEGURIDAD',
+      entidad: 'Auth',
+      resultado: 'FALLO',
+      codigoEstado: 403,
+      mensaje,
+    });
+
     res.status(403).json({
-      error: 'El usuario psicólogo no tiene un perfil de psicólogo vinculado.',
+      error: mensaje,
     });
     return;
   }

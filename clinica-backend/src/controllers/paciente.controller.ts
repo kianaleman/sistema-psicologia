@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { PacienteService } from '../services/paciente.service.js';
+import { AuditoriaService } from '../services/auditoria.service.js';
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   return error instanceof Error ? error.message : fallback;
@@ -46,6 +47,19 @@ export const getExpediente = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'EXPEDIENTE_CONSULTADO',
+      modulo: 'PACIENTES',
+      entidad: 'Paciente',
+      idEntidad: id,
+      resultado: 'EXITO',
+      codigoEstado: 200,
+      mensaje: 'Expediente clínico consultado.',
+      datosDespues: {
+        ID_Paciente: id,
+      },
+    });
+
     res.json(expediente);
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Error al obtener expediente');
@@ -56,9 +70,39 @@ export const getExpediente = async (req: Request, res: Response): Promise<void> 
 export const createPaciente = async (req: Request, res: Response): Promise<void> => {
   try {
     const nuevoPaciente = await PacienteService.create(req.body, req.user);
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'PACIENTE_CREADO',
+      modulo: 'PACIENTES',
+      entidad: 'Paciente',
+      idEntidad: nuevoPaciente.ID_Paciente,
+      resultado: 'EXITO',
+      codigoEstado: 201,
+      mensaje: 'Paciente creado correctamente.',
+      datosDespues: {
+        ID_Paciente: nuevoPaciente.ID_Paciente,
+        Nombre: nuevoPaciente.Nombre,
+        Apellido: nuevoPaciente.Apellido,
+        Genero: nuevoPaciente.Genero,
+        ID_Pais: nuevoPaciente.ID_Pais,
+        Activo: nuevoPaciente.Activo,
+      },
+    });
+
     res.status(201).json(nuevoPaciente);
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Error al crear paciente');
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'PACIENTE_CREADO',
+      modulo: 'PACIENTES',
+      entidad: 'Paciente',
+      resultado: 'FALLO',
+      codigoEstado: getStatusFromError(message),
+      mensaje: message,
+      datosDespues: req.body,
+    });
+
     res.status(getStatusFromError(message)).json({ error: message });
   }
 };
@@ -73,9 +117,36 @@ export const updatePaciente = async (req: Request, res: Response): Promise<void>
     }
 
     const result = await PacienteService.update(id, req.body, req.user);
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'PACIENTE_ACTUALIZADO',
+      modulo: 'PACIENTES',
+      entidad: 'Paciente',
+      idEntidad: id,
+      resultado: 'EXITO',
+      codigoEstado: 200,
+      mensaje: 'Paciente actualizado correctamente.',
+      datosDespues: {
+        ID_Paciente: id,
+        cambios: req.body,
+      },
+    });
+
     res.json(result);
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Error al actualizar paciente');
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'PACIENTE_ACTUALIZADO',
+      modulo: 'PACIENTES',
+      entidad: 'Paciente',
+      idEntidad: Number(req.params.id) || null,
+      resultado: 'FALLO',
+      codigoEstado: getStatusFromError(message),
+      mensaje: message,
+      datosDespues: req.body,
+    });
+
     res.status(getStatusFromError(message)).json({ error: message });
   }
 };
@@ -90,6 +161,20 @@ export const getHistorialPaciente = async (req: Request, res: Response): Promise
     }
 
     const historial = await PacienteService.getHistorialPaciente(id, req.user);
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'HISTORIAL_CLINICO_CONSULTADO',
+      modulo: 'PACIENTES',
+      entidad: 'Paciente',
+      idEntidad: id,
+      resultado: 'EXITO',
+      codigoEstado: 200,
+      mensaje: 'Historial clínico consultado.',
+      datosDespues: {
+        ID_Paciente: id,
+      },
+    });
+
     res.json(historial);
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Error buscando historial clínico');

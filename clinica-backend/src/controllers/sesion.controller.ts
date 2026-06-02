@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { SesionService } from '../services/sesion.service.js';
+import { AuditoriaService } from '../services/auditoria.service.js';
 
 type TratamientoDTO = {
   id?: number;
@@ -115,33 +116,13 @@ const normalizarBody = (body: unknown): CreateSesionDTO | null => {
 };
 
 const validarPayload = (payload: CreateSesionDTO): string | null => {
-  if (!Number.isInteger(payload.ID_Cita) || payload.ID_Cita <= 0) {
-    return 'ID_Cita es requerido y debe ser un número válido.';
-  }
-
-  if (!payload.HoraDeInicio) {
-    return 'HoraDeInicio es requerida.';
-  }
-
-  if (!payload.HoraFinal) {
-    return 'HoraFinal es requerida.';
-  }
-
-  if (!payload.Observaciones) {
-    return 'Observaciones es requerido.';
-  }
-
-  if (!payload.DiagnosticoDiferencial) {
-    return 'DiagnosticoDiferencial es requerido.';
-  }
-
-  if (!payload.HistorialDeEvolucion) {
-    return 'HistorialDeEvolucion es requerido.';
-  }
-
-  if (!payload.Criterios_DeDiagnostico) {
-    return 'Criterios_DeDiagnostico es requerido.';
-  }
+  if (!Number.isInteger(payload.ID_Cita) || payload.ID_Cita <= 0) return 'ID_Cita es requerido y debe ser un número válido.';
+  if (!payload.HoraDeInicio) return 'HoraDeInicio es requerida.';
+  if (!payload.HoraFinal) return 'HoraFinal es requerida.';
+  if (!payload.Observaciones) return 'Observaciones es requerido.';
+  if (!payload.DiagnosticoDiferencial) return 'DiagnosticoDiferencial es requerido.';
+  if (!payload.HistorialDeEvolucion) return 'HistorialDeEvolucion es requerido.';
+  if (!payload.Criterios_DeDiagnostico) return 'Criterios_DeDiagnostico es requerido.';
 
   return null;
 };
@@ -178,6 +159,30 @@ const getStatusFromError = (message: string) => {
   return 500;
 };
 
+const resumenSesionParaAuditoria = (payload: CreateSesionDTO) => {
+  return {
+    ID_Cita: payload.ID_Cita,
+    ID_Expediente: payload.ID_Expediente,
+    HoraDeInicio: payload.HoraDeInicio,
+    HoraFinal: payload.HoraFinal,
+    camposClinicosRegistrados: [
+      'Observaciones',
+      'DiagnosticoDiferencial',
+      'HistorialDeEvolucion',
+      'Criterios_DeDiagnostico',
+    ],
+    ExploracionesIds: payload.ExploracionesIds || [],
+    Tratamiento: payload.Tratamiento
+      ? {
+          Tipo: payload.Tratamiento.Tipo,
+          Frecuencia: payload.Tratamiento.Frecuencia,
+          FechaInicio: payload.Tratamiento.FechaInicio,
+          FechaFin: payload.Tratamiento.FechaFin,
+        }
+      : null,
+  };
+};
+
 export const createSesion = async (req: Request, res: Response): Promise<void> => {
   try {
     const payload = normalizarBody(req.body);
@@ -196,10 +201,35 @@ export const createSesion = async (req: Request, res: Response): Promise<void> =
 
     const result = await SesionService.create(payload, req.user);
 
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'SESION_CLINICA_CREADA',
+      modulo: 'SESIONES',
+      entidad: 'Sesion',
+      idEntidad: result.ID_Sesion,
+      resultado: 'EXITO',
+      codigoEstado: 201,
+      mensaje: 'Sesión clínica registrada correctamente.',
+      datosDespues: resumenSesionParaAuditoria(payload),
+    });
+
     res.status(201).json(result);
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Error al guardar la sesión completa');
     console.error(error);
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'SESION_CLINICA_CREADA',
+      modulo: 'SESIONES',
+      entidad: 'Sesion',
+      resultado: 'FALLO',
+      codigoEstado: getStatusFromError(message),
+      mensaje: message,
+      datosDespues: {
+        ID_Cita: req.body?.ID_Cita,
+        ID_Expediente: req.body?.ID_Expediente,
+      },
+    });
+
     res.status(getStatusFromError(message)).json({ error: message });
   }
 };
@@ -222,6 +252,21 @@ export const searchSesion = async (req: Request, res: Response): Promise<void> =
     const sesion = await SesionService.findByParams(pacienteId, psicologoId, req.user);
 
     if (sesion) {
+      await AuditoriaService.registrarDesdeRequest(req, {
+        accion: 'SESION_CLINICA_CONSULTADA',
+        modulo: 'SESIONES',
+        entidad: 'Sesion',
+        idEntidad: sesion.ID_Sesion,
+        resultado: 'EXITO',
+        codigoEstado: 200,
+        mensaje: 'Sesión clínica consultada.',
+        datosDespues: {
+          pacienteId,
+          psicologoId,
+          ID_Sesion: sesion.ID_Sesion,
+        },
+      });
+
       res.json(sesion);
       return;
     }

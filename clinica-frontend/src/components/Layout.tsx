@@ -1,4 +1,3 @@
-// src/components/Layout.tsx
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import { Toaster, toast } from 'sonner';
 import logoClinica from '../assets/logo-clinica.png';
@@ -127,6 +126,7 @@ export default function Layout() {
   const puedeVerFinanzas = esAdmin || esRecepcion || esPsicologo;
   const puedeVerEquipo = esAdmin;
   const puedeVerConfiguracion = esAdmin;
+  const puedeVerAuditoria = esAdmin;
   const puedeVerTutores = esAdmin || esRecepcion || esPsicologo;
 
   const handleLogout = () => {
@@ -170,7 +170,7 @@ export default function Layout() {
               <NavItem to="/facturacion" label="Finanzas" icon="💰" />
             )}
 
-            {(puedeVerEquipo || puedeVerTutores || puedeVerConfiguracion) && (
+            {(puedeVerEquipo || puedeVerTutores || puedeVerConfiguracion || puedeVerAuditoria) && (
               <span className="text-xs font-bold text-slate-400 uppercase px-4 mb-2 mt-6">Administración</span>
             )}
 
@@ -180,6 +180,10 @@ export default function Layout() {
 
             {puedeVerTutores && (
               <NavItem to="/tutores" label="Tutores" icon="👨‍👩‍👦" />
+            )}
+
+            {puedeVerAuditoria && (
+              <NavItem to="/auditoria" label="Auditoría" icon="🛡️" />
             )}
 
             {puedeVerConfiguracion && (

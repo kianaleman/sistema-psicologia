@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { FacturaService } from '../services/factura.service.js';
+import { AuditoriaService } from '../services/auditoria.service.js';
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   return error instanceof Error ? error.message : fallback;
@@ -46,6 +47,19 @@ export const getFacturaById = async (req: Request, res: Response): Promise<void>
       res.status(404).json({ error: 'Recibo no encontrado' });
       return;
     }
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'RECIBO_CONSULTADO',
+      modulo: 'FACTURACION',
+      entidad: 'Recibo',
+      idEntidad: id,
+      resultado: 'EXITO',
+      codigoEstado: 200,
+      mensaje: 'Recibo consultado.',
+      datosDespues: {
+        Cod_Recibo: id,
+      },
+    });
 
     res.json(factura);
   } catch (error: unknown) {

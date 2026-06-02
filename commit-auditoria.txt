@@ -1,0 +1,171 @@
+﻿feat(auditoria): implementar modulo de auditoria del sistema
+
+Base de datos y Prisma:
+- clinica-backend/prisma/schema.prisma
+  - Agrega el modelo AuditoriaSistema como tabla independiente para registrar eventos del sistema.
+  - Relaciona AuditoriaSistema con Usuario mediante ID_Usuario.
+  - Permite almacenar usuario, roles, accion, modulo, entidad, ruta, metodo HTTP, IP, user agent, resultado, codigo de estado, mensaje y datos serializados.
+  - Mantiene separada la nueva auditoria general de la tabla existente AuditoriaCita para no romper compatibilidad.
+
+Backend - Servicio de auditoria:
+- clinica-backend/src/services/auditoria.service.ts
+  - Crea el servicio centralizado AuditoriaService.
+  - Agrega registrar() para insertar eventos de auditoria en la base de datos.
+  - Agrega registrarDesdeRequest() para capturar automaticamente metodo HTTP, ruta, IP y user agent.
+  - Agrega sanitizacion de datos sensibles como password, passwordRaw, passwordNuevaRaw, PasswordHash, token, ResetToken y credenciales.
+  - Agrega serializacion segura de datos antes y despues.
+  - Agrega truncado preventivo de campos largos para evitar errores de longitud.
+  - Agrega listar() para consultar eventos con paginacion y filtros.
+  - Agrega resumen() para obtener totales de eventos, exitosos, fallidos y eventos del dia.
+  - Restringe la consulta de auditoria solo a usuarios Administrador.
+
+Backend - Controlador y rutas de auditoria:
+- clinica-backend/src/controllers/auditoria.controller.ts
+  - Agrega endpoint para listar eventos de auditoria.
+  - Agrega endpoint para consultar resumen de auditoria.
+  - Normaliza filtros opcionales sin asignar undefined explicitamente, compatible con exactOptionalPropertyTypes.
+  - Permite filtros por usuario, modulo, accion, resultado, rango de fechas y busqueda general.
+
+- clinica-backend/src/routes/auditoria.routes.ts
+  - Crea rutas protegidas para auditoria.
+  - Aplica verificarToken.
+  - Aplica bloquearSiRequiereCambioPassword.
+  - Restringe el acceso con permitirRoles(Administrador).
+  - Expone GET /api/auditoria.
+  - Expone GET /api/auditoria/resumen.
+
+- clinica-backend/src/schemas/auditoria.schema.ts
+  - Agrega esquema de validacion para filtros de auditoria.
+  - Soporta page, limit, usuario, modulo, accion, resultado, fechaInicio, fechaFin y busqueda.
+  - Limita el tamaño maximo de pagina para consultas administrativas.
+
+Backend - Registro de rutas:
+- clinica-backend/src/index.ts
+  - Importa auditoriaRoutes.
+  - Registra el nuevo modulo en /api/auditoria.
+  - Mantiene el orden de rutas existentes de autenticacion, pacientes, citas, sesiones, psicologos, tutores, facturas, configuracion y general.
+
+Backend - Seguridad y permisos:
+- clinica-backend/src/middlewares/auth.middleware.ts
+  - Integra auditoria en fallos de seguridad.
+  - Registra accesos sin token.
+  - Registra tokens malformados.
+  - Registra tokens invalidos o expirados.
+  - Registra accesos denegados por rol.
+  - Registra bloqueos por contraseña temporal obligatoria.
+  - Registra bloqueos cuando un usuario psicologo no tiene perfil vinculado.
+  - Mantiene la construccion del usuario autenticado y banderas de rol.
+
+Backend - Autenticacion:
+- clinica-backend/src/controllers/auth.controller.ts
+  - Registra auditoria de login exitoso.
+  - Registra auditoria de login fallido.
+  - Registra auditoria de usuario registrado.
+  - Registra auditoria de cambio de contraseña temporal.
+  - Registra auditoria de restablecimiento de contraseña por administrador.
+  - Registra auditoria de solicitud de recuperacion de contraseña.
+  - Registra auditoria de restablecimiento por enlace.
+  - Evita guardar contraseñas o tokens sensibles en los datos auditados.
+
+Backend - Pacientes:
+- clinica-backend/src/controllers/paciente.controller.ts
+  - Registra auditoria cuando se crea un paciente.
+  - Registra auditoria cuando se actualiza un paciente.
+  - Registra auditoria cuando se consulta un expediente.
+  - Registra auditoria cuando se consulta historial clinico.
+  - En errores de creacion o actualizacion registra el intento fallido con mensaje y codigo de estado.
+  - Evita duplicar informacion clinica sensible completa en auditoria.
+
+Backend - Psicologos:
+- clinica-backend/src/controllers/psicologo.controller.ts
+  - Registra auditoria al crear psicologos.
+  - Registra auditoria al actualizar psicologos.
+  - Guarda informacion resumida como ID_Psicologo, CodigoMinsa, Nombre, Apellido y Email.
+  - Registra fallos de creacion o actualizacion con detalle del error.
+  - Evita almacenar la contraseña temporal generada dentro del registro de auditoria.
+
+Backend - Citas:
+- clinica-backend/src/controllers/cita.controller.ts
+  - Registra auditoria al crear citas.
+  - Registra auditoria al actualizar citas.
+  - Registra auditoria al cancelar citas.
+  - Incluye datos resumidos de cita, paciente, psicologo, estado, recibo y monto.
+  - Registra fallos por permisos, conflictos de horario o datos invalidos.
+  - Mantiene el control de acceso por rol y psicologo asignado.
+
+Backend - Sesiones clinicas:
+- clinica-backend/src/controllers/sesion.controller.ts
+  - Registra auditoria al crear sesiones clinicas.
+  - Registra auditoria al consultar sesiones clinicas.
+  - Guarda solo resumen de campos clinicos registrados.
+  - Evita duplicar Observaciones, DiagnosticoDiferencial, HistorialDeEvolucion y Criterios_DeDiagnostico en la tabla de auditoria.
+  - Registra ID_Cita, ID_Expediente, horarios, exploraciones y resumen de tratamiento.
+  - Registra fallos de validacion, permisos o sesiones duplicadas.
+
+Backend - Facturacion:
+- clinica-backend/src/controllers/factura.controller.ts
+  - Registra auditoria cuando se consulta el detalle de un recibo.
+  - Mantiene control de acceso por Administrador, Recepcion y Psicologo.
+  - Registra el ID del recibo consultado sin duplicar todos los datos financieros.
+
+Backend - Configuracion:
+- clinica-backend/src/controllers/configuracion.controller.ts
+  - Registra auditoria al crear elementos de catalogo.
+  - Registra auditoria al actualizar elementos de catalogo.
+  - Registra auditoria al eliminar elementos de catalogo.
+  - Registra fallos por catalogo invalido o dependencias existentes.
+  - Corrige compatibilidad con exactOptionalPropertyTypes al normalizar req.params.modelo como string o null.
+  - Evita pasar string[], undefined u otros tipos a la propiedad entidad.
+
+Frontend - Tipos:
+- clinica-frontend/src/types/auditoria.ts
+  - Agrega tipos de auditoria para la interfaz administrativa.
+  - Define AuditoriaSistema.
+  - Define AuditoriaFiltros.
+  - Define AuditoriaListaResponse.
+  - Define AuditoriaResumen.
+  - Define ResultadoAuditoria como EXITO o FALLO.
+
+Frontend - Servicio API:
+- clinica-frontend/src/services/api.ts
+  - Agrega api.auditoria.getAll().
+  - Agrega api.auditoria.resumen().
+  - Integra las respuestas tipadas AuditoriaListaResponse y AuditoriaResumen.
+  - Mantiene el manejo existente de token, errores 401, errores 403 y redireccion por contraseña temporal.
+
+Frontend - Hook de auditoria:
+- clinica-frontend/src/hooks/useAuditoria.ts
+  - Crea hook para administrar la vista de auditoria.
+  - Maneja filtros, paginacion, resumen, estado de carga y recarga.
+  - Construye query params para filtros de auditoria.
+  - Consulta listado y resumen en paralelo.
+  - Muestra errores mediante toast.
+  - Permite limpiar filtros y cambiar pagina.
+
+Frontend - Vista de auditoria:
+- clinica-frontend/src/pages/Auditoria.tsx
+  - Crea pagina administrativa de auditoria.
+  - Muestra tarjetas de resumen: total, exitosos, fallidos y eventos de hoy.
+  - Agrega filtros por busqueda general, usuario, modulo, resultado y rango de fechas.
+  - Muestra tabla con fecha, usuario, modulo, accion, ruta, resultado y detalle.
+  - Agrega modal para ver datos antes, datos despues, mensaje y metadatos del evento.
+  - Formatea fechas para locale es-NI.
+  - Distingue visualmente eventos EXITO y FALLO.
+  - Agrega paginacion basica.
+
+Frontend - Rutas:
+- clinica-frontend/src/App.tsx
+  - Importa la pagina Auditoria.
+  - Registra la ruta protegida /auditoria dentro del Layout principal.
+  - Mantiene las rutas publicas y protegidas existentes.
+
+Frontend - Layout:
+- clinica-frontend/src/components/Layout.tsx
+  - Agrega permiso puedeVerAuditoria solo para Administrador.
+  - Agrega enlace de menu hacia /auditoria.
+  - Mantiene el filtrado de modulos por rol.
+  - Conserva Dashboard, Agenda, Pacientes, Historial, Finanzas, Equipo, Tutores y Ajustes segun permisos existentes.
+
+Limpieza:
+- commit-tutores-direccion.txt
+  - Elimina archivo temporal usado para el commit anterior de tutores y direccion.

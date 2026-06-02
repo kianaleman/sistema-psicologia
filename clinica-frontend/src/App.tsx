@@ -1,11 +1,8 @@
-// src/App.tsx
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
-// Componentes Estructurales
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 
-// Páginas
 import Presentacion from './pages/Presentacion';
 import Dashboard from './pages/Dashboard';
 import Pacientes from './pages/Pacientes';
@@ -19,22 +16,19 @@ import PacienteDetalle from './pages/PacienteDetalle';
 import ForgotPassword from './pages/ForgotPassword';
 import CambiarPasswordDefault from './pages/CambiarPasswordDefault';
 import ResetPassword from './pages/ResetPassword';
+import Auditoria from './pages/Auditoria';
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* RUTAS PUBLICAS */}
         <Route path="/" element={<Presentacion />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
-        {/* RUTAS PROTEGIDAS */}
         <Route element={<ProtectedRoute />}>
-          {/* Esta ruta va fuera del Layout para que no muestre menu lateral ni dashboard */}
           <Route path="/cambiar-password-default" element={<CambiarPasswordDefault />} />
 
-          {/* Rutas protegidas con Layout principal */}
           <Route element={<Layout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/citas" element={<Citas />} />
@@ -45,10 +39,10 @@ export default function App() {
             <Route path="/psicologos" element={<Psicologos />} />
             <Route path="/facturacion" element={<Facturacion />} />
             <Route path="/configuracion" element={<Configuracion />} />
+            <Route path="/auditoria" element={<Auditoria />} />
           </Route>
         </Route>
 
-        {/* RUTA COMODIN */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

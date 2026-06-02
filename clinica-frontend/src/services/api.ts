@@ -11,8 +11,12 @@ import type {
   Parentesco,
   MotivoCancelacion,
   CreateSesionDTO,
-  Stats
+  Stats,
 } from '../types';
+import type {
+  AuditoriaListaResponse,
+  AuditoriaResumen,
+} from '../types/auditoria';
 
 const API_URL = 'http://localhost:3000/api';
 
@@ -244,6 +248,11 @@ export const api = {
     create: (modelo: string, nombre: string) => request<unknown>(`/config/${modelo}`, { method: 'POST', body: JSON.stringify({ nombre }) }),
     update: (modelo: string, id: number, nombre: string) => request<unknown>(`/config/${modelo}/${id}`, { method: 'PUT', body: JSON.stringify({ nombre }) }),
     delete: (modelo: string, id: number) => request<unknown>(`/config/${modelo}/${id}`, { method: 'DELETE' }),
+  },
+
+  auditoria: {
+    getAll: (queryParams: string) => request<AuditoriaListaResponse>(`/auditoria?${queryParams}`),
+    resumen: () => request<AuditoriaResumen>('/auditoria/resumen'),
   },
 
   general: {

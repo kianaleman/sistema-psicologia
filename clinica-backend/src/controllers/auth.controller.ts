@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { AuthService } from '../services/auth.service.js';
+import { AuditoriaService } from '../services/auditoria.service.js';
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   return error instanceof Error ? error.message : fallback;
@@ -8,10 +9,38 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const nuevoUsuario = await AuthService.register(req.body);
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'USUARIO_REGISTRADO',
+      modulo: 'AUTH',
+      entidad: 'Usuario',
+      idEntidad: nuevoUsuario.id,
+      resultado: 'EXITO',
+      codigoEstado: 201,
+      mensaje: 'Usuario registrado correctamente.',
+      datosDespues: {
+        id: nuevoUsuario.id,
+        email: nuevoUsuario.email,
+        rol: nuevoUsuario.rol,
+      },
+    });
+
     res.status(201).json(nuevoUsuario);
   } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al registrar usuario');
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'USUARIO_REGISTRADO',
+      modulo: 'AUTH',
+      entidad: 'Usuario',
+      resultado: 'FALLO',
+      codigoEstado: 400,
+      mensaje: message,
+      datosDespues: req.body,
+    });
+
     res.status(400).json({
-      error: getErrorMessage(error, 'Error al registrar usuario'),
+      error: message,
     });
   }
 };
@@ -19,16 +48,46 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const result = await AuthService.login(req.body);
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      idUsuario: result.usuario.id,
+      usuarioEmail: result.usuario.email,
+      roles: result.usuario.roles,
+      accion: 'LOGIN_EXITOSO',
+      modulo: 'AUTH',
+      entidad: 'Usuario',
+      idEntidad: result.usuario.id,
+      resultado: 'EXITO',
+      codigoEstado: 200,
+      mensaje: 'Inicio de sesión exitoso.',
+      datosDespues: {
+        email: result.usuario.email,
+        roles: result.usuario.roles,
+        requiereCambioPassword: result.requiereCambioPassword,
+      },
+    });
+
     res.json(result);
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Error interno al intentar iniciar sesión');
+    const status = message === 'Credenciales inválidas' || message === 'Esta cuenta ha sido desactivada'
+      ? 401
+      : 500;
 
-    if (message === 'Credenciales inválidas' || message === 'Esta cuenta ha sido desactivada') {
-      res.status(401).json({ error: message });
-      return;
-    }
+    await AuditoriaService.registrarDesdeRequest(req, {
+      usuarioEmail: typeof req.body?.email === 'string' ? req.body.email : null,
+      accion: 'LOGIN_FALLIDO',
+      modulo: 'AUTH',
+      entidad: 'Usuario',
+      resultado: 'FALLO',
+      codigoEstado: status,
+      mensaje: message,
+      datosDespues: {
+        email: typeof req.body?.email === 'string' ? req.body.email : null,
+      },
+    });
 
-    res.status(500).json({ error: message });
+    res.status(status).json({ error: message });
   }
 };
 
@@ -52,10 +111,32 @@ export const cambiarPasswordForzado = async (req: Request, res: Response): Promi
       passwordNuevaRaw,
     });
 
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'PASSWORD_TEMPORAL_CAMBIADA',
+      modulo: 'AUTH',
+      entidad: 'Usuario',
+      idEntidad: idUsuario,
+      resultado: 'EXITO',
+      codigoEstado: 200,
+      mensaje: 'Contraseña temporal cambiada correctamente.',
+    });
+
     res.json(result);
   } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al cambiar la contraseña');
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'PASSWORD_TEMPORAL_CAMBIADA',
+      modulo: 'AUTH',
+      entidad: 'Usuario',
+      idEntidad: req.user?.idUsuario || null,
+      resultado: 'FALLO',
+      codigoEstado: 400,
+      mensaje: message,
+    });
+
     res.status(400).json({
-      error: getErrorMessage(error, 'Error al cambiar la contraseña'),
+      error: message,
     });
   }
 };
@@ -73,10 +154,35 @@ export const restablecerPasswordAdmin = async (req: Request, res: Response): Pro
       idUsuario,
     });
 
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'PASSWORD_RESTABLECIDA_ADMIN',
+      modulo: 'AUTH',
+      entidad: 'Usuario',
+      idEntidad: idUsuario,
+      resultado: 'EXITO',
+      codigoEstado: 200,
+      mensaje: 'Contraseña restablecida por administrador.',
+      datosDespues: {
+        usuario: result.usuario,
+      },
+    });
+
     res.json(result);
   } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al restablecer la contraseña del usuario');
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'PASSWORD_RESTABLECIDA_ADMIN',
+      modulo: 'AUTH',
+      entidad: 'Usuario',
+      idEntidad: Number(req.params.idUsuario) || null,
+      resultado: 'FALLO',
+      codigoEstado: 400,
+      mensaje: message,
+    });
+
     res.status(400).json({
-      error: getErrorMessage(error, 'Error al restablecer la contraseña del usuario'),
+      error: message,
     });
   }
 };
@@ -91,9 +197,35 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
     }
 
     const result = await AuthService.forgotPassword(email);
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      usuarioEmail: email,
+      accion: 'SOLICITUD_RECUPERACION_PASSWORD',
+      modulo: 'AUTH',
+      entidad: 'Usuario',
+      resultado: 'EXITO',
+      codigoEstado: 200,
+      mensaje: 'Solicitud de recuperación de contraseña procesada.',
+      datosDespues: {
+        email,
+      },
+    });
+
     res.json(result);
-  } catch {
-    res.status(500).json({ error: 'Hubo un problema al intentar enviar el correo' });
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Hubo un problema al intentar enviar el correo');
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      usuarioEmail: typeof req.body?.email === 'string' ? req.body.email : null,
+      accion: 'SOLICITUD_RECUPERACION_PASSWORD',
+      modulo: 'AUTH',
+      entidad: 'Usuario',
+      resultado: 'FALLO',
+      codigoEstado: 500,
+      mensaje: message,
+    });
+
+    res.status(500).json({ error: message });
   }
 };
 
@@ -110,10 +242,31 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     }
 
     const result = await AuthService.resetPassword(token, passwordNuevaRaw);
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'PASSWORD_RESTABLECIDA_ENLACE',
+      modulo: 'AUTH',
+      entidad: 'Usuario',
+      resultado: 'EXITO',
+      codigoEstado: 200,
+      mensaje: 'Contraseña restablecida desde enlace de recuperación.',
+    });
+
     res.json(result);
   } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al restablecer contraseña');
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'PASSWORD_RESTABLECIDA_ENLACE',
+      modulo: 'AUTH',
+      entidad: 'Usuario',
+      resultado: 'FALLO',
+      codigoEstado: 400,
+      mensaje: message,
+    });
+
     res.status(400).json({
-      error: getErrorMessage(error, 'Error al restablecer contraseña'),
+      error: message,
     });
   }
 };
