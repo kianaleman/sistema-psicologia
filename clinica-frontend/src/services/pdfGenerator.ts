@@ -219,11 +219,11 @@ const getNombrePacienteRecibo = (recibo: ReciboPDF) => {
   return getNombrePaciente(recibo.Cita?.Paciente);
 };
 
-const getNombrePsicologo = (psicologo?: PsicologoPDF | null) => {
-  const nombre = `${psicologo?.Nombre || ''} ${psicologo?.Apellido || ''}`.trim();
+// const getNombrePsicologo = (psicologo?: PsicologoPDF | null) => {
+//   const nombre = `${psicologo?.Nombre || ''} ${psicologo?.Apellido || ''}`.trim();
 
-  return nombre || 'Especialista';
-};
+//   return nombre || 'Especialista';
+// };
 
 const getTipoCita = (tipo?: TipoDeCitaPDF | null) => {
   return tipo?.Nombre_DeCita || tipo?.NombreDeCita || 'Consulta General';
@@ -279,9 +279,9 @@ const getDivisaSymbol = (recibo: ReciboPDF) => {
   return getDivisaCodigo(recibo) === 'USD' ? '$' : 'C$';
 };
 
-const formatearMonto = (monto?: number | string | null, simbolo = 'C$') => {
-  return `${simbolo} ${Number(monto || 0).toFixed(2)}`;
-};
+// const formatearMonto = (monto?: number | string | null, simbolo = 'C$') => {
+//   return `${simbolo} ${Number(monto || 0).toFixed(2)}`;
+// };
 
 const formatearFecha = (fecha?: string | null, opciones?: Intl.DateTimeFormatOptions) => {
   if (!fecha) return 'N/A';

@@ -1,0 +1,139 @@
+﻿feat(roles): implementar control de acceso por roles en backend y frontend
+
+Backend:
+- clinica-backend/src/middlewares/auth.middleware.ts
+  - Agrega payload tipado del usuario autenticado.
+  - Incluye roles, idPsicologo y banderas esAdmin, esPsicologo y esRecepcion.
+  - Agrega middlewares para validar roles, contraseña temporal y psicólogo vinculado.
+  - Corrige validación estricta de idPsicologo para evitar null en TypeScript.
+
+- clinica-backend/src/routes/auth.routes.ts
+  - Protege el registro de usuarios para que solo Administrador pueda ejecutarlo.
+  - Mantiene el cambio de contraseña temporal accesible antes del bloqueo general.
+
+- clinica-backend/src/services/auth.service.ts
+  - Incluye roles y banderas de permisos en la sesión del usuario.
+  - Valida el rol al registrar usuarios.
+  - Obliga a vincular psicólogo cuando el rol seleccionado es Psicologo.
+  - Mantiene soporte para contraseña temporal y cambio obligatorio.
+
+- clinica-backend/src/controllers/cita.controller.ts
+  - Pasa req.user hacia el servicio de citas.
+  - Aplica permisos por usuario autenticado en consulta, creación, edición y cancelación.
+
+- clinica-backend/src/services/cita.service.ts
+  - Filtra citas según rol.
+  - Administrador y Recepcion pueden consultar agenda general.
+  - Psicologo solo consulta y gestiona citas asociadas a su ID_Psicologo.
+  - Agrega constantes de estados de cita y motivo de inasistencia.
+  - Implementa procesamiento automático de inasistencias como No Procesada.
+  - Excluye citas Canceladas y No Procesadas de validaciones de disponibilidad.
+
+- clinica-backend/src/controllers/sesion.controller.ts
+  - Pasa req.user al servicio de sesiones.
+  - Aplica validación de permisos al registrar y consultar sesiones.
+
+- clinica-backend/src/services/sesion.service.ts
+  - Restringe sesiones clínicas por rol.
+  - Administrador puede consultar y registrar sesiones.
+  - Psicologo solo puede gestionar sesiones de sus propias citas.
+  - Recepcion no puede consultar ni registrar sesiones clínicas.
+
+- clinica-backend/src/controllers/paciente.controller.ts
+  - Pasa req.user al servicio de pacientes.
+  - Aplica permisos en listado, expediente, historial, creación y actualización.
+
+- clinica-backend/src/services/paciente.service.ts
+  - Permite a Administrador y Recepcion gestionar pacientes.
+  - Permite a Psicologo consultar pacientes y expediente limitado.
+  - Oculta sesiones clínicas sensibles a Recepcion.
+  - Filtra citas y sesiones del expediente según ID_Psicologo cuando el usuario es Psicologo.
+
+- clinica-backend/src/controllers/tutor.controller.ts
+  - Pasa req.user al servicio de tutores.
+  - Corrige construcción de payload para exactOptionalPropertyTypes.
+  - Evita enviar propiedades opcionales como undefined.
+
+- clinica-backend/src/services/tutor.service.ts
+  - Permite a Administrador y Recepcion gestionar tutores.
+  - Permite a Psicologo consultar tutores sin modificarlos.
+  - Mantiene relaciones de ocupación, estado civil, dirección y paciente menor.
+
+- clinica-backend/src/controllers/factura.controller.ts
+  - Pasa req.user al servicio de facturación.
+  - Agrega manejo de errores 401, 403 y 500 según permisos.
+
+- clinica-backend/src/services/factura.service.ts
+  - Filtra recibos según rol.
+  - Administrador y Recepcion ven toda la facturación.
+  - Psicologo solo ve recibos asociados a sus propias citas.
+
+- clinica-backend/src/controllers/general.controller.ts
+  - Pasa req.user a catálogos, dashboard, historial y gráficos.
+  - Maneja errores de permisos en endpoints generales.
+
+- clinica-backend/src/services/general.service.ts
+  - Filtra KPIs, ingresos, gráficos e historial según rol.
+  - Limita historial clínico general a Administrador y Psicologo.
+  - Restringe historial clínico para Recepcion.
+  - Limita catálogo de psicólogos al perfil propio cuando el usuario es Psicologo.
+
+- clinica-backend/src/cron/scheduler.ts
+  - Corrige import ESM usando extensión .js.
+  - Programa revisión automática de citas pendientes cada minuto.
+  - Ejecuta procesamiento de inasistencias desde CitaService.
+
+Frontend:
+- clinica-frontend/src/components/Layout.tsx
+  - Oculta opciones del menú según rol.
+  - Administrador ve todos los módulos.
+  - Psicologo ve dashboard, agenda, pacientes, historial, finanzas y tutores.
+  - Recepcion ve dashboard, agenda, pacientes, finanzas y tutores.
+  - Limpia token y usuario al cerrar sesión.
+
+- clinica-frontend/src/components/ProtectedRoute.tsx
+  - Bloquea rutas no autorizadas por rol.
+  - Redirige a dashboard cuando el usuario intenta entrar a módulos sin permiso.
+  - Mantiene protección para cambio obligatorio de contraseña temporal.
+
+- clinica-frontend/src/services/api.ts
+  - Actualiza UsuarioSesion con banderas de rol.
+  - Maneja 401 limpiando sesión.
+  - Maneja 403 por contraseña temporal redirigiendo a cambiar contraseña.
+  - Mantiene endpoints existentes para pacientes, tutores, psicólogos, citas, sesiones, facturas y general.
+
+- clinica-frontend/src/hooks/useLogin.ts
+  - Limpia sesión anterior antes de iniciar sesión.
+  - Guarda token y usuario autenticado.
+  - Redirige a cambio de contraseña cuando el backend lo requiere.
+  - Redirige al dashboard cuando el login es válido.
+
+- clinica-frontend/src/components/citas/CancelarCitaModal.tsx
+  - Corrige campos del catálogo MotivoCancelacion.
+  - Usa ID_MotivoCancelacion y Motivo.
+  - Evita setState síncrono innecesario dentro del effect.
+  - Agrega limpieza controlada del formulario al cerrar o confirmar.
+
+- clinica-frontend/src/components/citas/CitaFormModal.tsx
+  - Corrige uso de cargandoHorarios.
+  - Muestra estado de carga mientras consulta disponibilidad.
+  - Evita actualizar estado si la consulta de horarios queda obsoleta.
+
+- clinica-frontend/src/pages/Configuracion.tsx
+  - Convierte el ID dinámico a number antes de eliminar registros.
+  - Corrige error de TypeScript por string | number.
+
+- clinica-frontend/src/pages/Dashboard.tsx
+  - Corrige accesos opcionales a Paciente, Psicologo y TipoDeCita.
+  - Usa Nombre_DeCita según el tipo actual.
+  - Evita errores cuando una cita no trae relaciones completas.
+  - Deshabilita el enlace al expediente si no existe ID_Paciente.
+
+- clinica-frontend/src/services/pdfGenerator.ts
+  - Elimina funciones no utilizadas que bloqueaban el build.
+  - Mantiene generación de PDFs institucionales.
+
+Validaciones:
+- Backend compila con pnpm build.
+- Frontend compila con pnpm build.
+- Se excluyen artefactos generados por TypeScript del commit.

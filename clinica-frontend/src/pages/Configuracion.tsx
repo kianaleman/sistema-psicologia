@@ -92,7 +92,7 @@ export default function Configuracion() {
                           <button 
                             className="btn btn-sm btn-ghost text-red-500 hover:bg-red-50 tooltip" 
                             data-tip="Eliminar" 
-                            onClick={() => handleDelete(item[activeTab.idField])}
+                            onClick={() => handleDelete(Number(item[activeTab.idField]))}
                           >
                              <Icons.Trash />
                           </button>

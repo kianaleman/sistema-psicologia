@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import type { AuthUserPayload } from '../middlewares/auth.middleware.js';
 
 const prisma = new PrismaClient();
 
@@ -31,6 +32,45 @@ interface CreateSesionDTO {
   ExploracionesIds?: number[];
   Tratamiento?: TratamientoDTO;
 }
+
+const validarUsuarioAutenticado = (usuario?: AuthUserPayload) => {
+  if (!usuario) {
+    throw new Error('Acceso no autorizado.');
+  }
+
+  return usuario;
+};
+
+const validarPsicologoVinculado = (usuario: AuthUserPayload) => {
+  if (!usuario.idPsicologo) {
+    throw new Error('El usuario psicólogo no tiene un perfil de psicólogo vinculado.');
+  }
+
+  return usuario.idPsicologo;
+};
+
+const validarPuedeGestionarSesion = (
+  cita: { ID_Psicologo: number },
+  usuario?: AuthUserPayload
+) => {
+  const usuarioActual = validarUsuarioAutenticado(usuario);
+
+  if (usuarioActual.esAdmin) {
+    return;
+  }
+
+  if (usuarioActual.esPsicologo) {
+    const idPsicologo = validarPsicologoVinculado(usuarioActual);
+
+    if (cita.ID_Psicologo !== idPsicologo) {
+      throw new Error('No tiene permisos para registrar sesiones de una cita asignada a otro psicólogo.');
+    }
+
+    return;
+  }
+
+  throw new Error('No tiene permisos para registrar sesiones clínicas.');
+};
 
 const validarId = (value: number, field: string) => {
   if (!Number.isInteger(value) || value <= 0) {
@@ -72,7 +112,6 @@ const construirFecha = (value: string, field: string) => {
     const hora = Number(timeOnlyMatch[1]);
     const minuto = Number(timeOnlyMatch[2]);
     const segundo = Number(timeOnlyMatch[3] || 0);
-
     const fecha = construirFechaDesdeHora(hora, minuto, segundo);
 
     if (!fecha) {
@@ -104,12 +143,14 @@ const construirNumeroExpediente = (pacienteId: number) => {
 };
 
 export const SesionService = {
-  create: async (data: CreateSesionDTO) => {
+  create: async (data: CreateSesionDTO, usuario?: AuthUserPayload) => {
     validarId(data.ID_Cita, 'ID_Cita');
 
     return await prisma.$transaction(async (tx) => {
       const citaActual = await tx.cita.findUnique({
-        where: { ID_Cita: data.ID_Cita },
+        where: {
+          ID_Cita: data.ID_Cita,
+        },
         select: {
           ID_Cita: true,
           ID_Paciente: true,
@@ -125,6 +166,8 @@ export const SesionService = {
       if (!citaActual) {
         throw new Error('La cita proporcionada no existe.');
       }
+
+      validarPuedeGestionarSesion(citaActual, usuario);
 
       if (citaActual.Sesion) {
         throw new Error('Esta cita ya tiene una sesión registrada.');
@@ -244,25 +287,55 @@ export const SesionService = {
       }
 
       await tx.cita.update({
-        where: { ID_Cita: data.ID_Cita },
-        data: { ID_EstadoCita: 2 },
+        where: {
+          ID_Cita: data.ID_Cita,
+        },
+        data: {
+          ID_EstadoCita: 2,
+        },
       });
 
       return nuevaSesion;
     });
   },
 
-  findByParams: async (pacienteId: number, psicologoId: number) => {
+  findByParams: async (
+    pacienteId: number,
+    psicologoId: number,
+    usuario?: AuthUserPayload
+  ) => {
+    const usuarioActual = validarUsuarioAutenticado(usuario);
+
+    if (!usuarioActual.esAdmin && !usuarioActual.esPsicologo) {
+      throw new Error('No tiene permisos para consultar sesiones clínicas.');
+    }
+
+    let idPsicologoConsulta = psicologoId;
+
+    if (usuarioActual.esPsicologo) {
+      const idPsicologo = validarPsicologoVinculado(usuarioActual);
+
+      if (psicologoId !== idPsicologo) {
+        throw new Error('No tiene permisos para consultar sesiones de otro psicólogo.');
+      }
+
+      idPsicologoConsulta = idPsicologo;
+    }
+
     const cita = await prisma.cita.findFirst({
       where: {
         ID_Paciente: pacienteId,
-        ID_Psicologo: psicologoId,
+        ID_Psicologo: idPsicologoConsulta,
         ID_EstadoCita: 2,
       },
-      orderBy: { FechaCita: 'desc' },
+      orderBy: {
+        FechaCita: 'desc',
+      },
       include: {
         Sesion: {
-          include: { Expediente: true },
+          include: {
+            Expediente: true,
+          },
         },
       },
     });

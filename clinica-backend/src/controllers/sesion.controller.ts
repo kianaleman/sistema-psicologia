@@ -67,6 +67,7 @@ const normalizarTratamiento = (value: unknown): TratamientoDTO | undefined => {
   };
 
   const fechaFin = toStringValue(value.FechaFin);
+
   if (fechaFin) {
     tratamientoBase.FechaFin = fechaFin;
   }
@@ -105,6 +106,7 @@ const normalizarBody = (body: unknown): CreateSesionDTO | null => {
   };
 
   const tratamiento = normalizarTratamiento(body.Tratamiento);
+
   if (tratamiento) {
     payload.Tratamiento = tratamiento;
   }
@@ -144,17 +146,36 @@ const validarPayload = (payload: CreateSesionDTO): string | null => {
   return null;
 };
 
-const isClientError = (message: string) => {
-  return [
-    'requerido',
-    'requerida',
-    'inválido',
-    'inválida',
-    'no existe',
-    'no pertenece',
-    'ya tiene',
-    'formato inválido',
-  ].some((pattern) => message.toLowerCase().includes(pattern));
+const getErrorMessage = (error: unknown, fallback: string) => {
+  return error instanceof Error ? error.message : fallback;
+};
+
+const getStatusFromError = (message: string) => {
+  const lowerMessage = message.toLowerCase();
+
+  if (lowerMessage.includes('no autorizado')) return 401;
+
+  if (
+    lowerMessage.includes('no tiene permisos') ||
+    lowerMessage.includes('otro psicólogo') ||
+    lowerMessage.includes('no tiene un perfil')
+  ) {
+    return 403;
+  }
+
+  if (
+    lowerMessage.includes('requerido') ||
+    lowerMessage.includes('requerida') ||
+    lowerMessage.includes('inválido') ||
+    lowerMessage.includes('inválida') ||
+    lowerMessage.includes('no existe') ||
+    lowerMessage.includes('ya tiene') ||
+    lowerMessage.includes('formato inválido')
+  ) {
+    return 400;
+  }
+
+  return 500;
 };
 
 export const createSesion = async (req: Request, res: Response): Promise<void> => {
@@ -173,17 +194,13 @@ export const createSesion = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    const result = await SesionService.create(payload);
+    const result = await SesionService.create(payload, req.user);
 
     res.status(201).json(result);
   } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al guardar la sesión completa');
     console.error(error);
-
-    const message = error instanceof Error
-      ? error.message
-      : 'Error al guardar la sesión completa';
-
-    res.status(isClientError(message) ? 400 : 500).json({ error: message });
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };
 
@@ -202,7 +219,7 @@ export const searchSesion = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    const sesion = await SesionService.findByParams(pacienteId, psicologoId);
+    const sesion = await SesionService.findByParams(pacienteId, psicologoId, req.user);
 
     if (sesion) {
       res.json(sesion);
@@ -211,7 +228,8 @@ export const searchSesion = async (req: Request, res: Response): Promise<void> =
 
     res.status(404).json({ error: 'Sesión no encontrada' });
   } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error en búsqueda de sesión');
     console.error(error);
-    res.status(500).json({ error: 'Error en búsqueda de sesión' });
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };

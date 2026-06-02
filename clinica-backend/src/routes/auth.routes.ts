@@ -6,7 +6,12 @@ import {
   forgotPassword,
   resetPassword,
 } from '../controllers/auth.controller.js';
-import { verificarToken } from '../middlewares/auth.middleware.js';
+import {
+  bloquearSiRequiereCambioPassword,
+  permitirRoles,
+  ROLES,
+  verificarToken,
+} from '../middlewares/auth.middleware.js';
 import { validateSchema } from '../middlewares/validator.middleware.js';
 import {
   registerSchema,
@@ -25,6 +30,9 @@ router.post('/reset-password', validateSchema(resetPasswordSchema), resetPasswor
 router.use(verificarToken);
 
 router.post('/cambiar-password-default', validateSchema(cambiarPasswordSchema), cambiarPasswordForzado);
-router.post('/register', validateSchema(registerSchema), register);
+
+router.use(bloquearSiRequiereCambioPassword);
+
+router.post('/register', permitirRoles(ROLES.ADMINISTRADOR), validateSchema(registerSchema), register);
 
 export default router;

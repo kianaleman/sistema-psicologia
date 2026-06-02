@@ -1,4 +1,5 @@
 import { PrismaClient, type Prisma } from '@prisma/client';
+import type { AuthUserPayload } from '../middlewares/auth.middleware.js';
 
 const prisma = new PrismaClient();
 
@@ -53,6 +54,34 @@ const tutorInclude = {
   },
 } satisfies Prisma.TutorInclude;
 
+const validarUsuarioAutenticado = (usuario?: AuthUserPayload) => {
+  if (!usuario) {
+    throw new Error('Acceso no autorizado.');
+  }
+
+  return usuario;
+};
+
+const validarPuedeVerTutores = (usuario?: AuthUserPayload) => {
+  const usuarioActual = validarUsuarioAutenticado(usuario);
+
+  if (usuarioActual.esAdmin || usuarioActual.esRecepcion || usuarioActual.esPsicologo) {
+    return usuarioActual;
+  }
+
+  throw new Error('No tiene permisos para consultar tutores.');
+};
+
+const validarPuedeGestionarTutores = (usuario?: AuthUserPayload) => {
+  const usuarioActual = validarUsuarioAutenticado(usuario);
+
+  if (usuarioActual.esAdmin || usuarioActual.esRecepcion) {
+    return usuarioActual;
+  }
+
+  throw new Error('No tiene permisos para registrar o modificar tutores.');
+};
+
 const validarFormatoCedula = (cedula: string) => {
   const regex = /^\d{3}-\d{6}-\d{4}[A-Z]$/;
 
@@ -85,7 +114,9 @@ const obtenerNumeroValido = (...values: Array<number | string | null | undefined
 };
 
 export const TutorService = {
-  getAll: async () => {
+  getAll: async (usuario?: AuthUserPayload) => {
+    validarPuedeVerTutores(usuario);
+
     return await prisma.tutor.findMany({
       include: tutorInclude,
       orderBy: {
@@ -94,8 +125,10 @@ export const TutorService = {
     });
   },
 
-  update: async (id: number, data: UpdateTutorDTO) => {
+  update: async (id: number, data: UpdateTutorDTO, usuario?: AuthUserPayload) => {
+    validarPuedeGestionarTutores(usuario);
     validarFormatoCedula(data.No_Cedula);
+
     const telefonoLimpio = validarTelefonoNica(data.No_Telefono);
 
     const whereClause: Prisma.TutorWhereInput = {
@@ -196,7 +229,12 @@ export const TutorService = {
   },
 };
 
-export const createTutorService = async (tutorData: Prisma.TutorUncheckedCreateInput) => {
+export const createTutorService = async (
+  tutorData: Prisma.TutorUncheckedCreateInput,
+  usuario?: AuthUserPayload
+) => {
+  validarPuedeGestionarTutores(usuario);
+
   return await prisma.tutor.create({
     data: tutorData,
     include: tutorInclude,

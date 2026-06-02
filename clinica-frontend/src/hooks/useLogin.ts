@@ -15,6 +15,9 @@ export function useLogin() {
     try {
       setLoading(true);
 
+      localStorage.removeItem('token');
+      localStorage.removeItem('usuario');
+
       const response = await api.auth.login({
         email,
         passwordRaw: password,

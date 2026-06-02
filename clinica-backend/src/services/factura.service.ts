@@ -1,69 +1,86 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
+import type { AuthUserPayload } from '../middlewares/auth.middleware.js';
 
 const prisma = new PrismaClient();
 
-export const FacturaService = {
-  
-  getAll: async () => {
-    return await prisma.recibo.findMany({
-      include: {
-        // Datos financieros directos en el recibo
-        MetodoPago: true,
-        Divisa: true,
-        Banco: true, 
-        Cita: {
-          include: {
-            // Estructura crítica para identificar al cliente
-            Paciente: {
-              include: {
-                PacienteAdulto: true, // Cédula/Teléfono si es adulto
-                Paciente_Menor: {     // Renombrado por el nuevo esquema
-                  include: {
-                    Tutor_PacienteMenor: { // Navegación por tabla intermedia
-                      include: {
-                        Tutor: true 
-                      }
-                    }
-                  }
-                }
-              }
-            },
-            Psicologo: true,
-            TipoDeCita: true
-          }
-        }
+const validarUsuarioAutenticado = (usuario?: AuthUserPayload) => {
+  if (!usuario) {
+    throw new Error('Acceso no autorizado.');
+  }
+
+  return usuario;
+};
+
+const validarPsicologoVinculado = (usuario: AuthUserPayload) => {
+  if (!usuario.idPsicologo) {
+    throw new Error('El usuario psicólogo no tiene un perfil de psicólogo vinculado.');
+  }
+
+  return usuario.idPsicologo;
+};
+
+const construirWhereRecibosPermitidos = (usuario?: AuthUserPayload): Prisma.ReciboWhereInput => {
+  const usuarioActual = validarUsuarioAutenticado(usuario);
+
+  if (usuarioActual.esAdmin || usuarioActual.esRecepcion) {
+    return {};
+  }
+
+  if (usuarioActual.esPsicologo) {
+    return {
+      Cita: {
+        ID_Psicologo: validarPsicologoVinculado(usuarioActual),
       },
-      orderBy: { Cod_Recibo: 'desc' } // Renombrado de Cod_Factura
+    };
+  }
+
+  throw new Error('No tiene permisos para consultar facturación.');
+};
+
+const reciboInclude = {
+  MetodoPago: true,
+  Divisa: true,
+  Banco: true,
+  Cita: {
+    include: {
+      Paciente: {
+        include: {
+          PacienteAdulto: true,
+          Paciente_Menor: {
+            include: {
+              Tutor_PacienteMenor: {
+                include: {
+                  Tutor: true,
+                },
+              },
+            },
+          },
+        },
+      },
+      Psicologo: true,
+      TipoDeCita: true,
+    },
+  },
+} satisfies Prisma.ReciboInclude;
+
+export const FacturaService = {
+  getAll: async (usuario?: AuthUserPayload) => {
+    return await prisma.recibo.findMany({
+      where: construirWhereRecibosPermitidos(usuario),
+      include: reciboInclude,
+      orderBy: {
+        Cod_Recibo: 'desc',
+      },
     });
   },
 
-  // Agrego este método por si necesitas imprimir un recibo individual en el futuro
-  getById: async (id: number) => {
-    return await prisma.recibo.findUnique({
-      where: { Cod_Recibo: id },
-      include: {
-        MetodoPago: true,
-        Divisa: true,
-        Banco: true,
-        Cita: {
-          include: {
-            Paciente: {
-              include: {
-                PacienteAdulto: true,
-                Paciente_Menor: { 
-                  include: { 
-                    Tutor_PacienteMenor: { 
-                      include: { Tutor: true } 
-                    } 
-                  } 
-                }
-              }
-            },
-            Psicologo: true,
-            TipoDeCita: true
-          }
-        }
-      }
+  getById: async (id: number, usuario?: AuthUserPayload) => {
+    return await prisma.recibo.findFirst({
+      where: {
+        Cod_Recibo: id,
+        ...construirWhereRecibosPermitidos(usuario),
+      },
+      include: reciboInclude,
     });
-  }
+  },
 };

@@ -15,3 +15,16 @@ build/
 # Logs y sistemas
 *.log
 .DS_Store
+
+
+# Archivos generados por TypeScript en backend
+clinica-backend/**/*.js
+clinica-backend/**/*.js.map
+clinica-backend/**/*.d.ts
+clinica-backend/**/*.d.ts.map
+
+# Build frontend
+clinica-frontend/dist/
+
+# Build backend, si luego configuras outDir
+clinica-backend/dist/

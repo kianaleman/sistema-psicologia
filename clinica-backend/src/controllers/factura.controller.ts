@@ -1,36 +1,56 @@
 import type { Request, Response } from 'express';
 import { FacturaService } from '../services/factura.service.js';
 
-// GET: Obtener historial de recibos/facturación completo
+const getErrorMessage = (error: unknown, fallback: string) => {
+  return error instanceof Error ? error.message : fallback;
+};
+
+const getStatusFromError = (message: string) => {
+  const lowerMessage = message.toLowerCase();
+
+  if (lowerMessage.includes('no autorizado')) return 401;
+
+  if (
+    lowerMessage.includes('no tiene permisos') ||
+    lowerMessage.includes('no tiene un perfil')
+  ) {
+    return 403;
+  }
+
+  return 500;
+};
+
 export const getFacturas = async (req: Request, res: Response): Promise<void> => {
   try {
-    const facturas = await FacturaService.getAll();
+    const facturas = await FacturaService.getAll(req.user);
     res.json(facturas);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al obtener el historial de recibos');
     console.error(error);
-    res.status(500).json({ error: 'Error al obtener el historial de recibos' });
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };
 
-// GET: Obtener un recibo/factura individual
 export const getFacturaById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const id = parseInt(req.params.id as string);
-    if (isNaN(id)) {
-        res.status(400).json({ error: 'El ID proporcionado no es válido' });
-        return;
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: 'El ID proporcionado no es válido' });
+      return;
     }
 
-    const factura = await FacturaService.getById(id);
-    
+    const factura = await FacturaService.getById(id, req.user);
+
     if (!factura) {
-        res.status(404).json({ error: 'Recibo no encontrado' });
-        return;
+      res.status(404).json({ error: 'Recibo no encontrado' });
+      return;
     }
-    
+
     res.json(factura);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al obtener el detalle del recibo');
     console.error(error);
-    res.status(500).json({ error: 'Error al obtener el detalle del recibo' });
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };

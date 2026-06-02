@@ -1,17 +1,78 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
+import type { AuthUserPayload } from '../middlewares/auth.middleware.js';
 
 const prisma = new PrismaClient();
 
-export const GeneralService = {
+const validarUsuarioAutenticado = (usuario?: AuthUserPayload) => {
+  if (!usuario) {
+    throw new Error('Acceso no autorizado.');
+  }
 
-  // 1. Catálogos Generales
-  getCatalogos: async () => {
+  return usuario;
+};
+
+const validarPsicologoVinculado = (usuario: AuthUserPayload) => {
+  if (!usuario.idPsicologo) {
+    throw new Error('El usuario psicólogo no tiene un perfil de psicólogo vinculado.');
+  }
+
+  return usuario.idPsicologo;
+};
+
+const whereCitasPermitidas = (usuario: AuthUserPayload): Prisma.CitaWhereInput => {
+  if (usuario.esAdmin || usuario.esRecepcion) {
+    return {};
+  }
+
+  if (usuario.esPsicologo) {
+    return {
+      ID_Psicologo: validarPsicologoVinculado(usuario),
+    };
+  }
+
+  throw new Error('No tiene permisos para consultar información de citas.');
+};
+
+const whereRecibosPermitidos = (usuario: AuthUserPayload): Prisma.ReciboWhereInput => {
+  if (usuario.esAdmin || usuario.esRecepcion) {
+    return {};
+  }
+
+  if (usuario.esPsicologo) {
+    return {
+      Cita: {
+        ID_Psicologo: validarPsicologoVinculado(usuario),
+      },
+    };
+  }
+
+  throw new Error('No tiene permisos para consultar información financiera.');
+};
+
+const whereHistorialPermitido = (usuario: AuthUserPayload): Prisma.CitaWhereInput => {
+  if (usuario.esAdmin) {
+    return {};
+  }
+
+  if (usuario.esPsicologo) {
+    return {
+      ID_Psicologo: validarPsicologoVinculado(usuario),
+    };
+  }
+
+  throw new Error('No tiene permisos para consultar historial clínico.');
+};
+
+export const GeneralService = {
+  getCatalogos: async (usuario?: AuthUserPayload) => {
+    const usuarioActual = validarUsuarioAutenticado(usuario);
+
     const [
-      ocupaciones, 
-      estadosCiviles, 
-      parentescos, 
-      tutores, 
-      especialidades, 
+      ocupaciones,
+      estadosCiviles,
+      parentescos,
+      tutores,
+      especialidades,
       viasAdministracion,
       tiposTerapia,
       exploraciones,
@@ -23,194 +84,322 @@ export const GeneralService = {
       municipios,
       bancos,
       divisas,
-      codigosTelefono // Nuevos catálogos agregados para el frontend
+      codigosTelefono,
     ] = await Promise.all([
       prisma.ocupacion.findMany(),
       prisma.estadoCivil.findMany(),
       prisma.parentesco.findMany(),
-      prisma.tutor.findMany({ 
-          // Ajustado a la tabla intermedia
-          include: { Tutor_PacienteMenor: { include: { Parentesco: true } } } 
+      prisma.tutor.findMany({
+        include: {
+          Tutor_PacienteMenor: {
+            include: {
+              Parentesco: true,
+            },
+          },
+        },
       }),
       prisma.especialidadPsicologo.findMany(),
-      // prisma.estadoDeActividad.findMany(), <-- Eliminado, ahora usamos booleano 'Activo'
       prisma.viaAdministracion.findMany(),
-      prisma.tipoDe_Terapia.findMany(), // Renombrado
+      prisma.tipoDe_Terapia.findMany(),
       prisma.exploracionPsicologica.findMany(),
       prisma.tipoDeCita.findMany(),
       prisma.estadoCita.findMany(),
       prisma.metodoPago.findMany(),
       prisma.pais.findMany(),
       prisma.departamento.findMany(),
-      prisma.municipio.findMany({ include: { Departamento: true } }),
-      prisma.banco.findMany({ where: { Activo: true } }),
+      prisma.municipio.findMany({
+        include: {
+          Departamento: true,
+        },
+      }),
+      prisma.banco.findMany({
+        where: {
+          Activo: true,
+        },
+      }),
       prisma.divisa.findMany(),
-      prisma.codigoTelefonoPais.findMany()
+      prisma.codigoTelefonoPais.findMany(),
     ]);
 
-    // --- LÓGICA AGREGADA PARA CITA FORM MODAL ---
     const [pacientes, psicologos] = await Promise.all([
-        prisma.paciente.findMany({ 
-            where: { Activo: true }, 
-            select: { 
-                ID_Paciente: true, 
-                Nombre: true, 
-                Apellido: true, 
-                Activo: true,
-                ID_Direccion: true, // 👈 1. Vital para que el frontend sepa el ID real al agendar
-                PacienteAdulto: { select: { No_Cedula: true } }, 
-                Direccion: { 
-                    include: { 
-                        Municipio: {
-                            include: {
-                                Departamento: true // 👈 2. El eslabón perdido para la vista de solo lectura
-                            }
-                        } 
-                    } 
-                } 
-            } 
-        }),
-        prisma.psicologo.findMany({ 
-            where: { Activo: true }, 
-            select: { ID_Psicologo: true, Nombre: true, Apellido: true, Activo: true } 
-        })
+      prisma.paciente.findMany({
+        where: {
+          Activo: true,
+        },
+        select: {
+          ID_Paciente: true,
+          Nombre: true,
+          Apellido: true,
+          Activo: true,
+          ID_Direccion: true,
+          PacienteAdulto: {
+            select: {
+              No_Cedula: true,
+            },
+          },
+          Direccion: {
+            include: {
+              Municipio: {
+                include: {
+                  Departamento: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      prisma.psicologo.findMany({
+        where: {
+          Activo: true,
+          ...(usuarioActual.esPsicologo
+            ? {
+                ID_Psicologo: validarPsicologoVinculado(usuarioActual),
+              }
+            : {}),
+        },
+        select: {
+          ID_Psicologo: true,
+          Nombre: true,
+          Apellido: true,
+          Activo: true,
+        },
+      }),
     ]);
-    // --------------------------------------------
 
-    return { 
-      ocupaciones, estadosCiviles, parentescos, tutores, especialidades, 
-      viasAdministracion, tiposTerapia, exploraciones,
-      tiposCita, estadosCita, metodosPago, 
-      paises,departamentos, municipios, bancos, divisas, codigosTelefono,
-      pacientes, psicologos
+    return {
+      ocupaciones,
+      estadosCiviles,
+      parentescos,
+      tutores,
+      especialidades,
+      viasAdministracion,
+      tiposTerapia,
+      exploraciones,
+      tiposCita,
+      estadosCita,
+      metodosPago,
+      paises,
+      departamentos,
+      municipios,
+      bancos,
+      divisas,
+      codigosTelefono,
+      pacientes,
+      psicologos,
     };
   },
 
-  // 2. Dashboard KPI (Stats)
-  getDashboardStats: async () => {
-    // Cálculo de fechas con Zona Horaria Managua
-    const hoyNica = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Managua"}));
-    const inicioDia = new Date(hoyNica); inicioDia.setHours(0, 0, 0, 0);
-    const finDia = new Date(hoyNica); finDia.setHours(23, 59, 59, 999);
+  getDashboardStats: async (usuario?: AuthUserPayload) => {
+    const usuarioActual = validarUsuarioAutenticado(usuario);
 
-    const [totalPacientes, psicologosActivos, citasHoy, ingresosTotales] = await Promise.all([
-      prisma.paciente.count({ where: { Activo: true } }), // Renombrado
-      prisma.psicologo.count({ where: { Activo: true } }), // Renombrado
-      prisma.cita.count({ where: { ID_EstadoCita: 1, FechaCita: { gte: inicioDia, lte: finDia } } }),
-      prisma.recibo.aggregate({ _sum: { MontoTotal: true } }) // Cambiado a tabla Recibo
-    ]);
-
-    return { 
-      totalPacientes, 
-      psicologosActivos, 
-      citasHoy, 
-      ingresosTotales: ingresosTotales._sum.MontoTotal || 0 
-    };
-  },
-
-  // 3. Historial General Combinado
-  getHistorialGeneral: async () => {
-    // Adiós al algoritmo de emparejamiento manual. Prisma hace el JOIN directo.
-    const citasCompletadas = await prisma.cita.findMany({
-       where: { ID_EstadoCita: 2 }, // Solo completadas (que deberían tener sesión)
-       include: { 
-           TipoDeCita: true,
-           Paciente: true,
-           Psicologo: true,
-           Sesion: { include: { Expediente: true } } // Traemos la sesión directamente
-       },
-       orderBy: { ID_Cita: 'desc' }
-    });
-
-    const historialCombinado = citasCompletadas
-      .filter(c => c.Sesion !== null) // Solo las que realmente tienen una sesión guardada
-      .map(cita => {
-        return {
-           ...cita.Sesion, // Exponemos la sesión en la raíz para mantener compatibilidad con el front
-           Paciente: cita.Paciente,
-           Psicologo: cita.Psicologo,
-           FechaReal: cita.FechaCita, 
-           DatosCita: {
-               Motivo: cita.MotivoConsulta || 'Sin registro',
-               Tipo: cita.TipoDeCita?.Nombre_DeCita || 'N/A' // Renombrado
-           }
-        };
-      });
-
-    return historialCombinado;
-  },
-
-  // 4. Datos para Gráficos
-  getGraficosData: async (inicioStr?: string, finStr?: string) => {
-    // Definir rango de fechas
-    const hoy = new Date();
-    const fechaFin = finStr ? new Date(finStr) : hoy;
-    
-    let fechaInicio = inicioStr ? new Date(inicioStr) : new Date();
-    if (!inicioStr) fechaInicio.setMonth(fechaInicio.getMonth() - 1); 
-    
-    fechaInicio.setHours(0,0,0,0);
-    fechaFin.setHours(23,59,59,999);
-
-    // A. Ingresos agrupados por día (Cambiado a tabla Recibo)
-    const recibos = await prisma.recibo.groupBy({
-      by: ['FechaDePago'], // Renombrado
-      where: { FechaDePago: { gte: fechaInicio, lte: fechaFin } },
-      _sum: { MontoTotal: true },
-      orderBy: { FechaDePago: 'asc' }
-    });
-
-    const dataIngresos = recibos.map(r => ({
-      // Verificamos que FechaDePago exista. Si no, ponemos un string por defecto.
-      fecha: r.FechaDePago ? r.FechaDePago.toISOString().split('T')[0] : 'Desconocida',
-      monto: r._sum.MontoTotal || 0
+    const hoyNica = new Date(new Date().toLocaleString('en-US', {
+      timeZone: 'America/Managua',
     }));
 
-    // B. Distribución Demográfica (Género y Edad)
-    const pacientes = await prisma.paciente.findMany({
-      where: { Activo: true }, // Renombrado
-      select: { Genero: true, Fecha_Nacimiento: true } // Renombrado
+    const inicioDia = new Date(hoyNica);
+    inicioDia.setHours(0, 0, 0, 0);
+
+    const finDia = new Date(hoyNica);
+    finDia.setHours(23, 59, 59, 999);
+
+    const citasWhere: Prisma.CitaWhereInput = {
+      ...whereCitasPermitidas(usuarioActual),
+      ID_EstadoCita: 1,
+      FechaCita: {
+        gte: inicioDia,
+        lte: finDia,
+      },
+    };
+
+    const recibosWhere = whereRecibosPermitidos(usuarioActual);
+
+    const [totalPacientes, psicologosActivos, citasHoy, ingresosTotales] = await Promise.all([
+      prisma.paciente.count({
+        where: {
+          Activo: true,
+        },
+      }),
+      prisma.psicologo.count({
+        where: {
+          Activo: true,
+        },
+      }),
+      prisma.cita.count({
+        where: citasWhere,
+      }),
+      prisma.recibo.aggregate({
+        where: recibosWhere,
+        _sum: {
+          MontoTotal: true,
+        },
+      }),
+    ]);
+
+    return {
+      totalPacientes,
+      psicologosActivos,
+      citasHoy,
+      ingresosTotales: ingresosTotales._sum.MontoTotal || 0,
+    };
+  },
+
+  getHistorialGeneral: async (usuario?: AuthUserPayload) => {
+    const usuarioActual = validarUsuarioAutenticado(usuario);
+
+    const citasCompletadas = await prisma.cita.findMany({
+      where: {
+        ...whereHistorialPermitido(usuarioActual),
+        ID_EstadoCita: 2,
+      },
+      include: {
+        TipoDeCita: true,
+        Paciente: true,
+        Psicologo: true,
+        Sesion: {
+          include: {
+            Expediente: true,
+          },
+        },
+      },
+      orderBy: {
+        ID_Cita: 'desc',
+      },
     });
 
-    // Al quitar el Record, TypeScript sabe que este objeto SIEMPRE 
-    // tendrá estas dos llaves y que SIEMPRE serán números.
-    const generos = { Masculino: 0, Femenino: 0 };
-    const edades = { Ninos: 0, Adolescentes: 0, Adultos: 0, Mayores: 0 };
+    return citasCompletadas
+      .filter((cita) => cita.Sesion !== null)
+      .map((cita) => ({
+        ...cita.Sesion,
+        Paciente: cita.Paciente,
+        Psicologo: cita.Psicologo,
+        FechaReal: cita.FechaCita,
+        DatosCita: {
+          Motivo: cita.MotivoConsulta || 'Sin registro',
+          Tipo: cita.TipoDeCita?.Nombre_DeCita || 'N/A',
+        },
+      }));
+  },
 
-    pacientes.forEach(p => {
-      // 1. Género (Evaluación estricta para evitar undefined)
-      if (p.Genero === 'Masculino') {
-          generos.Masculino++;
-      } else if (p.Genero === 'Femenino') {
-          generos.Femenino++;
+  getGraficosData: async (
+    inicioStr?: string,
+    finStr?: string,
+    usuario?: AuthUserPayload
+  ) => {
+    const usuarioActual = validarUsuarioAutenticado(usuario);
+
+    const hoy = new Date();
+    const fechaFin = finStr ? new Date(finStr) : hoy;
+
+    const fechaInicio = inicioStr ? new Date(inicioStr) : new Date();
+
+    if (!inicioStr) {
+      fechaInicio.setMonth(fechaInicio.getMonth() - 1);
+    }
+
+    fechaInicio.setHours(0, 0, 0, 0);
+    fechaFin.setHours(23, 59, 59, 999);
+
+    const recibos = await prisma.recibo.groupBy({
+      by: ['FechaDePago'],
+      where: {
+        ...whereRecibosPermitidos(usuarioActual),
+        FechaDePago: {
+          gte: fechaInicio,
+          lte: fechaFin,
+        },
+      },
+      _sum: {
+        MontoTotal: true,
+      },
+      orderBy: {
+        FechaDePago: 'asc',
+      },
+    });
+
+    const dataIngresos = recibos.map((recibo) => ({
+      fecha: recibo.FechaDePago ? recibo.FechaDePago.toISOString().split('T')[0] : 'Desconocida',
+      monto: recibo._sum.MontoTotal || 0,
+    }));
+
+    const pacientes = await prisma.paciente.findMany({
+      where: {
+        Activo: true,
+      },
+      select: {
+        Genero: true,
+        Fecha_Nacimiento: true,
+      },
+    });
+
+    const generos = {
+      Masculino: 0,
+      Femenino: 0,
+    };
+
+    const edades = {
+      Ninos: 0,
+      Adolescentes: 0,
+      Adultos: 0,
+      Mayores: 0,
+    };
+
+    pacientes.forEach((paciente) => {
+      if (paciente.Genero === 'Masculino') {
+        generos.Masculino += 1;
+      } else if (paciente.Genero === 'Femenino') {
+        generos.Femenino += 1;
       }
-      
-      // 2. Edad (Protegemos por si Fecha_Nacimiento viene nula)
-      if (p.Fecha_Nacimiento) {
-          const edad = new Date().getFullYear() - new Date(p.Fecha_Nacimiento).getFullYear();
-          if (edad < 12) edades.Ninos++;
-          else if (edad < 18) edades.Adolescentes++;
-          else if (edad < 60) edades.Adultos++;
-          else edades.Mayores++;
+
+      if (paciente.Fecha_Nacimiento) {
+        const edad = new Date().getFullYear() - new Date(paciente.Fecha_Nacimiento).getFullYear();
+
+        if (edad < 12) edades.Ninos += 1;
+        else if (edad < 18) edades.Adolescentes += 1;
+        else if (edad < 60) edades.Adultos += 1;
+        else edades.Mayores += 1;
       }
     });
 
     return {
       ingresos: dataIngresos,
       generos: [
-        { name: 'Femenino', value: generos.Femenino, fill: '#ec4899' },
-        { name: 'Masculino', value: generos.Masculino, fill: '#3b82f6' }
+        {
+          name: 'Femenino',
+          value: generos.Femenino,
+          fill: '#ec4899',
+        },
+        {
+          name: 'Masculino',
+          value: generos.Masculino,
+          fill: '#3b82f6',
+        },
       ],
       edades: [
-        { name: 'Niños (0-11)', value: edades.Ninos, fill: '#10b981' },
-        { name: 'Adolescentes (12-17)', value: edades.Adolescentes, fill: '#f59e0b' },
-        { name: 'Adultos (18-59)', value: edades.Adultos, fill: '#6366f1' },
-        { name: 'Mayores (60+)', value: edades.Mayores, fill: '#64748b' },
-      ].filter(d => d.value > 0)
+        {
+          name: 'Niños (0-11)',
+          value: edades.Ninos,
+          fill: '#10b981',
+        },
+        {
+          name: 'Adolescentes (12-17)',
+          value: edades.Adolescentes,
+          fill: '#f59e0b',
+        },
+        {
+          name: 'Adultos (18-59)',
+          value: edades.Adultos,
+          fill: '#6366f1',
+        },
+        {
+          name: 'Mayores (60+)',
+          value: edades.Mayores,
+          fill: '#64748b',
+        },
+      ].filter((item) => item.value > 0),
     };
   },
 
   getMotivosCancelacion: async () => {
     return await prisma.motivoCancelacion.findMany();
-  }
+  },
 };

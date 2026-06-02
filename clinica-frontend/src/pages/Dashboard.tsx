@@ -306,10 +306,10 @@ export default function Dashboard() {
                                    {/* Columna Info */}
                                    <div className="flex-1">
                                        <div className="flex justify-between items-start">
-                                           <h4 className="font-bold text-slate-700 text-sm">{cita.Paciente.Nombre} {cita.Paciente.Apellido}</h4>
-                                           <span className="badge badge-xs badge-ghost text-[10px] font-bold uppercase tracking-wide">{cita.TipoDeCita.NombreDeCita}</span>
+                                           <h4 className="font-bold text-slate-700 text-sm">{cita.Paciente?.Nombre || 'Paciente'} {cita.Paciente?.Apellido || ''}</h4>
+                                           <span className="badge badge-xs badge-ghost text-[10px] font-bold uppercase tracking-wide">{cita.TipoDeCita?.Nombre_DeCita || 'N/A'}</span>
                                        </div>
-                                       <p className="text-xs text-slate-500 mt-0.5">Dr. {cita.Psicologo.Apellido}</p>
+                                       <p className="text-xs text-slate-500 mt-0.5">Dr. {cita.Psicologo?.Apellido || 'N/A'}</p>
                                        
                                        {cita.MotivoConsulta && (
                                            <p className="text-xs text-slate-400 italic mt-2 line-clamp-1 bg-slate-50 p-1.5 rounded">
@@ -318,7 +318,15 @@ export default function Dashboard() {
                                        )}
                                        
                                        <div className="mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                           <Link to={`/pacientes/${cita.Paciente.ID_Paciente}`} className="btn btn-xs btn-outline w-full">Ver Expediente</Link>
+                                           {cita.Paciente?.ID_Paciente ? (
+                                               <Link to={`/pacientes/${cita.Paciente.ID_Paciente}`} className="btn btn-xs btn-outline w-full">
+                                                   Ver Expediente
+                                               </Link>
+                                           ) : (
+                                               <button type="button" className="btn btn-xs btn-outline w-full" disabled>
+                                                   Ver Expediente
+                                               </button>
+                                           )}
                                        </div>
                                    </div>
                                </div>

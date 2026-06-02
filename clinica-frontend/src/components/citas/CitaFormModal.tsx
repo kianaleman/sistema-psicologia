@@ -147,17 +147,42 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
   // 2. NUEVO useEffect (Consulta de disponibilidad)
 // Este solo se ejecuta cuando cambian estos dos campos específicos
 useEffect(() => {
+  let activo = true;
+
   const verificarDisponibilidad = async () => {
-    if (formData.psicologoId && formData.fecha) {
-        // Aquí llamas a la función que pasamos por props desde Citas.tsx
+    if (!formData.psicologoId || !formData.fecha) {
+        setHorariosOcupados([]);
+        setCargandoHorarios(false);
+        return;
+    }
+
+    setCargandoHorarios(true);
+
+    try {
+        // Aqui llamas a la funcion que pasamos por props desde Citas.tsx
         const horarios = await onCheckDisponibilidad(parseInt(formData.psicologoId), formData.fecha);
-        setHorariosOcupados(horarios);
-    } else {
-        setHorariosOcupados([]); // Si no hay doctor o fecha, limpiamos la lista
+
+        if (activo) {
+            setHorariosOcupados(horarios);
+        }
+    } catch (error) {
+        console.error('Error verificando disponibilidad:', error);
+
+        if (activo) {
+            setHorariosOcupados([]);
+        }
+    } finally {
+        if (activo) {
+            setCargandoHorarios(false);
+        }
     }
   };
 
   verificarDisponibilidad();
+
+  return () => {
+    activo = false;
+  };
 }, [formData.psicologoId, formData.fecha, onCheckDisponibilidad]);
 
   

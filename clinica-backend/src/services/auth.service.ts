@@ -11,6 +11,12 @@ if (!JWT_SECRET) {
   throw new Error('Falta la variable de entorno JWT_SECRET');
 }
 
+const ROLES = {
+  ADMINISTRADOR: 'Administrador',
+  PSICOLOGO: 'Psicologo',
+  RECEPCION: 'Recepcion',
+} as const;
+
 const getFechaHoraLocalSistema = () => {
   const fecha = new Date();
 
@@ -85,6 +91,9 @@ const construirSesionUsuario = async (idUsuario: number) => {
   const roles = usuario.Usuario_Rol.map((usuarioRol) => usuarioRol.Rol.Nombre_Rol);
   const requiereCambioPassword = Boolean(usuario.RequiereCambioPassword);
   const idPsicologo = usuario.Psicologo?.ID_Psicologo || null;
+  const esAdmin = roles.includes(ROLES.ADMINISTRADOR);
+  const esPsicologo = roles.includes(ROLES.PSICOLOGO);
+  const esRecepcion = roles.includes(ROLES.RECEPCION);
 
   const payload: UsuarioTokenData = {
     idUsuario: usuario.ID_Usuario,
@@ -105,6 +114,9 @@ const construirSesionUsuario = async (idUsuario: number) => {
       roles,
       idPsicologo,
       requiereCambioPassword,
+      esAdmin,
+      esPsicologo,
+      esRecepcion,
       nombre: usuario.Psicologo
         ? `${usuario.Psicologo.Nombre} ${usuario.Psicologo.Apellido}`
         : 'Administrador/Recepcionista',
@@ -124,6 +136,24 @@ export const AuthService = {
 
     if (existeUser) {
       throw new Error('Este correo electrónico ya está registrado.');
+    }
+
+    const rol = await prisma.rol.findUnique({
+      where: {
+        ID_Rol: data.rolId,
+      },
+      select: {
+        ID_Rol: true,
+        Nombre_Rol: true,
+      },
+    });
+
+    if (!rol) {
+      throw new Error('El rol seleccionado no existe.');
+    }
+
+    if (rol.Nombre_Rol === ROLES.PSICOLOGO && !data.psicologoId) {
+      throw new Error('Debe vincular un perfil de psicólogo para usuarios con rol Psicologo.');
     }
 
     const passwordTemporal = crypto.randomBytes(5).toString('hex');
@@ -156,13 +186,14 @@ export const AuthService = {
       await tx.usuario_Rol.create({
         data: {
           ID_Usuario: nuevoUsuario.ID_Usuario,
-          ID_Rol: data.rolId,
+          ID_Rol: rol.ID_Rol,
         },
       });
 
       return {
         id: nuevoUsuario.ID_Usuario,
         email: nuevoUsuario.Email,
+        rol: rol.Nombre_Rol,
         passwordTemporal,
       };
     });

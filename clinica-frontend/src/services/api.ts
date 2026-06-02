@@ -1,14 +1,14 @@
-import type { 
-  Paciente, 
-  CreatePacienteDTO, 
-  Tutor, 
-  Psicologo, 
-  Cita, 
+import type {
+  Paciente,
+  CreatePacienteDTO,
+  Tutor,
+  Psicologo,
+  Cita,
   CreateCitaDTO,
-  Recibo, 
-  Ocupacion, 
-  EstadoCivil, 
-  Parentesco, 
+  Recibo,
+  Ocupacion,
+  EstadoCivil,
+  Parentesco,
   MotivoCancelacion,
   CreateSesionDTO,
   Stats
@@ -26,6 +26,11 @@ export class ApiError extends Error {
   }
 }
 
+const limpiarSesion = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('usuario');
+};
+
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const token = localStorage.getItem('token');
 
@@ -41,20 +46,29 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const esEndpointLogin = endpoint === '/auth/login';
-
-    if (response.status === 401 && !esEndpointLogin) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('usuario');
-      window.location.href = '/';  
-      throw new Error('Sesión expirada');
-    }
+    const esCambioPassword = endpoint === '/auth/cambiar-password-default';
 
     const errorData = await response.json().catch(() => ({})) as Record<string, unknown>;
 
-    const mensaje = typeof errorData.error === 'string' 
-      ? errorData.error 
-      : typeof errorData.message === 'string' 
-        ? errorData.message 
+    if (response.status === 401 && !esEndpointLogin) {
+      limpiarSesion();
+      window.location.href = '/';
+      throw new Error('Sesión expirada');
+    }
+
+    if (
+      response.status === 403 &&
+      !esCambioPassword &&
+      errorData.requiereCambioPassword === true
+    ) {
+      window.location.href = '/cambiar-password-default';
+      throw new ApiError('Debe cambiar la contraseña temporal antes de continuar.', errorData, response.status);
+    }
+
+    const mensaje = typeof errorData.error === 'string'
+      ? errorData.error
+      : typeof errorData.message === 'string'
+        ? errorData.message
         : 'Error en la petición al servidor';
 
     throw new ApiError(mensaje, errorData, response.status);
@@ -76,13 +90,16 @@ interface LoginRequest {
   passwordRaw: string;
 }
 
-interface UsuarioSesion {
+export interface UsuarioSesion {
   id: number;
   email: string;
   roles: string[];
   idPsicologo: number | null;
   nombre: string;
   requiereCambioPassword: boolean;
+  esAdmin?: boolean;
+  esPsicologo?: boolean;
+  esRecepcion?: boolean;
 }
 
 interface LoginResponse {
@@ -148,16 +165,16 @@ export const api = {
   pacientes: {
     getAll: () => request<Paciente[]>('/pacientes'),
     getOne: (id: string | number) => request<unknown>(`/pacientes/${id}/expediente`),
-    create: (data: CreatePacienteDTO) => request<Paciente>('/pacientes', { 
-      method: 'POST', 
+    create: (data: CreatePacienteDTO) => request<Paciente>('/pacientes', {
+      method: 'POST',
       body: JSON.stringify(data),
     }),
-    update: (id: number, data: Partial<CreatePacienteDTO>) => request<Paciente>(`/pacientes/${id}`, { 
-      method: 'PUT', 
+    update: (id: number, data: Partial<CreatePacienteDTO>) => request<Paciente>(`/pacientes/${id}`, {
+      method: 'PUT',
       body: JSON.stringify(data),
     }),
-    toggleEstado: (id: number, estado: boolean) => request<unknown>(`/pacientes/${id}/estado`, { 
-      method: 'PATCH', 
+    toggleEstado: (id: number, estado: boolean) => request<unknown>(`/pacientes/${id}/estado`, {
+      method: 'PATCH',
       body: JSON.stringify({ Activo: estado }),
     }),
     getHistorial: (id: number) => request<unknown[]>(`/pacientes/${id}/historial`),
@@ -187,12 +204,12 @@ export const api = {
     getAll: () => request<Cita[]>('/citas'),
     update: (id: number, data: Partial<Cita>) => request<Cita>(`/citas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     create: (data: CreateCitaDTO) => request<Cita>('/citas', { method: 'POST', body: JSON.stringify(data) }),
-    cancel: (id: number, ID_MotivoCancelacion: number, NotasCancelacion: string) => 
-      request<unknown>(`/citas/${id}/cancelar`, { 
+    cancel: (id: number, ID_MotivoCancelacion: number, NotasCancelacion: string) =>
+      request<unknown>(`/citas/${id}/cancelar`, {
         method: 'PATCH',
         body: JSON.stringify({ ID_MotivoCancelacion, NotasCancelacion }),
       }),
-    getHorariosOcupados: (psicologoId: number, fecha: string) => 
+    getHorariosOcupados: (psicologoId: number, fecha: string) =>
       request<string[]>(`/citas/horarios-ocupados?psicologoId=${psicologoId}&fecha=${fecha}`),
   },
 

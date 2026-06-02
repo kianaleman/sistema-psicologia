@@ -1,82 +1,99 @@
 import type { Request, Response } from 'express';
-import { PacienteService } from '../services/paciente.service.js'; 
+import { PacienteService } from '../services/paciente.service.js';
 
-// GET: Obtener todos los pacientes
+const getErrorMessage = (error: unknown, fallback: string) => {
+  return error instanceof Error ? error.message : fallback;
+};
+
+const getStatusFromError = (message: string) => {
+  const lowerMessage = message.toLowerCase();
+
+  if (lowerMessage.includes('no autorizado')) return 401;
+
+  if (
+    lowerMessage.includes('no tiene permisos') ||
+    lowerMessage.includes('no tiene un perfil')
+  ) {
+    return 403;
+  }
+
+  return 400;
+};
+
 export const getPacientes = async (req: Request, res: Response): Promise<void> => {
   try {
-    const pacientes = await PacienteService.getAll();
+    const pacientes = await PacienteService.getAll(req.user);
     res.json(pacientes);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message || 'Error interno del servidor' });
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error interno del servidor');
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };
 
-// GET: Obtener expediente completo de UNO
 export const getExpediente = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Seguridad: Validamos que el ID sea realmente un número
-    const id = parseInt(req.params.id as string);
-    if (isNaN(id)) {
-        res.status(400).json({ error: 'El ID proporcionado no es válido' });
-        return;
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: 'El ID proporcionado no es válido' });
+      return;
     }
 
-    const expediente = await PacienteService.getExpediente(id);
-    
+    const expediente = await PacienteService.getExpediente(id, req.user);
+
     if (!expediente) {
-        res.status(404).json({ error: 'Paciente no encontrado' });
-        return;
+      res.status(404).json({ error: 'Paciente no encontrado' });
+      return;
     }
-    
+
     res.json(expediente);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message }); 
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al obtener expediente');
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };
 
-// POST: Crear Paciente
 export const createPaciente = async (req: Request, res: Response): Promise<void> => {
   try {
-    // req.body debe traer la nueva estructura (municipioId, codigoTelefonoId, etc.)
-    const nuevoPaciente = await PacienteService.create(req.body);
-    res.status(201).json(nuevoPaciente); // 201 = Created
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    const nuevoPaciente = await PacienteService.create(req.body, req.user);
+    res.status(201).json(nuevoPaciente);
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al crear paciente');
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };
 
-// PUT: Actualizar Paciente
 export const updatePaciente = async (req: Request, res: Response): Promise<void> => {
   try {
-    const id = parseInt(req.params.id as string);
-    if (isNaN(id)) {
-        res.status(400).json({ error: 'El ID proporcionado no es válido' });
-        return;
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: 'El ID proporcionado no es válido' });
+      return;
     }
 
-    const result = await PacienteService.update(id, req.body);
+    const result = await PacienteService.update(id, req.body, req.user);
     res.json(result);
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al actualizar paciente');
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };
 
-// GET: Historial
 export const getHistorialPaciente = async (req: Request, res: Response): Promise<void> => {
   try {
-    const id = parseInt(req.params.id as string);
-    if (isNaN(id)) {
-        res.status(400).json({ error: 'El ID proporcionado no es válido' });
-        return;
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: 'El ID proporcionado no es válido' });
+      return;
     }
 
-    const historial = await PacienteService.getHistorialPaciente(id); 
-    
-    // Devolvemos el array (incluso si está vacío, es una respuesta válida 200 OK)
-    res.json(historial || []);
-    
-  } catch (error: any) {
+    const historial = await PacienteService.getHistorialPaciente(id, req.user);
+    res.json(historial);
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error buscando historial clínico');
     console.error(error);
-    res.status(500).json({ error: 'Error buscando historial clínico' });
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };

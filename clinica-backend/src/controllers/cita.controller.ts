@@ -1,28 +1,50 @@
 import type { Request, Response } from 'express';
 import { CitaService } from '../services/cita.service.js';
 
-// GET: Obtener todas las citas
+const getErrorMessage = (error: unknown, fallback: string) => {
+  return error instanceof Error ? error.message : fallback;
+};
+
+const getStatusFromError = (message: string) => {
+  const lowerMessage = message.toLowerCase();
+
+  if (lowerMessage.includes('no autorizado')) return 401;
+
+  if (
+    lowerMessage.includes('no tiene permisos') ||
+    lowerMessage.includes('no tiene un perfil') ||
+    lowerMessage.includes('otro psicólogo')
+  ) {
+    return 403;
+  }
+
+  if (message === 'El psicólogo ya tiene una cita agendada en este horario.') {
+    return 409;
+  }
+
+  return 400;
+};
+
 export const getCitas = async (req: Request, res: Response): Promise<void> => {
   try {
-    const citas = await CitaService.getAll();
+    const citas = await CitaService.getAll(req.user);
     res.json(citas);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al obtener citas');
     console.error(error);
-    res.status(500).json({ error: 'Error al obtener citas' });
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };
 
-// GET: Catálogos
-export const getCatalogosCitas = async (req: Request, res: Response): Promise<void> => {
+export const getCatalogosCitas = async (_req: Request, res: Response): Promise<void> => {
   try {
     const catalogos = await CitaService.getCatalogos();
     res.json(catalogos);
-  } catch (error: any) {
+  } catch {
     res.status(500).json({ error: 'Error cargando catálogos de citas' });
   }
 };
 
-// GET: Obtener horas ocupadas de un psicólogo por fecha
 export const getHorariosOcupados = async (req: Request, res: Response): Promise<void> => {
   try {
     const { psicologoId, fecha } = req.query;
@@ -33,80 +55,71 @@ export const getHorariosOcupados = async (req: Request, res: Response): Promise<
     }
 
     const horarios = await CitaService.getHorariosOcupados(
-      Number(psicologoId), 
-      String(fecha)
+      Number(psicologoId),
+      String(fecha),
+      req.user
     );
 
-    res.json(horarios); // Retorna algo como: ["08:00", "14:00"]
-  } catch (error: any) {
+    res.json(horarios);
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al consultar disponibilidad');
     console.error(error);
-    res.status(500).json({ error: 'Error al consultar disponibilidad' });
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };
 
-// POST: Crear Cita
 export const createCita = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Zod ya validó y transformó req.body, se lo pasamos directo al Service
-    const result = await CitaService.create(req.body);
+    const result = await CitaService.create(req.body, req.user);
     res.status(201).json(result);
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al crear cita');
     console.error(error);
-
-    // 1. DETECCIÓN DEL ERROR DE DISPONIBILIDAD (Conflicto)
-    if (error.message === 'El psicólogo ya tiene una cita agendada en este horario.') {
-      res.status(409).json({ error: error.message });
-      return;
-    }
-
-    // 2. ERRORES DE VALIDACIÓN GENERALES
-    res.status(400).json({ error: error.message });
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };
 
-// PUT: Editar Cita
 export const updateCita = async (req: Request, res: Response): Promise<void> => {
   try {
-    const id = parseInt(req.params.id as string);
-    if (isNaN(id)) {
-        res.status(400).json({ error: 'El ID proporcionado no es válido' });
-        return;
-    }
+    const id = Number(req.params.id);
 
-    const result = await CitaService.update(id, req.body);
-    res.json(result);
-  } catch (error: any) {
-    console.error(error);
-    
-    if (error.message === 'El psicólogo ya tiene una cita agendada en este horario.') {
-      res.status(409).json({ error: error.message });
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: 'El ID proporcionado no es válido' });
       return;
     }
-    
-    res.status(400).json({ error: error.message });
+
+    const result = await CitaService.update(id, req.body, req.user);
+    res.json(result);
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al actualizar cita');
+    console.error(error);
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };
 
-// PATCH: Cancelar Cita
 export const cancelCita = async (req: Request, res: Response): Promise<void> => {
   try {
-    const id = parseInt(req.params.id as string);
-    if (isNaN(id)) {
-        res.status(400).json({ error: 'El ID proporcionado no es válido' });
-        return;
-    }
+    const id = Number(req.params.id);
 
-    // Usamos los nombres exactos que envía el Frontend
-    const { ID_MotivoCancelacion, NotasCancelacion } = req.body; 
-
-    if (!ID_MotivoCancelacion) {
-      res.status(400).json({ error: "Debe seleccionar un motivo." });
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: 'El ID proporcionado no es válido' });
       return;
     }
 
-    await CitaService.cancel(id, Number(ID_MotivoCancelacion), NotasCancelacion || '');
+    const { ID_MotivoCancelacion, NotasCancelacion } = req.body as {
+      ID_MotivoCancelacion?: number;
+      NotasCancelacion?: string;
+    };
+
+    if (!ID_MotivoCancelacion) {
+      res.status(400).json({ error: 'Debe seleccionar un motivo.' });
+      return;
+    }
+
+    await CitaService.cancel(id, Number(ID_MotivoCancelacion), NotasCancelacion || '', req.user);
     res.json({ message: 'Cita cancelada correctamente' });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al cancelar cita');
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };
