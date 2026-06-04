@@ -6,6 +6,9 @@ import {
   forgotPassword,
   resetPassword,
   restablecerPasswordAdmin,
+  listarRoles,
+  listarUsuariosRoles,
+  cambiarRolUsuario,
 } from '../controllers/auth.controller.js';
 import {
   bloquearSiRequiereCambioPassword,
@@ -36,6 +39,11 @@ router.post('/cambiar-password-default', validateSchema(cambiarPasswordSchema), 
 router.use(bloquearSiRequiereCambioPassword);
 
 router.post('/register', permitirRoles(ROLES.ADMINISTRADOR), validateSchema(registerSchema), register);
+router.get('/admin/roles', permitirRoles(ROLES.ADMINISTRADOR), listarRoles);
+router.get('/admin/usuarios-roles', permitirRoles(ROLES.ADMINISTRADOR), listarUsuariosRoles);
+router.patch('/admin/usuarios/:idUsuario/roles', permitirRoles(ROLES.ADMINISTRADOR), cambiarRolUsuario);
+router.patch('/admin/usuarios/:idUsuario/rol', permitirRoles(ROLES.ADMINISTRADOR), cambiarRolUsuario);
+
 router.post(
   '/admin/reset-password/:idUsuario',
   permitirRoles(ROLES.ADMINISTRADOR),

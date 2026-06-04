@@ -51,6 +51,31 @@ interface AdminResetPasswordDTO {
   idUsuario: number;
 }
 
+interface CambiarRolesUsuarioDTO {
+  idUsuarioObjetivo: number;
+  rolIdsNuevos: number[];
+  idUsuarioEjecutor: number;
+}
+
+type UsuarioRolResumen = {
+  ID_Usuario: number;
+  Email: string;
+  Activo: boolean | null;
+  RequiereCambioPassword: boolean;
+  Usuario_Rol: {
+    Rol: {
+      ID_Rol: number;
+      Nombre_Rol: string;
+      Descripcion?: string | null;
+    };
+  }[];
+  Psicologo?: {
+    ID_Psicologo: number;
+    Nombre: string;
+    Apellido: string;
+  } | null;
+};
+
 type UsuarioTokenData = {
   idUsuario: number;
   email: string;
@@ -71,6 +96,24 @@ const generarPasswordTemporal = () => {
   const random = crypto.randomBytes(5).toString('hex');
 
   return `Res-${random}-1A`;
+};
+
+const serializarUsuarioRoles = (usuario: UsuarioRolResumen) => {
+  return {
+    idUsuario: usuario.ID_Usuario,
+    email: usuario.Email,
+    activo: usuario.Activo !== false,
+    requiereCambioPassword: usuario.RequiereCambioPassword,
+    idPsicologo: usuario.Psicologo?.ID_Psicologo || null,
+    nombre: usuario.Psicologo
+      ? `${usuario.Psicologo.Nombre} ${usuario.Psicologo.Apellido}`
+      : 'Administrador/Recepcionista',
+    roles: usuario.Usuario_Rol.map((usuarioRol) => ({
+      id: usuarioRol.Rol.ID_Rol,
+      nombre: usuarioRol.Rol.Nombre_Rol,
+      descripcion: usuarioRol.Rol.Descripcion || null,
+    })),
+  };
 };
 
 const construirSesionUsuario = async (idUsuario: number) => {
@@ -382,6 +425,217 @@ export const AuthService = {
         passwordTemporal,
       },
     };
+  },
+
+  listarRoles: async () => {
+    const roles = await prisma.rol.findMany({
+      orderBy: {
+        Nombre_Rol: 'asc',
+      },
+      select: {
+        ID_Rol: true,
+        Nombre_Rol: true,
+        Descripcion: true,
+      },
+    });
+
+    return roles.map((rol) => ({
+      id: rol.ID_Rol,
+      nombre: rol.Nombre_Rol,
+      descripcion: rol.Descripcion || null,
+    }));
+  },
+
+  listarUsuariosRoles: async () => {
+    const usuarios = await prisma.usuario.findMany({
+      orderBy: {
+        Email: 'asc',
+      },
+      include: {
+        Usuario_Rol: {
+          include: {
+            Rol: {
+              select: {
+                ID_Rol: true,
+                Nombre_Rol: true,
+                Descripcion: true,
+              },
+            },
+          },
+        },
+        Psicologo: {
+          select: {
+            ID_Psicologo: true,
+            Nombre: true,
+            Apellido: true,
+          },
+        },
+      },
+    });
+
+    return usuarios.map(serializarUsuarioRoles);
+  },
+
+  cambiarRolesUsuario: async (data: CambiarRolesUsuarioDTO) => {
+    if (data.idUsuarioObjetivo === data.idUsuarioEjecutor) {
+      throw new Error('No puede cambiar sus propios roles.');
+    }
+
+    const rolIdsUnicos = Array.from(new Set(
+      data.rolIdsNuevos.filter((id) => Number.isInteger(id) && id > 0)
+    ));
+
+    if (rolIdsUnicos.length === 0) {
+      throw new Error('Debe seleccionar al menos un rol válido.');
+    }
+
+    const usuario = await prisma.usuario.findUnique({
+      where: {
+        ID_Usuario: data.idUsuarioObjetivo,
+      },
+      include: {
+        Usuario_Rol: {
+          include: {
+            Rol: {
+              select: {
+                ID_Rol: true,
+                Nombre_Rol: true,
+                Descripcion: true,
+              },
+            },
+          },
+        },
+        Psicologo: {
+          select: {
+            ID_Psicologo: true,
+            Nombre: true,
+            Apellido: true,
+          },
+        },
+      },
+    });
+
+    if (!usuario) {
+      throw new Error('Usuario no encontrado.');
+    }
+
+    const rolesNuevos = await prisma.rol.findMany({
+      where: {
+        ID_Rol: {
+          in: rolIdsUnicos,
+        },
+      },
+      select: {
+        ID_Rol: true,
+        Nombre_Rol: true,
+        Descripcion: true,
+      },
+    });
+
+    if (rolesNuevos.length !== rolIdsUnicos.length) {
+      throw new Error('Uno o más roles seleccionados no existen.');
+    }
+
+    const asignaRolPsicologo = rolesNuevos.some((rol) => rol.Nombre_Rol === ROLES.PSICOLOGO);
+
+    if (asignaRolPsicologo && !usuario.Psicologo) {
+      throw new Error('No se puede asignar el rol Psicologo a un usuario sin perfil de psicólogo vinculado.');
+    }
+
+    const rolesAntes = usuario.Usuario_Rol.map((usuarioRol) => usuarioRol.Rol.Nombre_Rol);
+    const esAdminActual = rolesAntes.includes(ROLES.ADMINISTRADOR);
+    const conservaRolAdmin = rolesNuevos.some((rol) => rol.Nombre_Rol === ROLES.ADMINISTRADOR);
+    const dejaDeSerAdmin = esAdminActual && !conservaRolAdmin;
+
+    if (dejaDeSerAdmin) {
+      const rolAdmin = await prisma.rol.findFirst({
+        where: {
+          Nombre_Rol: ROLES.ADMINISTRADOR,
+        },
+        select: {
+          ID_Rol: true,
+        },
+      });
+
+      if (rolAdmin) {
+        const administradoresActivos = await prisma.usuario_Rol.count({
+          where: {
+            ID_Rol: rolAdmin.ID_Rol,
+            Usuario: {
+              Activo: true,
+            },
+          },
+        });
+
+        if (administradoresActivos <= 1) {
+          throw new Error('No puede quitar el rol Administrador al último administrador activo.');
+        }
+      }
+    }
+
+    const usuarioActualizado = await prisma.$transaction(async (tx) => {
+      await tx.usuario_Rol.deleteMany({
+        where: {
+          ID_Usuario: data.idUsuarioObjetivo,
+        },
+      });
+
+      for (const rolId of rolIdsUnicos) {
+        await tx.usuario_Rol.create({
+          data: {
+            ID_Usuario: data.idUsuarioObjetivo,
+            ID_Rol: rolId,
+          },
+        });
+      }
+
+      return tx.usuario.findUnique({
+        where: {
+          ID_Usuario: data.idUsuarioObjetivo,
+        },
+        include: {
+          Usuario_Rol: {
+            include: {
+              Rol: {
+                select: {
+                  ID_Rol: true,
+                  Nombre_Rol: true,
+                  Descripcion: true,
+                },
+              },
+            },
+          },
+          Psicologo: {
+            select: {
+              ID_Psicologo: true,
+              Nombre: true,
+              Apellido: true,
+            },
+          },
+        },
+      });
+    });
+
+    if (!usuarioActualizado) {
+      throw new Error('No se pudieron actualizar los roles del usuario.');
+    }
+
+    const usuarioSerializado = serializarUsuarioRoles(usuarioActualizado);
+
+    return {
+      message: 'Roles actualizados correctamente.',
+      usuario: usuarioSerializado,
+      rolesAntes,
+      rolesDespues: usuarioSerializado.roles.map((rol) => rol.nombre),
+    };
+  },
+
+  cambiarRolUsuario: async (data: { idUsuarioObjetivo: number; rolIdNuevo: number; idUsuarioEjecutor: number }) => {
+    return AuthService.cambiarRolesUsuario({
+      idUsuarioObjetivo: data.idUsuarioObjetivo,
+      rolIdsNuevos: [data.rolIdNuevo],
+      idUsuarioEjecutor: data.idUsuarioEjecutor,
+    });
   },
 
   forgotPassword: async (email: string) => {

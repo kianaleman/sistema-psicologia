@@ -9,16 +9,42 @@ export interface Especialidad {
   NombreEspecialidad?: string;
 }
 
+export interface RolSistema {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+}
+
+export interface UsuarioRolResumen {
+  idUsuario: number;
+  email: string;
+  activo: boolean;
+  requiereCambioPassword: boolean;
+  idPsicologo: number | null;
+  nombre: string;
+  roles: RolSistema[];
+}
+
+export interface CambiarRolesUsuarioResponse {
+  message: string;
+  usuario: UsuarioRolResumen;
+  rolesAntes: string[];
+  rolesDespues: string[];
+}
+
 export interface PsicologoEspecialidadRelacion {
   ID_Especialidad?: number;
   EspecialidadPsicologo?: Especialidad;
   Especialidad?: Especialidad;
 }
 
-export type PsicologoCompleto = Omit<Psicologo, 'Direccion'> & {
+export type PsicologoCompleto = Omit<Psicologo, 'Direccion' | 'ID_Usuario' | 'Email'> & {
   Direccion?: Direccion | null;
   ID_Usuario?: number | null;
   Email?: string | null;
+  rolesUsuario?: RolSistema[];
+  usuarioActivo?: boolean | null;
+  requiereCambioPassword?: boolean | null;
   Psicologo_EspecialidadPsicologo?: PsicologoEspecialidadRelacion[];
 };
 
@@ -62,6 +88,7 @@ export interface PsicologoFormData {
     calle: string;
   };
   especialidadIds: string[];
+  rolIds: string[];
 }
 
 type CatalogosPsicologos = {
@@ -195,17 +222,50 @@ export function usePsicologos() {
   const [paises, setPaises] = useState<Pais[]>([]);
   const [departamentos, setDepartamentos] = useState<Departamento[]>([]);
   const [municipios, setMunicipios] = useState<Municipio[]>([]);
+  const [rolesSistema, setRolesSistema] = useState<RolSistema[]>([]);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
 
-      const [dataPsicologos, dataCatalogos] = await Promise.all([
+      const [dataPsicologos, dataCatalogos, dataRoles, dataUsuariosRoles] = await Promise.all([
         api.psicologos.getAll(),
         api.general.catalogos(),
+        api.auth.getRoles(),
+        api.auth.getUsuariosRoles(),
       ]);
 
-      setPsicologos(Array.isArray(dataPsicologos) ? dataPsicologos as PsicologoCompleto[] : []);
+      const psicologosBase = Array.isArray(dataPsicologos) ? dataPsicologos as PsicologoCompleto[] : [];
+      const usuariosRoles = Array.isArray(dataUsuariosRoles) ? dataUsuariosRoles as UsuarioRolResumen[] : [];
+
+      const usuariosPorId = new Map<number, UsuarioRolResumen>();
+      const usuariosPorPsicologo = new Map<number, UsuarioRolResumen>();
+
+      usuariosRoles.forEach((usuario) => {
+        usuariosPorId.set(usuario.idUsuario, usuario);
+
+        if (usuario.idPsicologo) {
+          usuariosPorPsicologo.set(usuario.idPsicologo, usuario);
+        }
+      });
+
+      const psicologosConRoles = psicologosBase.map((psicologo) => {
+        const usuario = psicologo.ID_Usuario
+          ? usuariosPorId.get(psicologo.ID_Usuario)
+          : usuariosPorPsicologo.get(psicologo.ID_Psicologo);
+
+        return {
+          ...psicologo,
+          ID_Usuario: psicologo.ID_Usuario || usuario?.idUsuario || null,
+          Email: psicologo.Email || usuario?.email || null,
+          rolesUsuario: usuario?.roles || [],
+          usuarioActivo: usuario?.activo ?? null,
+          requiereCambioPassword: usuario?.requiereCambioPassword ?? null,
+        };
+      });
+
+      setPsicologos(psicologosConRoles);
+      setRolesSistema(Array.isArray(dataRoles) ? dataRoles as RolSistema[] : []);
 
       const catalogos = normalizarCatalogos(dataCatalogos);
       setEspecialidades(catalogos.especialidades || []);
@@ -220,6 +280,7 @@ export function usePsicologos() {
       setPaises([]);
       setDepartamentos([]);
       setMunicipios([]);
+      setRolesSistema([]);
     } finally {
       setLoading(false);
     }
@@ -253,17 +314,34 @@ export function usePsicologos() {
     });
   }, [psicologos, busqueda, filtroActividad]);
 
+  const obtenerRolIdsNumericos = (data: PsicologoFormData) => {
+    return Array.from(new Set(
+      data.rolIds
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    ));
+  };
+
   const crearPsicologo = async (data: PsicologoFormData): Promise<CrearPsicologoResponse | null> => {
     try {
       const payload = construirPayload(data);
+      const rolIds = obtenerRolIdsNumericos(data);
 
       const response = await api.psicologos.create(adaptarPayloadCrear(payload));
+
+      if (esCrearPsicologoResponse(response) && response.psicologo.ID_Usuario && rolIds.length > 0) {
+        await api.auth.cambiarRolesUsuario(response.psicologo.ID_Usuario, rolIds);
+      }
 
       await loadData();
 
       if (!esCrearPsicologoResponse(response)) {
         toast.warning('Psicólogo registrado, pero el backend no devolvió la contraseña temporal.');
         return null;
+      }
+
+      if (!response.psicologo.ID_Usuario && rolIds.length > 0) {
+        toast.warning('Psicólogo registrado, pero no se pudo asignar roles porque no hay usuario vinculado.');
       }
 
       toast.success('Psicólogo registrado exitosamente');
@@ -280,14 +358,38 @@ export function usePsicologos() {
   const actualizarPsicologo = async (id: number, data: PsicologoFormData) => {
     try {
       const payload = construirPayload(data);
+      const rolIds = obtenerRolIdsNumericos(data);
+      const psicologoActual = psicologos.find((psicologo) => psicologo.ID_Psicologo === id);
 
       await api.psicologos.update(id, adaptarPayloadActualizar(payload));
+
+      if (psicologoActual?.ID_Usuario && rolIds.length > 0) {
+        await api.auth.cambiarRolesUsuario(psicologoActual.ID_Usuario, rolIds);
+      } else if (!psicologoActual?.ID_Usuario && rolIds.length > 0) {
+        toast.warning('Datos actualizados, pero no se pudieron actualizar roles porque no hay usuario vinculado.');
+      }
+
       toast.success('Psicólogo actualizado correctamente');
       await loadData();
 
       return true;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Error al actualizar psicólogo';
+      toast.error(message);
+
+      return false;
+    }
+  };
+
+  const cambiarRolesUsuario = async (idUsuario: number, rolIds: number[]): Promise<boolean> => {
+    try {
+      await api.auth.cambiarRolesUsuario(idUsuario, rolIds);
+      toast.success('Roles actualizados correctamente');
+      await loadData();
+
+      return true;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error al cambiar roles del usuario';
       toast.error(message);
 
       return false;
@@ -322,6 +424,7 @@ export function usePsicologos() {
     setBusqueda,
     filtroActividad,
     setFiltroActividad,
+    rolesSistema,
     catalogos: {
       especialidades,
       paises,
@@ -331,6 +434,7 @@ export function usePsicologos() {
     acciones: {
       crearPsicologo,
       actualizarPsicologo,
+      cambiarRolesUsuario,
       restablecerPasswordUsuario,
       reload: loadData,
     },

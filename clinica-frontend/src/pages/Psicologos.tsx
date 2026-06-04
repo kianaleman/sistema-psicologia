@@ -130,6 +130,7 @@ export default function Psicologos() {
     setBusqueda,
     filtroActividad,
     setFiltroActividad,
+    rolesSistema,
     catalogos,
     acciones,
   } = usePsicologos();
@@ -487,6 +488,42 @@ export default function Psicologos() {
 
                       <div className="rounded-2xl border border-slate-100 bg-white p-4 lg:col-span-2">
                         <p className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                          <Icons.Shield />
+                          Roles y acceso
+                        </p>
+
+                        {tieneUsuario ? (
+                          <div className="space-y-3">
+                            <p className="text-xs font-medium text-slate-400">
+                              Usuario vinculado: {psicologo.Email || 'Sin correo'}
+                            </p>
+
+                            <div className="flex flex-wrap gap-2">
+                              {psicologo.rolesUsuario && psicologo.rolesUsuario.length > 0 ? (
+                                psicologo.rolesUsuario.map((rol) => (
+                                  <span
+                                    key={`${psicologo.ID_Psicologo}-rol-${rol.id}`}
+                                    className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black text-slate-700"
+                                  >
+                                    {rol.nombre}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-400">
+                                  Sin roles asignados
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">
+                            Este profesional no tiene usuario vinculado.
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-2xl border border-slate-100 bg-white p-4 lg:col-span-2">
+                        <p className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
                           <Icons.Badge />
                           Especialidades
                         </p>
@@ -546,6 +583,7 @@ export default function Psicologos() {
         onSubmit={handleSubmit}
         psicologoEditar={selectedPsicologo}
         catalogos={catalogos}
+        rolesSistema={rolesSistema}
       />
 
       {credencialesTemporales && (

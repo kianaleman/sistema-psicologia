@@ -163,6 +163,29 @@ interface AdminResetPasswordResponse {
   credenciales: CredencialesTemporalesResponse;
 }
 
+export interface RolSistemaResponse {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+}
+
+export interface UsuarioRolResumenResponse {
+  idUsuario: number;
+  email: string;
+  activo: boolean;
+  requiereCambioPassword: boolean;
+  idPsicologo: number | null;
+  nombre: string;
+  roles: RolSistemaResponse[];
+}
+
+interface CambiarRolesUsuarioResponse {
+  message: string;
+  usuario: UsuarioRolResumenResponse;
+  rolesAntes: string[];
+  rolesDespues: string[];
+}
+
 export const api = {
   get: <T>(url: string) => request<T>(url),
   post: <T, B = unknown>(url: string, body: B) => request<T>(url, { method: 'POST', body: JSON.stringify(body) }),
@@ -181,6 +204,16 @@ export const api = {
     }),
     restablecerPasswordAdmin: (idUsuario: number) => request<AdminResetPasswordResponse>(`/auth/admin/reset-password/${idUsuario}`, {
       method: 'POST',
+    }),
+    getRoles: () => request<RolSistemaResponse[]>('/auth/admin/roles'),
+    getUsuariosRoles: () => request<UsuarioRolResumenResponse[]>('/auth/admin/usuarios-roles'),
+    cambiarRolesUsuario: (idUsuario: number, rolIds: number[]) => request<CambiarRolesUsuarioResponse>(`/auth/admin/usuarios/${idUsuario}/roles`, {
+      method: 'PATCH',
+      body: JSON.stringify({ rolIds }),
+    }),
+    cambiarRolUsuario: (idUsuario: number, rolId: number) => request<CambiarRolesUsuarioResponse>(`/auth/admin/usuarios/${idUsuario}/rol`, {
+      method: 'PATCH',
+      body: JSON.stringify({ rolId }),
     }),
   },
 

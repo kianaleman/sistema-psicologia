@@ -4,6 +4,7 @@ import type {
   Especialidad,
   PsicologoCompleto,
   PsicologoFormData,
+  RolSistema,
 } from '../../hooks/usePsicologos';
 import type { Departamento, Municipio, Pais } from '../../types';
 
@@ -18,6 +19,7 @@ interface PsicologoFormModalProps {
     departamentos: Departamento[];
     municipios: Municipio[];
   };
+  rolesSistema: RolSistema[];
 }
 
 const Icons = {
@@ -55,6 +57,12 @@ const Icons = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M8.5 12.25L7.5 21l4.5-2.5 4.5 2.5-1-8.75" />
     </svg>
   ),
+  Shield: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.7} stroke="currentColor" className="h-5 w-5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s7-3.75 7-10.5V5.25L12 3 5 5.25v5.25C5 17.25 12 21 12 21z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75l2.25 2.25L15.75 9.75" />
+    </svg>
+  ),
   Check: () => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.9} stroke="currentColor" className="h-5 w-5">
       <circle cx="12" cy="12" r="8.25" />
@@ -83,6 +91,7 @@ const initialForm: PsicologoFormData = {
     calle: '',
   },
   especialidadIds: [],
+  rolIds: [],
 };
 
 const esTelefonoValido = (telefono: string) => {
@@ -112,10 +121,17 @@ function getPaisIdDesdeDireccion(psicologo: PsicologoCompleto, paises: Pais[]) {
   return paises.length === 1 ? paises[0].ID_Pais.toString() : '';
 }
 
-function getInitialForm(psicologoEditar: PsicologoCompleto | null, paises: Pais[]): PsicologoFormData {
+function getRolPsicologoDefault(rolesSistema: RolSistema[]) {
+  return rolesSistema.find((rol) => rol.nombre === 'Psicologo')?.id.toString() || '';
+}
+
+function getInitialForm(psicologoEditar: PsicologoCompleto | null, paises: Pais[], rolesSistema: RolSistema[]): PsicologoFormData {
   if (!psicologoEditar) {
+    const rolPsicologoDefault = getRolPsicologoDefault(rolesSistema);
+
     return {
       ...initialForm,
+      rolIds: rolPsicologoDefault ? [rolPsicologoDefault] : [],
       direccion: {
         ...initialForm.direccion,
         paisId: paises.length === 1 ? paises[0].ID_Pais.toString() : '',
@@ -144,6 +160,7 @@ function getInitialForm(psicologoEditar: PsicologoCompleto | null, paises: Pais[
       calle: psicologoEditar.Direccion?.Calle || '',
     },
     especialidadIds: getEspecialidadesSeleccionadas(psicologoEditar),
+    rolIds: psicologoEditar.rolesUsuario?.map((rol) => rol.id.toString()) || [],
   };
 }
 
@@ -153,15 +170,16 @@ export default function PsicologoFormModal({
   onSubmit,
   psicologoEditar,
   catalogos,
+  rolesSistema,
 }: PsicologoFormModalProps) {
   const [formData, setFormData] = useState<PsicologoFormData>(initialForm);
   const [guardando, setGuardando] = useState<boolean>(false);
 
   useEffect(() => {
     if (isOpen) {
-      setFormData(getInitialForm(psicologoEditar, catalogos.paises));
+      setFormData(getInitialForm(psicologoEditar, catalogos.paises, rolesSistema));
     }
-  }, [psicologoEditar, isOpen, catalogos.paises]);
+  }, [psicologoEditar, isOpen, catalogos.paises, rolesSistema]);
 
   const handleEspecialidadChange = (id: string) => {
     setFormData((prev) => {
@@ -172,6 +190,19 @@ export default function PsicologoFormModal({
         especialidadIds: exists
           ? prev.especialidadIds.filter((item) => item !== id)
           : [...prev.especialidadIds, id],
+      };
+    });
+  };
+
+  const handleRolChange = (id: string) => {
+    setFormData((prev) => {
+      const exists = prev.rolIds.includes(id);
+
+      return {
+        ...prev,
+        rolIds: exists
+          ? prev.rolIds.filter((item) => item !== id)
+          : [...prev.rolIds, id],
       };
     });
   };
@@ -199,6 +230,11 @@ export default function PsicologoFormModal({
       return;
     }
 
+    if ((!psicologoEditar || psicologoEditar.ID_Usuario) && formData.rolIds.length === 0) {
+      toast.error('Selecciona al menos un rol de acceso.');
+      return;
+    }
+
     try {
       setGuardando(true);
       await onSubmit(formData, Boolean(psicologoEditar));
@@ -218,6 +254,12 @@ export default function PsicologoFormModal({
     ? '1 especialidad seleccionada'
     : `${formData.especialidadIds.length} especialidades seleccionadas`;
 
+  const rolesTexto = formData.rolIds.length === 1
+    ? '1 rol seleccionado'
+    : `${formData.rolIds.length} roles seleccionados`;
+
+  const puedeEditarRoles = !psicologoEditar || Boolean(psicologoEditar.ID_Usuario);
+
   const direccionResumen = [
     catalogos.departamentos.find((departamento) => departamento.ID_Departamento === Number(formData.direccion.departamentoId))?.Nombre_Departamento,
     catalogos.municipios.find((municipio) => municipio.ID_Municipio === Number(formData.direccion.municipioId))?.Nombre_Municipio,
@@ -229,6 +271,7 @@ export default function PsicologoFormModal({
     { label: 'Contacto', done: Boolean(formData.telefono.trim() && formData.email.trim()) },
     { label: 'Ubicación', done: Boolean(formData.direccion.paisId && formData.direccion.departamentoId && formData.direccion.municipioId && formData.direccion.barrio.trim()) },
     { label: 'Especialidades', done: formData.especialidadIds.length > 0 },
+    { label: 'Roles', done: formData.rolIds.length > 0 },
   ];
 
   return (
@@ -307,6 +350,11 @@ export default function PsicologoFormModal({
                     <div className="rounded-2xl bg-blue-50 p-4 text-blue-700">
                       <p className="text-[10px] font-black uppercase tracking-[0.18em]">Especialidades</p>
                       <p className="mt-1 text-sm font-black">{especialidadesTexto}</p>
+                    </div>
+
+                    <div className="rounded-2xl bg-slate-50 p-4 text-slate-700">
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Roles</p>
+                      <p className="mt-1 text-sm font-black">{rolesTexto}</p>
                     </div>
 
                     {psicologoEditar && (
@@ -555,6 +603,62 @@ export default function PsicologoFormModal({
                         direccion: { ...formData.direccion, calle: event.target.value },
                       })}
                     ></textarea>
+                  </div>
+                </section>
+
+                <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-blue-600">
+                        <Icons.Shield />
+                        Roles y acceso
+                      </p>
+                      <h4 className="mt-1 text-lg font-black text-slate-900">Permisos del usuario</h4>
+                      <p className="mt-1 text-sm font-medium text-slate-400">
+                        Un usuario puede tener uno o varios roles activos dentro del sistema.
+                      </p>
+                    </div>
+
+                    <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black text-slate-600">
+                      {rolesTexto}
+                    </span>
+                  </div>
+
+                  {!puedeEditarRoles && (
+                    <div className="mb-4 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">
+                      Este profesional no tiene un usuario vinculado; no se pueden actualizar roles desde edición.
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    {rolesSistema.length > 0 ? (
+                      rolesSistema.map((rol) => {
+                        const id = rol.id.toString();
+                        const isSelected = formData.rolIds.includes(id);
+
+                        return (
+                          <button
+                            key={rol.id}
+                            type="button"
+                            onClick={() => handleRolChange(id)}
+                            disabled={!puedeEditarRoles}
+                            className={`flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-black transition-all duration-200 ${
+                              isSelected
+                                ? 'border-slate-950 bg-slate-950 text-white shadow-lg shadow-slate-200'
+                                : 'border-slate-200 bg-white text-slate-500 hover:border-blue-100 hover:bg-blue-50 hover:text-blue-700'
+                            } ${!puedeEditarRoles ? 'cursor-not-allowed opacity-60' : ''}`}
+                            title={rol.descripcion || rol.nombre}
+                          >
+                            {isSelected && <Icons.Check />}
+                            {rol.nombre}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-400">
+                        No hay roles disponibles
+                      </span>
+                    )}
                   </div>
                 </section>
 

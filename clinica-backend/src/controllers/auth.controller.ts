@@ -187,6 +187,106 @@ export const restablecerPasswordAdmin = async (req: Request, res: Response): Pro
   }
 };
 
+export const listarRoles = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const roles = await AuthService.listarRoles();
+    res.json(roles);
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al listar roles');
+
+    res.status(500).json({
+      error: message,
+    });
+  }
+};
+
+export const listarUsuariosRoles = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const usuarios = await AuthService.listarUsuariosRoles();
+    res.json(usuarios);
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al listar usuarios y roles');
+
+    res.status(500).json({
+      error: message,
+    });
+  }
+};
+
+export const cambiarRolUsuario = async (req: Request, res: Response): Promise<void> => {
+  const idUsuarioObjetivo = Number(req.params.idUsuario);
+  const body = req.body as { rolId?: number | string; rolIds?: Array<number | string> };
+  const rolIdsNuevos = Array.isArray(body.rolIds)
+    ? body.rolIds.map((rolId) => Number(rolId))
+    : [Number(body.rolId)];
+  const idUsuarioEjecutor = req.user?.idUsuario;
+
+  try {
+    if (!idUsuarioEjecutor) {
+      res.status(401).json({ error: 'Acceso no autorizado o token inválido' });
+      return;
+    }
+
+    if (!Number.isInteger(idUsuarioObjetivo) || idUsuarioObjetivo <= 0) {
+      res.status(400).json({ error: 'El ID del usuario no es válido' });
+      return;
+    }
+
+    const rolIdsValidos = Array.from(new Set(
+      rolIdsNuevos.filter((rolId) => Number.isInteger(rolId) && rolId > 0)
+    ));
+
+    if (rolIdsValidos.length === 0) {
+      res.status(400).json({ error: 'Debe seleccionar al menos un rol válido' });
+      return;
+    }
+
+    const result = await AuthService.cambiarRolesUsuario({
+      idUsuarioObjetivo,
+      rolIdsNuevos: rolIdsValidos,
+      idUsuarioEjecutor,
+    });
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'CAMBIO_ROLES_USUARIO',
+      modulo: 'AUTH',
+      entidad: 'Usuario',
+      idEntidad: idUsuarioObjetivo,
+      resultado: 'EXITO',
+      codigoEstado: 200,
+      mensaje: 'Roles de usuario actualizados por administrador.',
+      datosAntes: {
+        roles: result.rolesAntes,
+      },
+      datosDespues: {
+        usuario: result.usuario,
+        roles: result.rolesDespues,
+      },
+    });
+
+    res.json(result);
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al cambiar los roles del usuario');
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'CAMBIO_ROLES_USUARIO',
+      modulo: 'AUTH',
+      entidad: 'Usuario',
+      idEntidad: Number.isInteger(idUsuarioObjetivo) ? idUsuarioObjetivo : null,
+      resultado: 'FALLO',
+      codigoEstado: 400,
+      mensaje: message,
+      datosDespues: {
+        rolIdsNuevos: rolIdsNuevos.filter((rolId) => Number.isInteger(rolId)),
+      },
+    });
+
+    res.status(400).json({
+      error: message,
+    });
+  }
+};
+
 export const forgotPassword = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email } = req.body as { email?: string };

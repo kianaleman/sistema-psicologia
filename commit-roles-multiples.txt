@@ -1,0 +1,17 @@
+﻿feat(auth): gestionar multiples roles desde formulario de psicologo
+
+- Agrega endpoints administrativos para consultar roles disponibles.
+- Agrega endpoints administrativos para consultar usuarios con roles.
+- Agrega endpoint para actualizar multiples roles de un usuario.
+- Mantiene compatibilidad con cambio de rol individual.
+- Restringe la asignacion de roles a usuarios administradores.
+- Evita que un administrador modifique sus propios roles.
+- Evita dejar el sistema sin administradores activos.
+- Valida que el rol Psicologo solo se asigne a usuarios vinculados a un psicologo.
+- Registra los cambios de roles en auditoria.
+- Integra servicios frontend para consultar y actualizar roles.
+- Actualiza usePsicologos para cargar roles disponibles y roles actuales del usuario.
+- Mueve la asignacion de roles al modal de psicologo.
+- Permite seleccionar varios roles desde PsicologoFormModal.
+- Actualiza Psicologos para mostrar los roles asignados sin editarlos directamente desde la tarjeta.
+- Elimina archivo temporal de commit anterior.
