@@ -109,6 +109,7 @@ const puedeAccederRuta = (pathname: string, usuario: UsuarioSesion | null) => {
   if (pathname.startsWith('/tutores')) return esPsicologo || esRecepcion;
   if (pathname.startsWith('/facturacion')) return esPsicologo || esRecepcion;
   if (pathname.startsWith('/historial')) return esPsicologo;
+  if (pathname.startsWith('/tests')) return esPsicologo;
 
   if (pathname.startsWith('/psicologos')) return false;
   if (pathname.startsWith('/configuracion')) return false;

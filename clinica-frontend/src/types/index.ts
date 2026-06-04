@@ -376,3 +376,126 @@ export interface Stats {
   citasHoy: number;
   ingresosTotales: number;
 }
+
+// ==========================================
+// TESTS PSICOLÓGICOS
+// ==========================================
+export type TestContexto = 'FUERA_SESION' | 'EN_SESION';
+export type TestEstadoAplicacion = 'PENDIENTE' | 'COMPLETADO' | 'VENCIDO' | 'ANULADO';
+
+export interface TestOpcion {
+  ID_Opcion: number;
+  ID_Pregunta: number;
+  Texto: string;
+  Valor: number;
+  Orden: number;
+}
+
+export interface TestPregunta {
+  ID_Pregunta: number;
+  ID_Test: number;
+  Texto: string;
+  Orden: number;
+  Activa: boolean;
+  EsCritica: boolean;
+  ValorCriticoMinimo?: number | null;
+  Opciones: TestOpcion[];
+}
+
+export interface TestRangoResultado {
+  ID_Rango: number;
+  ID_Test: number;
+  PuntajeMin: number;
+  PuntajeMax: number;
+  Nivel: string;
+  Descripcion?: string | null;
+}
+
+export interface TestPsicologico {
+  ID_Test: number;
+  Nombre: string;
+  Codigo: string;
+  Categoria: string;
+  Descripcion?: string | null;
+  Instrucciones?: string | null;
+  Activo: boolean;
+  Version: number;
+  FechaCreacion?: string;
+  FechaActualizacion?: string;
+  Preguntas?: TestPregunta[];
+  Rangos?: TestRangoResultado[];
+  _count?: {
+    Preguntas?: number;
+    Aplicaciones?: number;
+  };
+}
+
+export interface TestAplicacionResumen {
+  ID_Aplicacion: number;
+  Contexto: TestContexto;
+  Estado: TestEstadoAplicacion;
+  ExpiraEn: string;
+  CompletadoEn?: string | null;
+  PuntajeTotal?: number | null;
+  Nivel?: string | null;
+  Interpretacion?: string | null;
+  TieneAlertaCritica: boolean;
+  ObservacionPsicologo?: string | null;
+  FechaCreacion: string;
+  Test: Pick<TestPsicologico, 'ID_Test' | 'Nombre' | 'Codigo' | 'Categoria'>;
+  Paciente?: Pick<Paciente, 'ID_Paciente' | 'Nombre' | 'Apellido'>;
+  Psicologo?: Pick<Psicologo, 'ID_Psicologo' | 'Nombre' | 'Apellido'> | null;
+  Sesion?: Pick<Sesion, 'ID_Sesion' | 'ID_Cita'> | null;
+  Respuestas?: TestRespuestaDetalle[];
+}
+
+export interface TestRespuestaDetalle {
+  ID_Respuesta: number;
+  Valor: number;
+  TextoLibre?: string | null;
+  Pregunta: Pick<TestPregunta, 'ID_Pregunta' | 'Texto' | 'Orden' | 'EsCritica' | 'ValorCriticoMinimo'>;
+  Opcion?: Pick<TestOpcion, 'ID_Opcion' | 'Texto' | 'Valor'> | null;
+}
+
+export interface CrearAplicacionTestDTO {
+  ID_Test: number;
+  ID_Paciente: number;
+  ID_Sesion?: number | null;
+  Contexto: TestContexto;
+  ExpiraHoras?: number;
+  ObservacionPsicologo?: string | null;
+}
+
+export interface CrearAplicacionTestResponse {
+  aplicacion: TestAplicacionResumen;
+  token: string;
+  urlPublica: string;
+}
+
+export interface TestPublicoResponse {
+  ID_Aplicacion: number;
+  Contexto: TestContexto;
+  ExpiraEn: string;
+  Test: TestPsicologico & {
+    Preguntas: TestPregunta[];
+    Rangos: TestRangoResultado[];
+  };
+  aviso: string;
+}
+
+export interface RespuestaTestPublicoDTO {
+  ID_Pregunta: number;
+  ID_Opcion?: number | null;
+  Valor?: number | null;
+  TextoLibre?: string | null;
+}
+
+export interface ResponderTestPublicoResponse {
+  ID_Aplicacion: number;
+  Estado: TestEstadoAplicacion;
+  PuntajeTotal?: number | null;
+  Nivel?: string | null;
+  TieneAlertaCritica: boolean;
+  CompletadoEn?: string | null;
+  mensaje: string;
+}

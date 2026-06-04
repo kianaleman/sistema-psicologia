@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { usePacienteDetalle } from '../hooks/usePacienteDetalle';
 import { generarPDFExpediente } from '../services/pdfGenerator';
 import type { ExpedienteCompleto } from '../hooks/usePacienteDetalle';
+import TestHistorialPaciente from '../components/tests/TestHistorialPaciente';
 
 const Icons = {
   Back: () => (
@@ -199,7 +201,8 @@ function InfoItem({ label, value, mono = false }: InfoItemProps) {
 
 export default function PacienteDetalle() {
   const { id } = useParams();
-  const { expediente, loading, tab, setTab, helpers } = usePacienteDetalle(id);
+  const { expediente, loading, helpers } = usePacienteDetalle(id);
+  const [tab, setTab] = useState<'info' | 'citas' | 'sesiones' | 'tests'>('info');
 
   if (loading) {
     return (
@@ -416,7 +419,7 @@ export default function PacienteDetalle() {
       </section>
 
       <section className="rounded-[2rem] border border-white/80 bg-white p-2 shadow-sm">
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
           <button
             type="button"
             className={`flex items-center justify-center gap-2 rounded-[1.4rem] px-4 py-3 text-sm font-black transition-all ${tab === 'info' ? 'bg-slate-950 text-white shadow-lg shadow-slate-200' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}
@@ -442,6 +445,16 @@ export default function PacienteDetalle() {
           >
             <Icons.Notes />
             Sesiones ({sesiones.length})
+          </button>
+
+
+          <button
+            type="button"
+            className={`flex items-center justify-center gap-2 rounded-[1.4rem] px-4 py-3 text-sm font-black transition-all ${tab === 'tests' ? 'bg-slate-950 text-white shadow-lg shadow-slate-200' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}
+            onClick={() => setTab('tests')}
+          >
+            <Icons.Notes />
+            Tests
           </button>
         </div>
       </section>
@@ -737,6 +750,14 @@ export default function PacienteDetalle() {
           </div>
         </section>
       )}
+
+      {tab === 'tests' && (
+        <TestHistorialPaciente
+          idPaciente={paciente.ID_Paciente}
+          contexto="FUERA_SESION"
+        />
+      )}
+
     </div>
   );
 }

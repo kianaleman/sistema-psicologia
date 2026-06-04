@@ -21,6 +21,7 @@ type IconName =
   | 'calendar'
   | 'patients'
   | 'history'
+  | 'tests'
   | 'finance'
   | 'team'
   | 'tutors'
@@ -82,6 +83,14 @@ const Icons = {
       <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H10l2 2h5.5A2.5 2.5 0 0 1 20 9.5v7A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z" />
       <path d="M9 12h6" />
       <path d="M9 15h4" />
+    </svg>
+  ),
+  tests: () => (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 3.5h6" />
+      <path d="M10 3.5v5.25L5.5 17a2.25 2.25 0 0 0 2 3.5h9a2.25 2.25 0 0 0 2-3.5L14 8.75V3.5" />
+      <path d="M8 15h8" />
+      <path d="M10 18h4" />
     </svg>
   ),
   finance: () => (
@@ -278,6 +287,7 @@ export default function Layout() {
 
   const puedeVerHistorial = esAdmin || esPsicologo;
   const puedeVerFinanzas = esAdmin || esRecepcion || esPsicologo;
+  const puedeVerTests = esAdmin || esPsicologo;
   const puedeVerEquipo = esAdmin;
   const puedeVerConfiguracion = esAdmin;
   const puedeVerAuditoria = esAdmin;
@@ -339,10 +349,14 @@ export default function Layout() {
             <NavItem to="/pacientes" label="Pacientes" icon="patients" />
           </SidebarSection>
 
-          {(puedeVerHistorial || puedeVerFinanzas) && (
+          {(puedeVerHistorial || puedeVerFinanzas || puedeVerTests) && (
             <SidebarSection title="Clínica">
               {puedeVerHistorial && (
                 <NavItem to="/historial" label="Historial" icon="history" />
+              )}
+
+              {puedeVerTests && (
+                <NavItem to="/tests" label="Tests" icon="tests" />
               )}
 
               {puedeVerFinanzas && (
@@ -432,6 +446,9 @@ export default function Layout() {
               <Link to="/pacientes" className="btn btn-sm rounded-full bg-white text-slate-600 border-slate-200">Pacientes</Link>
               {puedeVerHistorial && (
                 <Link to="/historial" className="btn btn-sm rounded-full bg-white text-slate-600 border-slate-200">Historial</Link>
+              )}
+              {puedeVerTests && (
+                <Link to="/tests" className="btn btn-sm rounded-full bg-white text-slate-600 border-slate-200">Tests</Link>
               )}
               {puedeVerFinanzas && (
                 <Link to="/facturacion" className="btn btn-sm rounded-full bg-white text-slate-600 border-slate-200">Finanzas</Link>

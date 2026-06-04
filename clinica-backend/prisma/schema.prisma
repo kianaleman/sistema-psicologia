@@ -80,20 +80,21 @@ model Ocupacion {
 }
 
 model Paciente {
-  ID_Paciente      Int             @id(map: "PK__Paciente__5F36506111B0A8D9") @default(autoincrement())
-  Nombre           String          @db.VarChar(100)
-  Apellido         String          @db.VarChar(100)
-  Fecha_Nacimiento DateTime        @db.Date
-  Genero           String          @db.VarChar(20)
+  ID_Paciente      Int              @id(map: "PK__Paciente__5F36506111B0A8D9") @default(autoincrement())
+  Nombre           String           @db.VarChar(100)
+  Apellido         String           @db.VarChar(100)
+  Fecha_Nacimiento DateTime         @db.Date
+  Genero           String           @db.VarChar(20)
   ID_Direccion     Int
-  Activo           Boolean?        @default(true, map: "DF__Paciente__Activo__5EBF139D")
+  Activo           Boolean?         @default(true, map: "DF__Paciente__Activo__5EBF139D")
   ID_Pais          Int?
   Cita             Cita[]
   Expediente       Expediente?
-  Direccion        Direccion       @relation(fields: [ID_Direccion], references: [ID_Direccion], onUpdate: NoAction, map: "FK__Paciente__ID_Dir__5FB337D6")
-  Pais             Pais?           @relation(fields: [ID_Pais], references: [ID_Pais], onDelete: NoAction, onUpdate: NoAction, map: "FK_Paciente_Pais")
+  Direccion        Direccion        @relation(fields: [ID_Direccion], references: [ID_Direccion], onUpdate: NoAction, map: "FK__Paciente__ID_Dir__5FB337D6")
+  Pais             Pais?            @relation(fields: [ID_Pais], references: [ID_Pais], onDelete: NoAction, onUpdate: NoAction, map: "FK_Paciente_Pais")
   Paciente_Menor   Paciente_Menor?
   PacienteAdulto   PacienteAdulto?
+  TestAplicacion   TestAplicacion[]
 }
 
 model PacienteAdulto {
@@ -131,6 +132,7 @@ model Psicologo {
   CodigoTelefonoPais              CodigoTelefonoPais?               @relation(fields: [ID_CodigoTelefono], references: [ID_CodigoTelefono], onDelete: NoAction, onUpdate: NoAction, map: "FK_Psicologo_CodigoTel")
   Psicologo_EspecialidadPsicologo Psicologo_EspecialidadPsicologo[]
   Tratamiento                     Tratamiento[]
+  TestAplicacion                  TestAplicacion[]
 }
 
 model Psicologo_EspecialidadPsicologo {
@@ -156,6 +158,7 @@ model Sesion {
   Expediente                    Expediente?                     @relation(fields: [ID_Expediente], references: [ID_Expediente], onDelete: NoAction, onUpdate: NoAction, map: "FK__Sesion__ID_Exped__02FC7413")
   Sesion_ExploracionPsicologica Sesion_ExploracionPsicologica[]
   Tratamiento                   Tratamiento[]
+  TestAplicacion                TestAplicacion[]
 }
 
 model Sesion_ExploracionPsicologica {
@@ -336,6 +339,120 @@ model Rol {
   Usuario_Rol Usuario_Rol[]
 }
 
+model TestPsicologico {
+  ID_Test            Int                  @id @default(autoincrement())
+  Nombre             String               @db.NVarChar(150)
+  Codigo             String               @unique @db.NVarChar(50)
+  Categoria          String               @db.NVarChar(100)
+  Descripcion        String?              @db.NVarChar(1000)
+  Instrucciones      String?              @db.NVarChar(2000)
+  Activo             Boolean              @default(true)
+  Version            Int                  @default(1)
+  FechaCreacion      DateTime             @default(now()) @db.DateTime
+  FechaActualizacion DateTime             @updatedAt @db.DateTime
+  Preguntas          TestPregunta[]
+  Rangos             TestRangoResultado[]
+  Aplicaciones       TestAplicacion[]
+}
+
+model TestPregunta {
+  ID_Pregunta        Int             @id @default(autoincrement())
+  ID_Test            Int
+  Texto              String          @db.NVarChar(1000)
+  Orden              Int
+  Activa             Boolean         @default(true)
+  EsCritica          Boolean         @default(false)
+  ValorCriticoMinimo Int?
+  Test               TestPsicologico @relation(fields: [ID_Test], references: [ID_Test], onDelete: Cascade, onUpdate: NoAction)
+  Opciones           TestOpcion[]
+  Respuestas         TestRespuesta[]
+
+  @@index([ID_Test])
+}
+
+model TestOpcion {
+  ID_Opcion   Int             @id @default(autoincrement())
+  ID_Pregunta Int
+  Texto       String          @db.NVarChar(300)
+  Valor       Int
+  Orden       Int
+  Pregunta    TestPregunta    @relation(fields: [ID_Pregunta], references: [ID_Pregunta], onDelete: Cascade, onUpdate: NoAction)
+  Respuestas  TestRespuesta[]
+
+  @@index([ID_Pregunta])
+}
+
+model TestRangoResultado {
+  ID_Rango    Int             @id @default(autoincrement())
+  ID_Test     Int
+  PuntajeMin  Int
+  PuntajeMax  Int
+  Nivel       String          @db.NVarChar(100)
+  Descripcion String?         @db.NVarChar(1000)
+  Test        TestPsicologico @relation(fields: [ID_Test], references: [ID_Test], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([ID_Test])
+}
+
+model TestAplicacion {
+  ID_Aplicacion        Int                    @id @default(autoincrement())
+  ID_Test              Int
+  ID_Paciente          Int
+  ID_Psicologo         Int?
+  ID_Sesion            Int?
+  Contexto             String                 @db.NVarChar(30)
+  Estado               String                 @db.NVarChar(30)
+  TokenHash            String                 @unique @db.VarChar(128)
+  ExpiraEn             DateTime               @db.DateTime
+  CompletadoEn         DateTime?              @db.DateTime
+  PuntajeTotal         Int?
+  Nivel                String?                @db.NVarChar(100)
+  Interpretacion       String?                @db.NVarChar(1000)
+  TieneAlertaCritica   Boolean                @default(false)
+  ObservacionPsicologo String?                @db.NVarChar(2000)
+  FechaCreacion        DateTime               @default(now()) @db.DateTime
+  FechaActualizacion   DateTime               @updatedAt @db.DateTime
+  Test                 TestPsicologico        @relation(fields: [ID_Test], references: [ID_Test], onUpdate: NoAction)
+  Paciente             Paciente               @relation(fields: [ID_Paciente], references: [ID_Paciente], onUpdate: NoAction)
+  Psicologo            Psicologo?             @relation(fields: [ID_Psicologo], references: [ID_Psicologo], onDelete: NoAction, onUpdate: NoAction)
+  Sesion               Sesion?                @relation(fields: [ID_Sesion], references: [ID_Sesion], onDelete: NoAction, onUpdate: NoAction)
+  Respuestas           TestRespuesta[]
+  Eventos              TestAplicacionEvento[]
+
+  @@index([ID_Test])
+  @@index([ID_Paciente])
+  @@index([ID_Psicologo])
+  @@index([ID_Sesion])
+  @@index([Estado])
+}
+
+model TestRespuesta {
+  ID_Respuesta  Int            @id @default(autoincrement())
+  ID_Aplicacion Int
+  ID_Pregunta   Int
+  ID_Opcion     Int?
+  Valor         Int
+  TextoLibre    String?        @db.NVarChar(1000)
+  Aplicacion    TestAplicacion @relation(fields: [ID_Aplicacion], references: [ID_Aplicacion], onDelete: Cascade, onUpdate: NoAction)
+  Pregunta      TestPregunta   @relation(fields: [ID_Pregunta], references: [ID_Pregunta], onDelete: NoAction, onUpdate: NoAction)
+  Opcion        TestOpcion?    @relation(fields: [ID_Opcion], references: [ID_Opcion], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([ID_Aplicacion])
+  @@index([ID_Pregunta])
+  @@index([ID_Opcion])
+}
+
+model TestAplicacionEvento {
+  ID_Evento     Int            @id @default(autoincrement())
+  ID_Aplicacion Int
+  TipoEvento    String         @db.NVarChar(100)
+  Descripcion   String?        @db.NVarChar(1000)
+  FechaEvento   DateTime       @default(now()) @db.DateTime
+  Aplicacion    TestAplicacion @relation(fields: [ID_Aplicacion], references: [ID_Aplicacion], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([ID_Aplicacion])
+}
+
 model sysdiagrams {
   name         String @db.NVarChar(128)
   principal_id Int
@@ -382,48 +499,48 @@ model Tutor_PacienteMenor {
 }
 
 model Usuario {
-  ID_Usuario             Int           @id(map: "PK__Usuario__DE4431C563777BAA") @default(autoincrement())
-  Email                  String        @unique(map: "UQ__Usuario__A9D10534AEF0F97C") @db.VarChar(100)
-  PasswordHash           String        @db.VarChar(255)
-  Fecha_Creacion         DateTime?     @default(now(), map: "DF__Usuario__Fecha_C__05D8E0BE") @db.DateTime
-  Ultimo_Acceso          DateTime?     @db.DateTime
-  Activo                 Boolean?      @default(true, map: "DF__Usuario__Activo__4CA06362")
+  ID_Usuario             Int                @id(map: "PK__Usuario__DE4431C563777BAA") @default(autoincrement())
+  Email                  String             @unique(map: "UQ__Usuario__A9D10534AEF0F97C") @db.VarChar(100)
+  PasswordHash           String             @db.VarChar(255)
+  Fecha_Creacion         DateTime?          @default(now(), map: "DF__Usuario__Fecha_C__05D8E0BE") @db.DateTime
+  Ultimo_Acceso          DateTime?          @db.DateTime
+  Activo                 Boolean?           @default(true, map: "DF__Usuario__Activo__4CA06362")
   ResetToken             String?
   ResetTokenExpire       DateTime?
-  Verificado             Boolean       @default(false)
-  RequiereCambioPassword Boolean       @default(true)
+  Verificado             Boolean            @default(false)
+  RequiereCambioPassword Boolean            @default(true)
   Psicologo              Psicologo?
   Usuario_Rol            Usuario_Rol[]
-  AuditoriaSistema AuditoriaSistema[]
+  AuditoriaSistema       AuditoriaSistema[]
 }
 
 model AuditoriaSistema {
-  ID_Auditoria Int      @id @default(autoincrement())
+  ID_Auditoria Int @id @default(autoincrement())
 
   ID_Usuario   Int?
-  UsuarioEmail String?  @db.VarChar(100)
-  Roles        String?  @db.VarChar(255)
+  UsuarioEmail String? @db.VarChar(100)
+  Roles        String? @db.VarChar(255)
 
-  Accion       String   @db.VarChar(80)
-  Modulo       String   @db.VarChar(80)
-  Entidad      String?  @db.VarChar(80)
-  ID_Entidad   Int?
+  Accion     String  @db.VarChar(80)
+  Modulo     String  @db.VarChar(80)
+  Entidad    String? @db.VarChar(80)
+  ID_Entidad Int?
 
-  MetodoHTTP   String?  @db.VarChar(10)
-  Ruta         String?  @db.VarChar(255)
-  Ip           String?  @db.VarChar(80)
-  UserAgent    String?  @db.VarChar(500)
+  MetodoHTTP String? @db.VarChar(10)
+  Ruta       String? @db.VarChar(255)
+  Ip         String? @db.VarChar(80)
+  UserAgent  String? @db.VarChar(500)
 
-  Resultado    String   @db.VarChar(20)
+  Resultado    String  @db.VarChar(20)
   CodigoEstado Int?
-  Mensaje      String?  @db.VarChar(500)
+  Mensaje      String? @db.VarChar(500)
 
-  DatosAntes   String?  @db.NVarChar(Max)
-  DatosDespues String?  @db.NVarChar(Max)
+  DatosAntes   String? @db.NVarChar(Max)
+  DatosDespues String? @db.NVarChar(Max)
 
-  FechaHora    DateTime @default(now()) @db.DateTime
+  FechaHora DateTime @default(now()) @db.DateTime
 
-  Usuario      Usuario? @relation(fields: [ID_Usuario], references: [ID_Usuario], onDelete: NoAction, onUpdate: NoAction)
+  Usuario Usuario? @relation(fields: [ID_Usuario], references: [ID_Usuario], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model Usuario_Rol {

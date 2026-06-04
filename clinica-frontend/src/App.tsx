@@ -17,6 +17,8 @@ import ForgotPassword from './pages/ForgotPassword';
 import CambiarPasswordDefault from './pages/CambiarPasswordDefault';
 import ResetPassword from './pages/ResetPassword';
 import Auditoria from './pages/Auditoria';
+import TestsPsicologicos from './pages/TestsPsicologicos';
+import TestPublico from './pages/TestPublico';
 
 export default function App() {
   return (
@@ -25,6 +27,7 @@ export default function App() {
         <Route path="/" element={<Presentacion />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/test-publico/:token" element={<TestPublico />} />
 
         <Route element={<ProtectedRoute />}>
           <Route path="/cambiar-password-default" element={<CambiarPasswordDefault />} />
@@ -40,6 +43,7 @@ export default function App() {
             <Route path="/facturacion" element={<Facturacion />} />
             <Route path="/configuracion" element={<Configuracion />} />
             <Route path="/auditoria" element={<Auditoria />} />
+            <Route path="/tests" element={<TestsPsicologicos />} />
           </Route>
         </Route>
 

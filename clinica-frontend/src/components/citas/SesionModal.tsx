@@ -11,6 +11,7 @@ import type {
   Banco,
 } from "../../types";
 import { toast } from "sonner";
+import TestHistorialPaciente from "../tests/TestHistorialPaciente";
 
 // 1. Definimos el estado local del formulario de tratamiento SOLO para la UI
 interface TratamientoLocal {
@@ -22,6 +23,10 @@ interface TratamientoLocal {
   viaAdminId: string;
   objetivo: string;
   tipoTerapiaId: string;
+}
+
+interface CitaConSesion extends Cita {
+  Sesion?: { ID_Sesion?: number | null } | null;
 }
 
 interface SeguimientoForm {
@@ -276,6 +281,9 @@ export default function SesionModal({
     !horarioSeleccionadoOcupado &&
     (!metodoPagoRequiereReferencia || (seguimientoForm.bancoId && seguimientoForm.numeroReferencia.trim()))
   );
+
+  const citaConSesion = cita as CitaConSesion | null;
+  const idSesionAsociada = citaConSesion?.Sesion?.ID_Sesion || null;
 
   const limpiarInicioSesion = () => {
     if (cita?.ID_Cita) {
@@ -787,6 +795,16 @@ export default function SesionModal({
                 </table>
               </div>
             )}
+          </div>
+
+
+          <div className="bg-white p-5 rounded-xl border border-indigo-200 shadow-sm">
+            <TestHistorialPaciente
+              idPaciente={cita.ID_Paciente}
+              idSesion={idSesionAsociada}
+              contexto="EN_SESION"
+              compacto
+            />
           </div>
 
           <div className="bg-white p-5 rounded-xl border border-blue-200 shadow-sm">

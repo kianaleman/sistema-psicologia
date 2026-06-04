@@ -12,6 +12,13 @@ import type {
   MotivoCancelacion,
   CreateSesionDTO,
   Stats,
+  CrearAplicacionTestDTO,
+  CrearAplicacionTestResponse,
+  ResponderTestPublicoResponse,
+  RespuestaTestPublicoDTO,
+  TestAplicacionResumen,
+  TestPsicologico,
+  TestPublicoResponse,
 } from '../types';
 import type {
   AuditoriaListaResponse,
@@ -281,6 +288,31 @@ export const api = {
     create: (modelo: string, nombre: string) => request<unknown>(`/config/${modelo}`, { method: 'POST', body: JSON.stringify({ nombre }) }),
     update: (modelo: string, id: number, nombre: string) => request<unknown>(`/config/${modelo}/${id}`, { method: 'PUT', body: JSON.stringify({ nombre }) }),
     delete: (modelo: string, id: number) => request<unknown>(`/config/${modelo}/${id}`, { method: 'DELETE' }),
+  },
+
+
+  tests: {
+    getAll: () => request<TestPsicologico[]>('/tests'),
+    getOne: (id: number) => request<TestPsicologico>(`/tests/${id}`),
+    cambiarEstado: (id: number, Activo: boolean) => request<TestPsicologico>(`/tests/${id}/estado`, {
+      method: 'PATCH',
+      body: JSON.stringify({ Activo }),
+    }),
+    crearAplicacion: (data: CrearAplicacionTestDTO) => request<CrearAplicacionTestResponse>('/tests/aplicaciones', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    getAplicacion: (idAplicacion: number) => request<TestAplicacionResumen>(`/tests/aplicaciones/${idAplicacion}`),
+    anularAplicacion: (idAplicacion: number) => request<TestAplicacionResumen>(`/tests/aplicaciones/${idAplicacion}/anular`, {
+      method: 'PATCH',
+    }),
+    getResultadosPaciente: (idPaciente: number) => request<TestAplicacionResumen[]>(`/tests/pacientes/${idPaciente}/resultados`),
+    getResultadosSesion: (idSesion: number) => request<TestAplicacionResumen[]>(`/tests/sesiones/${idSesion}/resultados`),
+    getPublico: (token: string) => request<TestPublicoResponse>(`/tests/publico/${token}`),
+    responderPublico: (token: string, respuestas: RespuestaTestPublicoDTO[]) => request<ResponderTestPublicoResponse>(`/tests/publico/${token}/responder`, {
+      method: 'POST',
+      body: JSON.stringify({ respuestas }),
+    }),
   },
 
   auditoria: {
