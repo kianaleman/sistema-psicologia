@@ -1,27 +1,42 @@
 import express from 'express';
 import cors from 'cors';
-import { iniciarCronJobs } from './cron/scheduler'; // <--- IMPORTAR AQUÍ
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import { iniciarCronJobs } from './cron/scheduler.js';
 
-// Importar Rutas Modulares
-import pacienteRoutes from './routes/paciente.routes';
-import citaRoutes from './routes/cita.routes';
-import sesionRoutes from './routes/sesion.routes';
-import psicologoRoutes from './routes/psicologo.routes';
-import tutorRoutes from './routes/tutor.routes';
-import generalRoutes from './routes/general.routes';
-import facturaRoutes from './routes/factura.routes';
-import configuracionRoutes from './routes/configuracion.routes';
+import authRoutes from './routes/auth.routes.js';
+import pacienteRoutes from './routes/paciente.routes.js';
+import citaRoutes from './routes/cita.routes.js';
+import sesionRoutes from './routes/sesion.routes.js';
+import psicologoRoutes from './routes/psicologo.routes.js';
+import tutorRoutes from './routes/tutor.routes.js';
+import generalRoutes from './routes/general.routes.js';
+import facturaRoutes from './routes/factura.routes.js';
+import configuracionRoutes from './routes/configuracion.routes.js';
+import auditoriaRoutes from './routes/auditoria.routes.js';
+import testPsicologicoRoutes from './routes/testPsicologico.routes.js';
 
 const app = express();
-const PORT = 3000;
+app.set('trust proxy', 1);
 
-// Middlewares
+const PORT = process.env.PORT || 3000;
+
 app.use(cors());
 app.use(express.json());
+app.use(helmet());
 
-// --- CONEXIÓN DE RUTAS ---
+const authLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 200,
+  message: {
+    error: 'Demasiados intentos de inicio de sesión, intenta de nuevo en 1 hora.',
+  },
+});
 
-// 1. Módulos Principales
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
+
+app.use('/api/auth', authRoutes);
 app.use('/api/pacientes', pacienteRoutes);
 app.use('/api/citas', citaRoutes);
 app.use('/api/sesiones', sesionRoutes);
@@ -29,16 +44,13 @@ app.use('/api/psicologos', psicologoRoutes);
 app.use('/api/tutores', tutorRoutes);
 app.use('/api/facturas', facturaRoutes);
 app.use('/api/config', configuracionRoutes);
-
-// 2. Rutas Generales (Dashboard, Catálogos, Historial)
-// Nota: Estas rutas no tienen un prefijo común fuerte, así que las montamos en /api
-app.use('/api', generalRoutes); 
-
 app.use('/api/general', generalRoutes);
+app.use('/api/auditoria', auditoriaRoutes);
+app.use('/api/tests', testPsicologicoRoutes);
 
-// --- INICIO DEL SERVIDOR ---
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor ONLINE en http://localhost:${PORT}`);
-  console.log(`📂 Arquitectura MVC cargada correctamente.`);
+  console.log(`Servidor ONLINE en http://localhost:${PORT}`);
+  console.log('Sistema de Seguridad JWT y Módulos cargados correctamente.');
+  console.log('Arquitectura MVC conectada.');
   iniciarCronJobs();
 });

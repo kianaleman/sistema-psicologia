@@ -1,27 +1,70 @@
 import type { Request, Response } from 'express';
-import { FacturaService } from '../services/factura.service';
+import { FacturaService } from '../services/factura.service.js';
+import { AuditoriaService } from '../services/auditoria.service.js';
 
-// GET: Obtener historial de facturación completo
-export const getFacturas = async (req: Request, res: Response) => {
+const getErrorMessage = (error: unknown, fallback: string) => {
+  return error instanceof Error ? error.message : fallback;
+};
+
+const getStatusFromError = (message: string) => {
+  const lowerMessage = message.toLowerCase();
+
+  if (lowerMessage.includes('no autorizado')) return 401;
+
+  if (
+    lowerMessage.includes('no tiene permisos') ||
+    lowerMessage.includes('no tiene un perfil')
+  ) {
+    return 403;
+  }
+
+  return 500;
+};
+
+export const getFacturas = async (req: Request, res: Response): Promise<void> => {
   try {
-    const facturas = await FacturaService.getAll();
+    const facturas = await FacturaService.getAll(req.user);
     res.json(facturas);
-  } catch (error) {
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al obtener el historial de recibos');
     console.error(error);
-    res.status(500).json({ error: 'Error al obtener facturas' });
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };
 
-// GET: Obtener una factura individual (Opcional, ya queda listo si lo necesitas)
-export const getFacturaById = async (req: Request, res: Response) => {
-  const { id } = req.params;
+export const getFacturaById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const factura = await FacturaService.getById(Number(id));
-    if (!factura) return res.status(404).json({ error: 'Factura no encontrada' });
-    
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: 'El ID proporcionado no es válido' });
+      return;
+    }
+
+    const factura = await FacturaService.getById(id, req.user);
+
+    if (!factura) {
+      res.status(404).json({ error: 'Recibo no encontrado' });
+      return;
+    }
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'RECIBO_CONSULTADO',
+      modulo: 'FACTURACION',
+      entidad: 'Recibo',
+      idEntidad: id,
+      resultado: 'EXITO',
+      codigoEstado: 200,
+      mensaje: 'Recibo consultado.',
+      datosDespues: {
+        Cod_Recibo: id,
+      },
+    });
+
     res.json(factura);
-  } catch (error) {
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al obtener el detalle del recibo');
     console.error(error);
-    res.status(500).json({ error: 'Error al obtener el detalle de la factura' });
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };

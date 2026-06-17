@@ -1,35 +1,48 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { api } from '../services/api';
 
+// Definimos interfaces estrictas para la configuración
+export interface CatalogoConfig {
+  label: string;
+  key: string;
+  idField: string;
+  nameField: string;
+}
+
+// Tipo genérico para los items de los catálogos en lugar de usar 'any'
+export type ConfigItem = Record<string, string | number>;
+
 // CONFIGURACIÓN MAESTRA DE CATÁLOGOS
-// Aquí definimos cómo se llaman los campos en la Base de Datos para cada tabla
-export const CATALOGOS_CONFIG = [
-  { label: 'Ocupaciones', key: 'ocupacion', idField: 'ID_Ocupacion', nameField: 'NombreDeOcupacion' },
-  { label: 'Estados Civiles', key: 'estadocivil', idField: 'ID_EstadoCivil', nameField: 'NombreEstadoCivil' },
-  { label: 'Parentescos', key: 'parentesco', idField: 'ID_Parentesco', nameField: 'NombreDeParentesco' },
-  { label: 'Especialidades', key: 'especialidad', idField: 'ID_Especialidad', nameField: 'NombreEspecialidad' },
-  { label: 'Exploraciones', key: 'exploracion', idField: 'ID_ExploracionPsicologica', nameField: 'NombreDeExploracionPsicologica' },
-  { label: 'Tipos Terapia', key: 'terapia', idField: 'ID_TipoTerapia', nameField: 'NombreDeTerapia' },
-  { label: 'Vías Admin.', key: 'via', idField: 'ID_ViaAdministracion', nameField: 'NombreDePresentacion' },
-  { label: 'Métodos Pago', key: 'metodo', idField: 'ID_MetodoPago', nameField: 'NombreMetodo' },
-  { label: 'Motivos Cancelación', key: 'motivo', idField: 'ID_Motivo', nameField: 'Categoria' } // <--- NUEVO
+// Sincronizada milimétricamente con el nuevo esquema de Prisma y types/index.ts
+export const CATALOGOS_CONFIG: CatalogoConfig[] = [
+  { label: 'Ocupaciones', key: 'ocupacion', idField: 'ID_Ocupacion', nameField: 'Nombre_DeOcupacion' },
+  { label: 'Estados Civiles', key: 'estadocivil', idField: 'ID_EstadoCivil', nameField: 'Nombre_EstadoCivil' },
+  { label: 'Parentescos', key: 'parentesco', idField: 'ID_Parentesco', nameField: 'Nombre_De_Parentesco' },
+  { label: 'Especialidades', key: 'especialidad', idField: 'ID_Especialidad', nameField: 'Nombre_Especialidad' },
+  { label: 'Exploraciones', key: 'exploracion', idField: 'ID_ExploracionPsicologica', nameField: 'Nombre_De_ExploracionPsicologica' },
+  { label: 'Tipos Terapia', key: 'terapia', idField: 'ID_Tipo_Terapia', nameField: 'Nombre_De_Terapia' },
+  { label: 'Vías Admin.', key: 'via', idField: 'ID_ViaAdministracion', nameField: 'Nombre_De_Presentacion' },
+  { label: 'Métodos Pago', key: 'metodo', idField: 'ID_Metodo_Pago', nameField: 'Nombre_Metodo' },
+  { label: 'Motivos Cancelación', key: 'motivo', idField: 'ID_MotivoCancelacion', nameField: 'Motivo' } 
 ];
 
 export const useConfiguracion = () => {
-  const [activeTab, setActiveTab] = useState(CATALOGOS_CONFIG[0]);
-  const [items, setItems] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<CatalogoConfig>(CATALOGOS_CONFIG[0]);
+  const [items, setItems] = useState<ConfigItem[]>([]);
   const [loading, setLoading] = useState(false);
   
   // Estado del Modal
   const [modalOpen, setModalOpen] = useState(false);
-  const [editItem, setEditItem] = useState<any | null>(null);
+  const [editItem, setEditItem] = useState<ConfigItem | null>(null);
   const [inputValue, setInputValue] = useState('');
 
-  const loadItems = async () => {
+  // Utilizamos useCallback para evitar re-renderizados innecesarios según las reglas de ESLint
+  const loadItems = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.config.getAll(activeTab.key);
+      // Casteamos el resultado a nuestro tipo estructurado
+      const data = await api.config.getAll(activeTab.key) as ConfigItem[];
       setItems(data);
     } catch (error) {
       console.error(error);
@@ -37,16 +50,17 @@ export const useConfiguracion = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab]);
 
   useEffect(() => {
     loadItems();
-  }, [activeTab]);
+  }, [loadItems]);
 
-  const openModal = (item?: any) => {
+  const openModal = (item?: ConfigItem) => {
     if (item) {
       setEditItem(item);
-      setInputValue(item[activeTab.nameField]);
+      // Extraemos el valor dinámico y lo convertimos a string de manera segura
+      setInputValue(String(item[activeTab.nameField] || ''));
     } else {
       setEditItem(null);
       setInputValue('');
@@ -66,7 +80,9 @@ export const useConfiguracion = () => {
 
     try {
       if (editItem) {
-        await api.config.update(activeTab.key, editItem[activeTab.idField], inputValue);
+        // Aseguramos que el ID se envíe como número
+        const id = Number(editItem[activeTab.idField]);
+        await api.config.update(activeTab.key, id, inputValue);
         toast.success('Actualizado correctamente');
       } else {
         await api.config.create(activeTab.key, inputValue);
@@ -74,8 +90,9 @@ export const useConfiguracion = () => {
       }
       closeModal();
       loadItems();
-    } catch (error) {
-      toast.error('Error al guardar');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Error al guardar';
+      toast.error(msg);
     }
   };
 
@@ -85,9 +102,9 @@ export const useConfiguracion = () => {
       await api.config.delete(activeTab.key, id);
       toast.success('Eliminado correctamente');
       loadItems();
-    } catch (error: any) {
-      // Aquí capturamos el error de validación del backend (FK constraint)
-      const msg = error.response?.data?.error || 'Error al eliminar';
+    } catch (error: unknown) {
+      // Capturamos con precisión las respuestas de constraint de Foreign Key de Prisma
+      const msg = error instanceof Error ? error.message : 'Error al eliminar';
       toast.error(msg);
     }
   };

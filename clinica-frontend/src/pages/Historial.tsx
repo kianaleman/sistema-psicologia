@@ -1,177 +1,433 @@
-import { useHistorial } from '../hooks/useHistorial';
+import { useHistorial, type RegistroHistorial } from '../hooks/useHistorial';
 
-// Iconos SVG Inline
 const Icons = {
-  Search: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-400"><path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" /></svg>,
-  History: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clipRule="evenodd" /></svg>,
-  FileText: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M4.5 2A1.5 1.5 0 003 3.5v13A1.5 1.5 0 004.5 18h11a1.5 1.5 0 001.5-1.5V7.621a1.5 1.5 0 00-.44-1.06l-4.12-4.122A1.5 1.5 0 0011.378 2H4.5zm2.25 8.5a.75.75 0 000 1.5h6.5a.75.75 0 000-1.5h-6.5zm0 3a.75.75 0 000 1.5h6.5a.75.75 0 000-1.5h-6.5z" clipRule="evenodd" /></svg>
+  Search: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+      <path
+        fillRule="evenodd"
+        d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
+        clipRule="evenodd"
+      />
+    </svg>
+  ),
+  History: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.7} stroke="currentColor" className="h-6 w-6">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 7.5v5l3.25 2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12a8.25 8.25 0 101.85-5.2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.5v4.25H8" />
+    </svg>
+  ),
+  FileText: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.7} stroke="currentColor" className="h-4 w-4">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 3.75h6L19.5 9.75v10.5H7.5A3 3 0 014.5 17.25V6.75A3 3 0 017.5 3.75z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 3.75V9.75h6M8.25 13.5h7.5M8.25 16.5h5.25" />
+    </svg>
+  ),
+  Empty: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor" className="h-12 w-12">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 3.75h6L19.5 9.75v10.5H7.5A3 3 0 014.5 17.25V6.75A3 3 0 017.5 3.75z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 3.75V9.75h6M8.25 13.5h7.5M8.25 16.5h5.25" />
+    </svg>
+  ),
+  User: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.7} stroke="currentColor" className="h-5 w-5">
+      <circle cx="12" cy="8" r="3.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 21a7 7 0 0114 0" />
+    </svg>
+  ),
+  Doctor: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.7} stroke="currentColor" className="h-5 w-5">
+      <circle cx="12" cy="7.5" r="3.75" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 20.25a7.5 7.5 0 0115 0" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5v3M10.5 18h3" />
+    </svg>
+  ),
+  Diagnosis: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.7} stroke="currentColor" className="h-5 w-5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75l2.25 2.25L15.75 9.75" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s7-3.75 7-10.5V5.25L12 3 5 5.25v5.25C5 17.25 12 21 12 21z" />
+    </svg>
+  ),
+  Calendar: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.7} stroke="currentColor" className="h-5 w-5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7 3v3M17 3v3M4.5 8.25h15M5.25 5.25h13.5A1.5 1.5 0 0120.25 6.75v12A1.5 1.5 0 0118.75 20.25H5.25A1.5 1.5 0 013.75 18.75v-12A1.5 1.5 0 015.25 5.25z" />
+    </svg>
+  ),
+  Close: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-5 w-5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  ),
 };
+
+function formatearFecha(fecha?: string | null) {
+  if (!fecha) return 'Fecha no disponible';
+
+  const fechaPura = fecha.toString().split('T')[0];
+  const partes = fechaPura.split('-');
+
+  if (partes.length !== 3) return 'Fecha no disponible';
+
+  const fechaObj = new Date(
+    Number(partes[0]),
+    Number(partes[1]) - 1,
+    Number(partes[2])
+  );
+
+  if (Number.isNaN(fechaObj.getTime())) return 'Fecha no disponible';
+
+  return fechaObj.toLocaleDateString('es-ES', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function getNombrePaciente(registro: RegistroHistorial) {
+  const nombre = registro.Paciente?.Nombre || '';
+  const apellido = registro.Paciente?.Apellido || '';
+  const nombreCompleto = `${nombre} ${apellido}`.trim();
+
+  return nombreCompleto || 'Paciente no disponible';
+}
+
+function getNacionalidad(registro: RegistroHistorial) {
+  return (
+    registro.Paciente?.Pais?.Nacionalidad ||
+    registro.Paciente?.Nacionalidad ||
+    registro.Paciente?.Pais?.Nombre_Pais ||
+    'N/A'
+  );
+}
+
+function getNombrePsicologo(registro: RegistroHistorial) {
+  const nombre = registro.Psicologo?.Nombre || '';
+  const apellido = registro.Psicologo?.Apellido || '';
+  const nombreCompleto = `${nombre} ${apellido}`.trim();
+
+  return nombreCompleto || 'Especialista no disponible';
+}
+
+function abrirModalNota(idSesion: number) {
+  const modal = document.getElementById(`modal_nota_${idSesion}`);
+
+  if (modal instanceof HTMLDialogElement) {
+    modal.showModal();
+  }
+}
 
 export default function Historial() {
   const { registros, loading, busqueda, setBusqueda } = useHistorial();
 
-  const formatearFecha = (fecha: string | null) => {
-     if (!fecha) return "Fecha no disponible";
-     const f = fecha.split('T')[0].split('-');
-     const fechaObj = new Date(parseInt(f[0]), parseInt(f[1]) - 1, parseInt(f[2]));
-     // Formato elegante: "24 Nov, 2025"
-     return fechaObj.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
-  };
+  const registrosConDiagnostico = registros.filter((registro) => Boolean(registro.DiagnosticoDiferencial)).length;
+  const pacientesUnicos = new Set(
+    registros
+      .map(getNombrePaciente)
+      .filter((nombre) => nombre !== 'Paciente no disponible')
+  ).size;
+  const especialistasUnicos = new Set(
+    registros
+      .map(getNombrePsicologo)
+      .filter((nombre) => nombre !== 'Especialista no disponible')
+  ).size;
 
   return (
-    <div className="p-8 animate-fade-in-up max-w-7xl mx-auto">
-      
-      {/* ENCABEZADO */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight font-serif flex items-center gap-3">
-            <span className="p-2 bg-slate-100 rounded-xl text-slate-600"><Icons.History /></span>
-            Historial Clínico
-          </h1>
-          <p className="text-slate-500 mt-1 text-sm ml-12">
-            Registro completo de atenciones, diagnósticos y evolución
-          </p>
-        </div>
-        
-        <div className="relative w-full md:w-96 group">
-          <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-             <Icons.Search />
+    <div className="mx-auto max-w-[1700px] animate-fade-in-up space-y-8">
+      <section className="relative overflow-hidden rounded-[2rem] border border-white/80 bg-slate-950 px-6 py-7 text-white shadow-2xl shadow-slate-200/80 sm:px-8">
+        <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-blue-500/25 blur-3xl"></div>
+        <div className="absolute -bottom-28 left-14 h-72 w-72 rounded-full bg-cyan-400/15 blur-3xl"></div>
+
+        <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.28em] text-blue-300">
+              Archivo clínico
+            </p>
+            <h1 className="mt-2 font-serif text-3xl font-black tracking-tight sm:text-4xl">
+              Historial Clínico
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300">
+              Registro consolidado de atenciones, diagnósticos, evolución clínica y notas por sesión.
+            </p>
           </div>
-          <input 
-             type="text" 
-             className="input input-bordered w-full pl-10 bg-white shadow-sm border-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all" 
-             placeholder="Buscar por paciente o expediente..." 
-             value={busqueda}
-             onChange={e => setBusqueda(e.target.value)} 
-          />
+
+          <div className="relative w-full lg:w-[420px]">
+            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400">
+              <Icons.Search />
+            </div>
+            <input
+              type="text"
+              className="input h-12 w-full rounded-2xl border-white/10 bg-white/10 pl-11 text-sm font-medium text-white placeholder:text-slate-400 focus:border-blue-300 focus:bg-white/15"
+              placeholder="Buscar paciente, expediente o diagnóstico..."
+              value={busqueda}
+              onChange={(event) => setBusqueda(event.target.value)}
+            />
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* TABLA DE HISTORIAL */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="table w-full">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="text-xs font-bold text-slate-500 uppercase tracking-wider py-4 pl-6">Fecha</th>
-                <th className="text-xs font-bold text-slate-500 uppercase tracking-wider">Paciente / Expediente</th>
-                <th className="text-xs font-bold text-slate-500 uppercase tracking-wider">Motivo Consulta</th>
-                <th className="text-xs font-bold text-slate-500 uppercase tracking-wider">Diagnóstico</th>
-                <th className="text-xs font-bold text-slate-500 uppercase tracking-wider">Especialista</th>
-                <th className="text-xs font-bold text-slate-500 uppercase tracking-wider text-right pr-6">Detalle</th>
-              </tr>
-            </thead>
-            
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr><td colSpan={6} className="text-center py-20"><span className="loading loading-spinner loading-lg text-primary"></span></td></tr>
-              ) : registros.map((reg) => (
-                <tr key={reg.ID_Sesion} className="hover:bg-slate-50 transition-colors group">
-                  
-                  {/* FECHA (TIMELINE STYLE) */}
-                  <td className="pl-6 py-4 whitespace-nowrap">
-                      <div className="font-mono text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded inline-block">
-                         {formatearFecha(reg.FechaReal)}
-                      </div>
-                  </td>
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="rounded-3xl border border-white/80 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Registros</p>
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-50 text-slate-500">
+              <Icons.History />
+            </span>
+          </div>
+          <p className="mt-2 text-3xl font-black text-slate-950">{registros.length}</p>
+          <p className="mt-1 text-xs font-medium text-slate-400">Resultado actual</p>
+        </div>
 
-                  {/* PACIENTE */}
-                  <td className="py-4">
-                    <div className="flex flex-col">
-                        <span className="font-bold text-slate-800 text-sm group-hover:text-blue-600 transition-colors">
-                            {reg.Paciente.Nombre} {reg.Paciente.Apellido}
+        <div className="rounded-3xl border border-blue-100 bg-blue-50 p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500">Pacientes</p>
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-blue-600">
+              <Icons.User />
+            </span>
+          </div>
+          <p className="mt-2 text-3xl font-black text-blue-700">{pacientesUnicos}</p>
+          <p className="mt-1 text-xs font-medium text-blue-500/70">Pacientes en historial</p>
+        </div>
+
+        <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Diagnósticos</p>
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-emerald-600">
+              <Icons.Diagnosis />
+            </span>
+          </div>
+          <p className="mt-2 text-3xl font-black text-emerald-700">{registrosConDiagnostico}</p>
+          <p className="mt-1 text-xs font-medium text-emerald-500/70">Con diagnóstico registrado</p>
+        </div>
+
+        <div className="rounded-3xl border border-amber-100 bg-amber-50 p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500">Especialistas</p>
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-amber-600">
+              <Icons.Doctor />
+            </span>
+          </div>
+          <p className="mt-2 text-3xl font-black text-amber-700">{especialistasUnicos}</p>
+          <p className="mt-1 text-xs font-medium text-amber-500/70">Participación clínica</p>
+        </div>
+      </section>
+
+      <section className="rounded-[2rem] border border-white/80 bg-white shadow-sm">
+        <div className="border-b border-slate-100 px-6 py-6">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-blue-600">Expedientes</p>
+              <h2 className="mt-1 text-2xl font-black text-slate-900">Registros de atención</h2>
+              <p className="mt-1 text-sm font-medium text-slate-400">
+                {registros.length} resultado(s) encontrados
+              </p>
+            </div>
+
+            <div className="relative w-full xl:w-[420px]">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400">
+                <Icons.Search />
+              </div>
+              <input
+                type="text"
+                className="input input-bordered h-12 w-full rounded-2xl bg-slate-50 pl-11 text-sm font-medium transition-colors focus:bg-white"
+                placeholder="Filtrar historial..."
+                value={busqueda}
+                onChange={(event) => setBusqueda(event.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5">
+          {loading && (
+            <div className="rounded-[1.5rem] border border-slate-100 bg-slate-50 py-24 text-center">
+              <span className="loading loading-spinner loading-lg text-primary"></span>
+              <p className="mt-4 animate-pulse text-sm text-slate-400">Cargando historial...</p>
+            </div>
+          )}
+
+          {!loading && registros.length > 0 && (
+            <div className="space-y-4">
+              {registros.map((reg) => {
+                const nombrePaciente = getNombrePaciente(reg);
+                const nacionalidad = getNacionalidad(reg);
+                const nombrePsicologo = getNombrePsicologo(reg);
+                const tipoCita = reg.DatosCita?.Tipo || 'N/A';
+                const motivoConsulta = reg.DatosCita?.Motivo || 'Sin motivo registrado';
+
+                return (
+                  <article
+                    key={reg.ID_Sesion}
+                    className="group overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-blue-100 hover:shadow-xl hover:shadow-slate-200/70"
+                  >
+                    <div className="grid grid-cols-1 gap-5 p-5 xl:grid-cols-[160px_minmax(0,1.4fr)_minmax(0,1.25fr)_minmax(0,1.25fr)_190px] xl:items-center">
+                      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm">
+                          <Icons.Calendar />
                         </span>
-                        <div className="flex items-center gap-2 mt-1">
-                           <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
-                              EXP: {reg.Expediente?.No_Expediente || 'S/E'}
-                           </span>
-                           <span className="text-[10px] text-slate-400 uppercase tracking-wide">{reg.Paciente.Nacionalidad}</span>
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Fecha</p>
+                          <p className="mt-0.5 whitespace-nowrap text-sm font-black text-slate-700">
+                            {formatearFecha(reg.FechaReal)}
+                          </p>
                         </div>
-                    </div>
-                  </td>
+                      </div>
 
-                  {/* MOTIVO */}
-                  <td className="py-4 max-w-xs">
-                    <div className="flex flex-col gap-1">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 w-fit uppercase tracking-wide">
-                           {reg.DatosCita.Tipo}
-                        </span>
-                        <span className="text-sm text-slate-600 truncate" title={reg.DatosCita.Motivo}>
-                           {reg.DatosCita.Motivo}
-                        </span>
-                    </div>
-                  </td>
-
-                  {/* DIAGNÓSTICO */}
-                  <td className="py-4 max-w-xs">
-                    {reg.DiagnosticoDiferencial ? (
-                        <p className="text-sm text-slate-700 truncate pl-2 border-l-2 border-emerald-400" title={reg.DiagnosticoDiferencial}>
-                            {reg.DiagnosticoDiferencial}
-                        </p>
-                    ) : (
-                        <span className="text-xs text-slate-400 italic">Pendiente</span>
-                    )}
-                  </td>
-
-                  {/* ESPECIALISTA */}
-                  <td className="py-4 whitespace-nowrap">
-                      <div className="text-xs font-medium text-slate-500 flex items-center gap-1">
-                          <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">
-                              DR
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-700 shadow-sm">
+                            <Icons.User />
                           </div>
-                          {reg.Psicologo?.Apellido}
-                      </div>
-                  </td>
-
-                  {/* ACCIÓN */}
-                  <td className="py-4 text-right pr-6">
-                    <button 
-                        className="btn btn-sm btn-ghost text-slate-400 hover:text-blue-600 tooltip tooltip-left"
-                        data-tip="Ver Nota Clínica"
-                        onClick={() => (document.getElementById(`modal_nota_${reg.ID_Sesion}`) as HTMLDialogElement).showModal()}
-                    >
-                        <Icons.FileText />
-                    </button>
-
-                    {/* Modal embebido */}
-                    <dialog id={`modal_nota_${reg.ID_Sesion}`} className="modal modal-bottom sm:modal-middle backdrop-blur-sm text-left">
-                        <div className="modal-box bg-white p-0 rounded-2xl overflow-hidden">
-                           <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-                                <h3 className="font-bold text-lg text-slate-800">Nota Clínica</h3>
-                                <form method="dialog"><button className="btn btn-sm btn-circle btn-ghost">✕</button></form>
-                           </div>
-                           <div className="p-6 max-h-[60vh] overflow-y-auto">
-                               <div className="prose prose-sm max-w-none text-slate-600">
-                                   <p className="whitespace-pre-wrap leading-relaxed">{reg.Observaciones || "Sin notas registradas."}</p>
-                               </div>
-                           </div>
-                           <div className="bg-slate-50 px-6 py-3 flex justify-end border-t border-slate-100">
-                              <form method="dialog">
-                                 <button className="btn btn-primary btn-sm text-white px-6 shadow-lg">Cerrar</button>
-                              </form>
-                           </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-lg font-black leading-tight text-slate-950 transition-colors group-hover:text-blue-700" title={nombrePaciente}>
+                              {nombrePaciente}
+                            </p>
+                            <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+                              <span className="inline-flex max-w-full shrink-0 items-center rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-[10px] font-black text-slate-600">
+                                EXP: {reg.Expediente?.No_Expediente || 'S/E'}
+                              </span>
+                              <span className="max-w-[130px] truncate text-[10px] font-bold uppercase tracking-wide text-slate-400" title={nacionalidad}>
+                                {nacionalidad}
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                        <form method="dialog" className="modal-backdrop"><button>close</button></form>
-                    </dialog>
-                  </td>
-                </tr>
-              ))}
+                      </div>
 
-              {!loading && registros.length === 0 && (
-                 <tr>
-                    <td colSpan={6} className="text-center py-20">
-                       <div className="flex flex-col items-center justify-center text-slate-400">
-                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-12 h-12 mb-2 opacity-50"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
-                           <p className="text-lg font-medium text-slate-600">No se encontraron registros</p>
-                           <p className="text-sm mt-1">Intenta buscar por otro término</p>
-                       </div>
-                    </td>
-                 </tr>
-              )}
-            </tbody>
-          </table>
+                      <div className="min-w-0 rounded-2xl bg-slate-50 p-4">
+                        <p className="mb-2 w-fit max-w-full truncate rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-blue-700">
+                          {tipoCita}
+                        </p>
+                        <p className="line-clamp-2 text-sm font-medium leading-relaxed text-slate-600" title={motivoConsulta}>
+                          {motivoConsulta}
+                        </p>
+                      </div>
+
+                      <div className="min-w-0">
+                        {reg.DiagnosticoDiferencial ? (
+                          <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3">
+                            <p className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">Diagnóstico</p>
+                            <p className="line-clamp-2 text-sm font-medium leading-relaxed text-emerald-900" title={reg.DiagnosticoDiferencial}>
+                              {reg.DiagnosticoDiferencial}
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-400">
+                            Diagnóstico pendiente
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3 xl:justify-end">
+                        <div className="min-w-0">
+                          <p className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Especialista</p>
+                          <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-slate-500">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+                              <Icons.Doctor />
+                            </div>
+                            <span className="truncate" title={nombrePsicologo}>
+                              {nombrePsicologo}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="btn btn-sm shrink-0 rounded-xl border-blue-100 bg-blue-50 text-blue-700 hover:border-blue-200 hover:bg-blue-100"
+                          onClick={() => abrirModalNota(reg.ID_Sesion)}
+                        >
+                          <Icons.FileText />
+                          Ver
+                        </button>
+                      </div>
+                    </div>
+
+                    <dialog id={`modal_nota_${reg.ID_Sesion}`} className="modal modal-bottom text-left backdrop-blur-sm sm:modal-middle">
+                      <div className="modal-box max-w-4xl overflow-hidden rounded-[2rem] bg-white p-0">
+                        <div className="border-b border-slate-100 bg-slate-950 px-6 py-5 text-white">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-blue-300">Nota clínica</p>
+                              <h3 className="mt-1 truncate text-2xl font-black text-white">{nombrePaciente}</h3>
+                              <p className="mt-1 truncate text-xs font-medium text-slate-400">
+                                {formatearFecha(reg.FechaReal)} · {reg.Expediente?.No_Expediente || 'Sin expediente'}
+                              </p>
+                            </div>
+                            <form method="dialog">
+                              <button className="btn btn-sm btn-circle border-white/10 bg-white/10 text-white hover:bg-white/20">
+                                <Icons.Close />
+                              </button>
+                            </form>
+                          </div>
+                        </div>
+
+                        <div className="max-h-[68vh] overflow-y-auto p-6">
+                          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                            <section className="rounded-3xl border border-slate-100 bg-slate-50 p-5">
+                              <h4 className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-slate-500">Motivo de consulta</h4>
+                              <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                                {motivoConsulta}
+                              </p>
+                            </section>
+
+                            <section className="rounded-3xl border border-blue-100 bg-blue-50/70 p-5">
+                              <h4 className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-blue-700">Diagnóstico diferencial</h4>
+                              <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                                {reg.DiagnosticoDiferencial || 'Sin diagnóstico registrado.'}
+                              </p>
+                            </section>
+
+                            <section className="rounded-3xl border border-slate-100 bg-white p-5 lg:col-span-2">
+                              <h4 className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-slate-500">Observaciones clínicas</h4>
+                              <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                                {reg.Observaciones || 'Sin notas registradas.'}
+                              </p>
+                            </section>
+
+                            <section className="rounded-3xl border border-amber-100 bg-amber-50 p-5 lg:col-span-2">
+                              <h4 className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-amber-700">Historial de evolución</h4>
+                              <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                                {reg.HistorialDeEvolucion || 'Sin evolución registrada.'}
+                              </p>
+                            </section>
+
+                            {reg.Criterios_DeDiagnostico && (
+                              <section className="rounded-3xl border border-slate-100 bg-slate-50 p-5 lg:col-span-2">
+                                <h4 className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-slate-500">Criterios de diagnóstico</h4>
+                                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                                  {reg.Criterios_DeDiagnostico}
+                                </p>
+                              </section>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end border-t border-slate-100 bg-slate-50 px-6 py-4">
+                          <form method="dialog">
+                            <button className="btn btn-sm rounded-xl bg-slate-950 px-6 text-white hover:bg-slate-800">Cerrar</button>
+                          </form>
+                        </div>
+                      </div>
+                      <form method="dialog" className="modal-backdrop"><button>close</button></form>
+                    </dialog>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+
+          {!loading && registros.length === 0 && (
+            <div className="flex flex-col items-center justify-center rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 px-6 py-24 text-center">
+              <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-3xl bg-white text-slate-300 shadow-sm">
+                <Icons.Empty />
+              </div>
+              <p className="text-lg font-black text-slate-700">No se encontraron registros</p>
+              <p className="mt-2 max-w-sm text-sm font-medium text-slate-400">
+                Intenta buscar por otro paciente, expediente o diagnóstico.
+              </p>
+            </div>
+          )}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

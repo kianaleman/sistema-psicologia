@@ -1,7 +1,35 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { api } from '../services/api';
-import type { Cita, CreateCitaDTO } from '../types';
+import type { 
+  Cita, 
+  CreateCitaDTO,
+  CreateSesionDTO,
+  TipoCitaCatalogo,
+  EstadoCitaCatalogo,
+  MetodoPago,
+  Paciente,
+  Psicologo,
+  ViaAdministracion,
+  TipoDeTerapia,
+  ExploracionPsicologica,
+  Banco,
+  Divisa,
+} from '../types';
+
+// Definimos la interfaz estricta para los catálogos locales del hook
+interface CatalogosCita {
+  tiposCita: TipoCitaCatalogo[];
+  estadosCita: EstadoCitaCatalogo[];
+  metodosPago: MetodoPago[];
+  pacientes: Paciente[];
+  psicologos: Psicologo[];
+  viasAdmin: ViaAdministracion[];
+  tiposTerapia: TipoDeTerapia[];
+  exploraciones: ExploracionPsicologica[];
+  bancos: Banco[];
+  divisas: Divisa[];
+}
 
 export const useCitas = () => {
   const [citas, setCitas] = useState<Cita[]>([]);
@@ -17,8 +45,8 @@ export const useCitas = () => {
     psicologo: ''
   });
 
-  // Estado inicial de catálogos
-  const [catalogos, setCatalogos] = useState<any>({
+  // Estado inicial tipado, ¡adiós any!
+  const [catalogos, setCatalogos] = useState<CatalogosCita>({
     tiposCita: [],
     estadosCita: [],
     metodosPago: [],
@@ -26,7 +54,9 @@ export const useCitas = () => {
     psicologos: [],
     viasAdmin: [],       
     tiposTerapia: [],    
-    exploraciones: []    
+    exploraciones: [],
+    bancos: [],
+    divisas: []    
   });
 
   const fetchCitas = useCallback(async () => {
@@ -35,7 +65,7 @@ export const useCitas = () => {
       const data = await api.citas.getAll();
       setCitas(data);
       setError(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setError('Error al cargar citas');
       toast.error('No se pudo cargar la agenda');
@@ -46,19 +76,23 @@ export const useCitas = () => {
 
   const fetchCatalogos = useCallback(async () => {
     try {
-      const general: any = await api.general.catalogos();
+      // Usamos Record<string, unknown> en lugar de any para la respuesta cruda
+      const general = await api.general.catalogos();
+      
       setCatalogos({
-         tiposCita: general.tiposCita || [],
-         estadosCita: general.estadosCita || [],
-         metodosPago: general.metodosPago || [],
-         pacientes: general.pacientes || [],
-         psicologos: general.psicologos || [],
-         viasAdmin: general.viasAdministracion || [], 
-         tiposTerapia: general.tiposTerapia || [],
-         exploraciones: general.exploraciones || []
+         tiposCita: (general.tiposCita as TipoCitaCatalogo[]) || [],
+         estadosCita: (general.estadosCita as EstadoCitaCatalogo[]) || [],
+         metodosPago: (general.metodosPago as MetodoPago[]) || [],
+         pacientes: (general.pacientes as Paciente[]) || [],
+         psicologos: (general.psicologos as Psicologo[]) || [],
+         viasAdmin: (general.viasAdministracion as ViaAdministracion[]) || [], 
+         tiposTerapia: (general.tiposTerapia as TipoDeTerapia[]) || [],
+         exploraciones: (general.exploraciones as ExploracionPsicologica[]) || [],
+         bancos: (general.bancos as Banco[]) || [],
+         divisas: (general.divisas as Divisa[]) || []
       });
     } catch (err) {
-      console.error("Error catalogos", err);
+      console.error("Error al cargar catálogos de citas", err);
     }
   }, []);
 
@@ -69,63 +103,77 @@ export const useCitas = () => {
 
   // --- ACCIONES ---
 
+  
+
   const crearCita = async (data: CreateCitaDTO) => {
     try {
       await api.citas.create(data);
       toast.success('Cita agendada correctamente');
       fetchCitas();
       return true;
-    } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || 'Error al agendar cita';
+    } catch (err: unknown) {
+      // Simplificado: api.ts ya extrae el mensaje de error de Zod
+      const msg = err instanceof Error ? err.message : 'Error al agendar cita';
       toast.error(msg);
       return false;
     }
   };
 
-  const actualizarCita = async (id: number, data: any) => {
+ 
+
+  const actualizarCita = async (id: number, data: Partial<CreateCitaDTO>) => {
     try {
       await api.citas.update(id, data);
       toast.success('Cita actualizada');
       fetchCitas();
       return true;
-    } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || 'Error al actualizar cita';
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al actualizar cita';
       toast.error(msg);
       return false;
     }
   };
 
-  const cancelarCita = async (id: number, motivoId: number, notas: string) => {
+  // Nombres de parámetros actualizados a la API
+  const cancelarCita = async (id: number, ID_MotivoCancelacion: number, NotasCancelacion: string) => {
     try {
-      await api.citas.cancel(id, motivoId, notas);
+      await api.citas.cancel(id, ID_MotivoCancelacion, NotasCancelacion);
       toast.success('Cita cancelada');
       fetchCitas();
       return true;
-    } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || 'Error al cancelar cita';
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al cancelar cita';
       toast.error(msg);
       return false;
     }
   };
 
-  const guardarSesion = async (data: any) => {
+  // Tipado estricto para la sesión
+  const guardarSesion = async (data: CreateSesionDTO) => {
      try {
         await api.sesiones.create(data);
+        toast.success('Sesión clínica registrada');
         fetchCitas();
-     } catch (err: any) {
-        throw new Error(err.response?.data?.error || 'Error al guardar sesión');
+     } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Error al guardar sesión';
+        throw new Error(msg);
      }
   };
 
-  // --- FILTRADO CORREGIDO (ZONA HORARIA LOCAL) ---
-  // --- FILTRADO CORREGIDO (SOLUCIÓN FECHA EXACTA) ---
+  const obtenerHorariosOcupados = useCallback(async (psicologoId: number, fecha: string) => {
+    try {
+      return await api.citas.getHorariosOcupados(psicologoId, fecha);
+    } catch (err) {
+      console.error("Error al obtener disponibilidad:", err);
+      return []; // Retornamos array vacío si falla para no romper la UI
+    }
+  }, []);
+
+  // --- FILTRADO ---
   const citasFiltradas = citas.filter(c => {
-     // 1. TRUCO: Leer la fecha como string puro para evitar que el navegador reste horas
-     // c.FechaCita viene como "2025-11-28T00:00:00.000Z" -> tomamos "2025-11-28"
+     if (!c.FechaCita) return false;
+
      const fechaCitaStr = c.FechaCita.toString().split('T')[0];
-     
-     // Fecha de "Hoy" en formato local YYYY-MM-DD (ej: Nicaragua)
-     // Usamos 'en-CA' porque devuelve formato ISO (YYYY-MM-DD) que es fácil de comparar
      const hoyStr = new Date().toLocaleDateString('en-CA');
 
      let matchPeriodo = true;
@@ -134,7 +182,7 @@ export const useCitas = () => {
         matchPeriodo = fechaCitaStr === hoyStr;
      } 
      else if (filtros.periodo === 'semana') {
-        const fechaCitaObj = new Date(fechaCitaStr + "T00:00:00"); // Forzamos fecha local
+        const fechaCitaObj = new Date(fechaCitaStr + "T00:00:00"); 
         const hoy = new Date();
         
         const primerDia = new Date(hoy); 
@@ -153,28 +201,27 @@ export const useCitas = () => {
         matchPeriodo = fechaCitaObj.getMonth() === hoy.getMonth() && fechaCitaObj.getFullYear() === hoy.getFullYear();
      } 
      else if (filtros.periodo === 'rango' && filtros.fechaInicio && filtros.fechaFin) {
-        // Comparación de strings directa funciona perfecto con formato YYYY-MM-DD
         matchPeriodo = fechaCitaStr >= filtros.fechaInicio && fechaCitaStr <= filtros.fechaFin;
      }
 
-     // Filtros de texto y estado (sin cambios)
      let matchEstado = true;
      if (filtros.estado) matchEstado = c.ID_EstadoCita.toString() === filtros.estado;
 
      let matchTexto = true;
+     // Usamos Optional Chaining (?.) para evitar crasheos si faltan datos relacionales
      if (filtros.paciente) {
-        const pName = `${c.Paciente.Nombre} ${c.Paciente.Apellido}`.toLowerCase();
+        const pName = `${c.Paciente?.Nombre || ''} ${c.Paciente?.Apellido || ''}`.toLowerCase();
         matchTexto = matchTexto && pName.includes(filtros.paciente.toLowerCase());
      }
      if (filtros.psicologo) {
-        const dName = `${c.Psicologo.Nombre} ${c.Psicologo.Apellido}`.toLowerCase();
+        const dName = `${c.Psicologo?.Nombre || ''} ${c.Psicologo?.Apellido || ''}`.toLowerCase();
         matchTexto = matchTexto && dName.includes(filtros.psicologo.toLowerCase());
      }
 
      return matchPeriodo && matchEstado && matchTexto;
   });
 
-  const setFiltro = (key: string, value: string) => {
+  const setFiltro = (key: keyof typeof filtros, value: string) => {
     setFiltros(prev => ({ ...prev, [key]: value }));
   };
 
@@ -185,6 +232,6 @@ export const useCitas = () => {
     filtros,
     setFiltro,
     catalogos, 
-    acciones: { crearCita, actualizarCita, cancelarCita, guardarSesion }
+    acciones: { crearCita, actualizarCita, cancelarCita, guardarSesion, obtenerHorariosOcupados }
   };
 };

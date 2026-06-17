@@ -1,105 +1,211 @@
 import type { Request, Response } from 'express';
-import { CitaService } from '../services/cita.service';
+import { CitaService } from '../services/cita.service.js';
+import { AuditoriaService } from '../services/auditoria.service.js';
 
-// GET: Obtener todas las citas
-export const getCitas = async (req: Request, res: Response) => {
+const getErrorMessage = (error: unknown, fallback: string) => {
+  return error instanceof Error ? error.message : fallback;
+};
+
+const getStatusFromError = (message: string) => {
+  const lowerMessage = message.toLowerCase();
+
+  if (lowerMessage.includes('no autorizado')) return 401;
+
+  if (
+    lowerMessage.includes('no tiene permisos') ||
+    lowerMessage.includes('no tiene un perfil') ||
+    lowerMessage.includes('otro psicólogo')
+  ) {
+    return 403;
+  }
+
+  if (message === 'El psicólogo ya tiene una cita agendada en este horario.') {
+    return 409;
+  }
+
+  return 400;
+};
+
+export const getCitas = async (req: Request, res: Response): Promise<void> => {
   try {
-    const citas = await CitaService.getAll();
+    const citas = await CitaService.getAll(req.user);
     res.json(citas);
-  } catch (error) {
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al obtener citas');
     console.error(error);
-    res.status(500).json({ error: 'Error al obtener citas' });
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };
 
-// GET: Catálogos
-export const getCatalogosCitas = async (req: Request, res: Response) => {
+export const getCatalogosCitas = async (_req: Request, res: Response): Promise<void> => {
   try {
     const catalogos = await CitaService.getCatalogos();
     res.json(catalogos);
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: 'Error cargando catálogos de citas' });
   }
 };
 
-export const createCita = async (req: Request, res: Response) => {
+export const getHorariosOcupados = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { fecha, hora, motivo, tipoCitaId, pacienteId, psicologoId, precio, metodoPagoId, direccion } = req.body;
+    const { psicologoId, fecha } = req.query;
 
-    const result = await CitaService.create({
-      fecha,
-      hora,
-      motivo, 
-      tipoCitaId: parseInt(tipoCitaId), 
-      pacienteId: parseInt(pacienteId), 
-      psicologoId: parseInt(psicologoId), 
-      precio: parseFloat(precio) || 0, 
-      metodoPagoId: parseInt(metodoPagoId),
-      // Pasamos la dirección al servicio (asegurando que exista, o enviando defaults)
-      direccion: direccion || { pais: 'Nicaragua', departamento: 'Managua', ciudad: 'Managua', barrio: 'Central', calle: 'Clínica' }
-    });
-
-    res.json({ nuevaCita: result.cita, nuevaFactura: result.factura });
-
-  } catch (error: any) {
-    console.error(error);
-
-    // 1. DETECCIÓN DEL ERROR DE DISPONIBILIDAD (Conflicto)
-    if (error.message === 'El psicólogo ya tiene una cita agendada en este horario.') {
-      return res.status(409).json({ error: error.message });
+    if (!psicologoId || !fecha) {
+      res.status(400).json({ error: 'Faltan parámetros: psicologoId y fecha son requeridos.' });
+      return;
     }
 
-    // 2. ERRORES DE VALIDACIÓN (Fechas pasadas, Hora inválida, Paciente Inactivo)
-    // Devolvemos 400 para que el frontend muestre el mensaje específico del servicio
-    return res.status(400).json({ error: error.message });
+    const horarios = await CitaService.getHorariosOcupados(
+      Number(psicologoId),
+      String(fecha),
+      req.user
+    );
+
+    res.json(horarios);
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al consultar disponibilidad');
+    console.error(error);
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };
 
-// PUT: Editar Cita
-export const updateCita = async (req: Request, res: Response) => {
-  const { id } = req.params;
+export const createCita = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { fecha, hora, motivo, tipoCitaId, pacienteId, psicologoId, precio, metodoPagoId, direccion } = req.body;
+    const result = await CitaService.create(req.body, req.user);
 
-    const result = await CitaService.update(parseInt(id), { 
-      fecha, 
-      hora, 
-      motivo,
-      tipoCitaId: parseInt(tipoCitaId),
-      pacienteId: parseInt(pacienteId),
-      psicologoId: parseInt(psicologoId),
-      precio: parseFloat(precio) || 0,
-      metodoPagoId: parseInt(metodoPagoId),
-      // Mantenemos estructura DTO
-      direccion: direccion || { pais: 'Nicaragua', departamento: '', ciudad: '', barrio: '', calle: '' }
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'CITA_CREADA',
+      modulo: 'CITAS',
+      entidad: 'Cita',
+      idEntidad: result.cita.ID_Cita,
+      resultado: 'EXITO',
+      codigoEstado: 201,
+      mensaje: 'Cita creada correctamente.',
+      datosDespues: {
+        ID_Cita: result.cita.ID_Cita,
+        ID_Paciente: result.cita.ID_Paciente,
+        ID_Psicologo: result.cita.ID_Psicologo,
+        ID_EstadoCita: result.cita.ID_EstadoCita,
+        Cod_Recibo: result.recibo.Cod_Recibo,
+        MontoTotal: result.recibo.MontoTotal,
+      },
+    });
+
+    res.status(201).json(result);
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al crear cita');
+    console.error(error);
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'CITA_CREADA',
+      modulo: 'CITAS',
+      entidad: 'Cita',
+      resultado: 'FALLO',
+      codigoEstado: getStatusFromError(message),
+      mensaje: message,
+      datosDespues: req.body,
+    });
+
+    res.status(getStatusFromError(message)).json({ error: message });
+  }
+};
+
+export const updateCita = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: 'El ID proporcionado no es válido' });
+      return;
+    }
+
+    const result = await CitaService.update(id, req.body, req.user);
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'CITA_ACTUALIZADA',
+      modulo: 'CITAS',
+      entidad: 'Cita',
+      idEntidad: id,
+      resultado: 'EXITO',
+      codigoEstado: 200,
+      mensaje: 'Cita actualizada correctamente.',
+      datosDespues: {
+        ID_Cita: id,
+        cambios: req.body,
+      },
     });
 
     res.json(result);
-
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al actualizar cita');
     console.error(error);
-    
-    // 1. DETECCIÓN DEL ERROR DE DISPONIBILIDAD
-    if (error.message === 'El psicólogo ya tiene una cita agendada en este horario.') {
-      return res.status(409).json({ error: error.message });
-    }
-    
-    // 2. ERRORES DE VALIDACIÓN (Fechas pasadas, etc.)
-    return res.status(400).json({ error: error.message });
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'CITA_ACTUALIZADA',
+      modulo: 'CITAS',
+      entidad: 'Cita',
+      idEntidad: Number(req.params.id) || null,
+      resultado: 'FALLO',
+      codigoEstado: getStatusFromError(message),
+      mensaje: message,
+      datosDespues: req.body,
+    });
+
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };
 
-// PATCH: Cancelar Cita
-export const cancelCita = async (req: Request, res: Response) => {
+export const cancelCita = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
-    const { motivoId, notas } = req.body; 
+    const id = Number(req.params.id);
 
-    if (!motivoId) return res.status(400).json({ error: "Debe seleccionar un motivo." });
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: 'El ID proporcionado no es válido' });
+      return;
+    }
 
-    await CitaService.cancel(Number(id), motivoId, notas);
+    const { ID_MotivoCancelacion, NotasCancelacion } = req.body as {
+      ID_MotivoCancelacion?: number;
+      NotasCancelacion?: string;
+    };
+
+    if (!ID_MotivoCancelacion) {
+      res.status(400).json({ error: 'Debe seleccionar un motivo.' });
+      return;
+    }
+
+    await CitaService.cancel(id, Number(ID_MotivoCancelacion), NotasCancelacion || '', req.user);
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'CITA_CANCELADA',
+      modulo: 'CITAS',
+      entidad: 'Cita',
+      idEntidad: id,
+      resultado: 'EXITO',
+      codigoEstado: 200,
+      mensaje: 'Cita cancelada correctamente.',
+      datosDespues: {
+        ID_Cita: id,
+        ID_MotivoCancelacion,
+        NotasCancelacion,
+      },
+    });
+
     res.json({ message: 'Cita cancelada correctamente' });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Error al cancelar cita');
+
+    await AuditoriaService.registrarDesdeRequest(req, {
+      accion: 'CITA_CANCELADA',
+      modulo: 'CITAS',
+      entidad: 'Cita',
+      idEntidad: Number(req.params.id) || null,
+      resultado: 'FALLO',
+      codigoEstado: getStatusFromError(message),
+      mensaje: message,
+      datosDespues: req.body,
+    });
+
+    res.status(getStatusFromError(message)).json({ error: message });
   }
 };

@@ -1,203 +1,461 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
+import type { AuthUserPayload } from '../middlewares/auth.middleware.js';
 
 const prisma = new PrismaClient();
 
-// --- DTOs ---
 interface CreatePacienteDTO {
   nombre: string;
   apellido: string;
   fechaNac: string | Date;
   genero: string;
-  nacionalidad: string;
-  direccion: { pais?: string; departamento: string; ciudad: string; barrio: string; calle: string; };
+  paisId: number;
+  direccion: {
+    municipioId: number;
+    barrio: string;
+    calle?: string;
+  };
   esAdulto: boolean;
-  datosAdulto?: { cedula: string; telefono: string; ocupacionId: string | number; estadoCivilId: string | number; };
-  datosMenor?: { 
-    partNacimiento: string; grado: string; modoTutor: 'existente' | 'nuevo'; tutorId?: string | number;
-    nuevoTutor?: { cedula: string; nombre: string; apellido: string; telefono: string; parentescoId: string | number; ocupacionId: string | number; estadoCivilId: string | number; direccion: { departamento: string; ciudad: string; barrio: string; calle: string; }; };
+  datosAdulto?: {
+    cedula: string;
+    codigoTelefonoId: number;
+    telefono: string;
+    ocupacionId: number;
+    estadoCivilId: number;
+  };
+  datosMenor?: {
+    partNacimiento: string;
+    grado: string;
+    modoTutor: 'existente' | 'nuevo';
+    tutorId?: number;
+    nuevoTutor?: {
+      cedula: string;
+      nombre: string;
+      apellido: string;
+      codigoTelefonoId: number;
+      telefono: string;
+      parentescoId: number;
+      ocupacionId: number;
+      estadoCivilId: number;
+    };
   };
 }
 
 interface UpdatePacienteDTO extends CreatePacienteDTO {
-  ID_EstadoDeActividad: string | number;
+  activo: boolean;
 }
 
-// --- HELPERS ---
+const validarUsuarioAutenticado = (usuario?: AuthUserPayload) => {
+  if (!usuario) {
+    throw new Error('Acceso no autorizado.');
+  }
+
+  return usuario;
+};
+
+const validarPuedeVerDatosBasicos = (usuario?: AuthUserPayload) => {
+  const usuarioActual = validarUsuarioAutenticado(usuario);
+
+  if (usuarioActual.esAdmin || usuarioActual.esRecepcion || usuarioActual.esPsicologo) {
+    return usuarioActual;
+  }
+
+  throw new Error('No tiene permisos para consultar pacientes.');
+};
+
+const validarPuedeGestionarPaciente = (usuario?: AuthUserPayload) => {
+  const usuarioActual = validarUsuarioAutenticado(usuario);
+
+  if (usuarioActual.esAdmin || usuarioActual.esRecepcion) {
+    return usuarioActual;
+  }
+
+  throw new Error('No tiene permisos para registrar o modificar pacientes.');
+};
+
+const validarPuedeVerSesionesClinicas = (usuario: AuthUserPayload) => {
+  return usuario.esAdmin || usuario.esPsicologo;
+};
+
+const validarPsicologoVinculado = (usuario: AuthUserPayload) => {
+  if (!usuario.idPsicologo) {
+    throw new Error('El usuario psicólogo no tiene un perfil de psicólogo vinculado.');
+  }
+
+  return usuario.idPsicologo;
+};
+
+const construirWhereCitasPaciente = (
+  pacienteId: number,
+  usuario: AuthUserPayload
+): Prisma.CitaWhereInput => {
+  const where: Prisma.CitaWhereInput = {
+    ID_Paciente: pacienteId,
+  };
+
+  if (usuario.esPsicologo) {
+    where.ID_Psicologo = validarPsicologoVinculado(usuario);
+  }
+
+  return where;
+};
+
 const validarFormatoCedula = (cedula: string, contexto: string) => {
   const regex = /^\d{3}-\d{6}-\d{4}[A-Z]$/;
+
   if (!regex.test(cedula)) {
     throw new Error(`La cédula proporcionada para ${contexto} (${cedula}) tiene un formato inválido. Debe ser XXX-XXXXXX-XXXXL`);
   }
 };
 
-const validarCedulaUnica = async (cedula: string, tipo: 'paciente' | 'tutor', idExcluir?: number) => {
+const validarCedulaUnica = async (
+  cedula: string,
+  tipo: 'paciente' | 'tutor',
+  idExcluir?: number
+) => {
   if (tipo === 'paciente') {
+    const whereClause: Prisma.PacienteAdultoWhereInput = {
+      No_Cedula: cedula,
+    };
+
+    if (idExcluir) {
+      whereClause.ID_PacienteAdulto = {
+        not: idExcluir,
+      };
+    }
+
     const existe = await prisma.pacienteAdulto.findFirst({
-      where: { No_Cedula: cedula, ID_PacienteAdulto: idExcluir ? { not: idExcluir } : undefined }
+      where: whereClause,
     });
-    if (existe) throw new Error(`La cédula ${cedula} ya está registrada en otro PACIENTE.`);
-  } 
+
+    if (existe) {
+      throw new Error(`La cédula ${cedula} ya está registrada en otro PACIENTE.`);
+    }
+  }
+
   if (tipo === 'tutor') {
+    const whereClause: Prisma.TutorWhereInput = {
+      No_Cedula: cedula,
+    };
+
+    if (idExcluir) {
+      whereClause.ID_Tutor = {
+        not: idExcluir,
+      };
+    }
+
     const existe = await prisma.tutor.findFirst({
-      where: { No_Cedula: cedula, ID_Tutor: idExcluir ? { not: idExcluir } : undefined }
+      where: whereClause,
     });
-    if (existe) throw new Error(`La cédula ${cedula} ya está registrada en otro TUTOR.`);
+
+    if (existe) {
+      throw new Error(`La cédula ${cedula} ya está registrada en otro TUTOR.`);
+    }
   }
 };
 
 const validarTelefonoNica = (telefono: string, contexto: string) => {
   const limpio = telefono.replace(/[\s-]/g, '');
   const regex = /^[2578]\d{7}$/;
+
   if (!regex.test(limpio)) {
     throw new Error(`El teléfono de ${contexto} es inválido. Debe ser un número de Nicaragua (8 dígitos).`);
   }
-  return limpio; 
+
+  return limpio;
 };
 
-const corregirFechasSesiones = (sesiones: any[], citas: any[]) => {
-  let citasDisponibles = citas
-    .filter(c => c.ID_EstadoCita === 2)
-    .sort((a, b) => new Date(b.FechaCita).getTime() - new Date(a.FechaCita).getTime());
-
-  return sesiones.map(sesion => {
-    const matchIndex = citasDisponibles.findIndex(c => c.ID_Psicologo === sesion.ID_Psicologo);
-    let nuevaFechaInicio;
-
-    if (matchIndex !== -1) {
-      const cita = citasDisponibles[matchIndex];
-      const fechaBaseCita = new Date(cita.FechaCita);
-      const horaSesion = new Date(sesion.HoraDeInicio);
-      nuevaFechaInicio = new Date(fechaBaseCita);
-      nuevaFechaInicio.setUTCHours(horaSesion.getUTCHours(), horaSesion.getUTCMinutes(), 0, 0);
-      citasDisponibles.splice(matchIndex, 1);
-    } else {
-      nuevaFechaInicio = new Date(sesion.HoraDeInicio);
-    }
-    return { ...sesion, HoraDeInicio: nuevaFechaInicio, FechaReal: nuevaFechaInicio };
-  });
+const construirNumeroExpediente = (pacienteId: number) => {
+  return `EXP-${pacienteId}-${Date.now()}`;
 };
+
+const expedienteSelect = {
+  ID_Expediente: true,
+  No_Expediente: true,
+  FechaIngreso: true,
+  ID_Paciente: true,
+} satisfies Prisma.ExpedienteSelect;
+
+const citaBaseSelect = {
+  ID_Cita: true,
+  FechaCita: true,
+  HoraCita: true,
+  MotivoConsulta: true,
+  ID_EstadoCita: true,
+  ID_Psicologo: true,
+  EstadoCita: {
+    select: {
+      NombreEstado: true,
+    },
+  },
+  TipoDeCita: {
+    select: {
+      Nombre_DeCita: true,
+    },
+  },
+  Psicologo: {
+    select: {
+      Nombre: true,
+      Apellido: true,
+    },
+  },
+} satisfies Prisma.CitaSelect;
+
+const sesionSelect = {
+  ID_Sesion: true,
+  ID_Expediente: true,
+  HoraDeInicio: true,
+  HoraFinal: true,
+  Observaciones: true,
+  DiagnosticoDiferencial: true,
+  HistorialDeEvolucion: true,
+  Criterios_DeDiagnostico: true,
+  Expediente: {
+    select: expedienteSelect,
+  },
+  Tratamiento: {
+    select: {
+      Frecuencia: true,
+      FechaInicio: true,
+      Tratamiento_Farmaceutico: {
+        select: {
+          Nombre_Medicamento: true,
+          Dosis: true,
+        },
+      },
+      Tratamiento_Terapeutico: {
+        select: {
+          Objetivo: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.SesionSelect;
 
 export const PacienteService = {
-  
-  getAll: async () => {
+  getAll: async (usuario?: AuthUserPayload) => {
+    validarPuedeVerDatosBasicos(usuario);
+
     return await prisma.paciente.findMany({
       include: {
-        DireccionPaciente: true,
+        Pais: true,
+        Direccion: {
+          include: {
+            Municipio: {
+              include: {
+                Departamento: true,
+              },
+            },
+          },
+        },
         PacienteAdulto: true,
-        PacienteMenor: { include: { Tutor: true } },
-        EstadoDeActividad: true
-      }
+        Paciente_Menor: {
+          include: {
+            Tutor_PacienteMenor: {
+              include: {
+                Tutor: true,
+                Parentesco: true,
+              },
+            },
+          },
+        },
+      },
     });
   },
 
-  getExpediente: async (id: number) => {
-    const [paciente, citas, sesionesRaw] = await Promise.all([
-      prisma.paciente.findUnique({
-        where: { ID_Paciente: id },
-        include: {
-          DireccionPaciente: true,
-          EstadoDeActividad: true,
-          PacienteAdulto: { include: { Ocupacion: true, EstadoCivil: true } }, 
-          PacienteMenor: { 
-            include: { 
-              Tutor: { 
-                  include: { 
-                      Parentesco: true, Ocupacion: true, EstadoCivil: true, DireccionTutor: true 
-                  } 
-              } 
-            } 
-          }
+  getExpediente: async (id: number, usuario?: AuthUserPayload) => {
+    const usuarioActual = validarPuedeVerDatosBasicos(usuario);
+    const puedeVerSesiones = validarPuedeVerSesionesClinicas(usuarioActual);
+    const whereCitas = construirWhereCitasPaciente(id, usuarioActual);
+
+    const citaSelect: Prisma.CitaSelect = puedeVerSesiones
+      ? {
+          ...citaBaseSelect,
+          Sesion: {
+            select: sesionSelect,
+          },
         }
-      }),
-      prisma.cita.findMany({
-        where: { ID_Paciente: id },
-        select: {
-            ID_Cita: true, FechaCita: true, HoraCita: true, MotivoConsulta: true, ID_EstadoCita: true, ID_Psicologo: true,
-            EstadoCita: { select: { NombreEstado: true } },
-            TipoDeCita: { select: { NombreDeCita: true } },
-            Psicologo: { select: { Nombre: true, Apellido: true } }
+      : citaBaseSelect;
+
+    const paciente = await prisma.paciente.findUnique({
+      where: {
+        ID_Paciente: id,
+      },
+      include: {
+        Pais: true,
+        Direccion: {
+          include: {
+            Municipio: {
+              include: {
+                Departamento: true,
+              },
+            },
+          },
         },
-        orderBy: { FechaCita: 'desc' }
-      }),
-      prisma.sesion.findMany({
-        where: { ID_Paciente: id },
-        select: {
-            ID_Sesion: true, HoraDeInicio: true, HoraFinal: true, Observaciones: true, DiagnosticoDiferencial: true, HistorialDevolucion: true, CriteriosDeDiagnostico: true, ID_Psicologo: true,
-            Psicologo: { select: { Nombre: true, Apellido: true } },
-            Tratamiento: {
-                select: {
-                    Frecuencia: true, FechaInicio: true,
-                    TratamientoFarmaceutico: { select: { NombreMedicamento: true, Dosis: true } },
-                    TratamientoTerapeutico: { select: { Objetivo: true } }
-                }
-            }
+        PacienteAdulto: {
+          include: {
+            Ocupacion: true,
+            EstadoCivil: true,
+            CodigoTelefonoPais: true,
+          },
         },
-        orderBy: { ID_Sesion: 'desc' }
-      })
-    ]);
+        Paciente_Menor: {
+          include: {
+            Tutor_PacienteMenor: {
+              include: {
+                Parentesco: true,
+                Tutor: {
+                  include: {
+                    Ocupacion_Tutor_OcupacionToOcupacion: true,
+                    EstadoCivil_Tutor_EstadoCivilToEstadoCivil: true,
+                    CodigoTelefonoPais: true,
+                    Direccion: {
+                      include: {
+                        Municipio: {
+                          include: {
+                            Departamento: true,
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        Cita: {
+          where: whereCitas,
+          select: citaSelect,
+          orderBy: {
+            FechaCita: 'desc',
+          },
+        },
+      },
+    });
 
     if (!paciente) return null;
-    const sesionesCorregidas = corregirFechasSesiones(sesionesRaw, citas);
-    return { paciente, citas, sesiones: sesionesCorregidas };
-  },
 
-  create: async (data: CreatePacienteDTO) => {
-    const fechaNacObj = new Date(data.fechaNac);
-    const anio = fechaNacObj.getFullYear();
-    if (isNaN(fechaNacObj.getTime()) || anio < 1900 || anio > new Date().getFullYear()) {
-        throw new Error("Fecha de nacimiento inválida.");
+    let expediente = await prisma.expediente.findFirst({
+      where: {
+        ID_Paciente: id,
+      },
+      orderBy: {
+        ID_Expediente: 'asc',
+      },
+      select: expedienteSelect,
+    });
+
+    if (!expediente) {
+      expediente = await prisma.expediente.create({
+        data: {
+          No_Expediente: construirNumeroExpediente(id),
+          FechaIngreso: new Date(),
+          ID_Paciente: id,
+        },
+        select: expedienteSelect,
+      });
     }
 
-    let cedulaFinal = null;
-    let telefonoFinal = null;
+    const { Cita: citasConSesion, ...pacienteSinCitas } = paciente;
+
+    const citas = citasConSesion.map((cita) => {
+      const { Sesion, ...datosCita } = cita as typeof cita & {
+        Sesion?: unknown;
+      };
+
+      return datosCita;
+    });
+
+    const sesiones = puedeVerSesiones
+      ? citasConSesion
+          .filter((cita) => Boolean((cita as { Sesion?: unknown }).Sesion))
+          .map((cita) => {
+            const citaSesion = cita as typeof cita & {
+              Sesion: NonNullable<unknown>;
+            };
+
+            const { Sesion, ...datosCita } = citaSesion;
+
+            return {
+              ...(Sesion as Record<string, unknown>),
+              Expediente: (Sesion as { Expediente?: unknown }).Expediente || expediente,
+              ID_Expediente: (Sesion as { ID_Expediente?: number }).ID_Expediente || expediente.ID_Expediente,
+              Psicologo: datosCita.Psicologo,
+              FechaCita: datosCita.FechaCita,
+              HoraCita: datosCita.HoraCita,
+              ID_Cita: datosCita.ID_Cita,
+            };
+          })
+      : [];
+
+    return {
+      paciente: pacienteSinCitas,
+      expediente,
+      citas,
+      sesiones,
+    };
+  },
+
+  create: async (data: CreatePacienteDTO, usuario?: AuthUserPayload) => {
+    validarPuedeGestionarPaciente(usuario);
+
+    const fechaNacObj = new Date(data.fechaNac);
+    const anio = fechaNacObj.getFullYear();
+
+    if (Number.isNaN(fechaNacObj.getTime()) || anio < 1900 || anio > new Date().getFullYear()) {
+      throw new Error('Fecha de nacimiento inválida.');
+    }
 
     if (data.esAdulto && data.datosAdulto) {
-       validarFormatoCedula(data.datosAdulto.cedula, 'Paciente Adulto');
-       await validarCedulaUnica(data.datosAdulto.cedula, 'paciente');
-       data.datosAdulto.telefono = validarTelefonoNica(data.datosAdulto.telefono, 'Paciente Adulto');
-       
-       cedulaFinal = data.datosAdulto.cedula;
-       telefonoFinal = data.datosAdulto.telefono;
+      validarFormatoCedula(data.datosAdulto.cedula, 'Paciente Adulto');
+      await validarCedulaUnica(data.datosAdulto.cedula, 'paciente');
+      data.datosAdulto.telefono = validarTelefonoNica(data.datosAdulto.telefono, 'Paciente Adulto');
 
-       if (!Number(data.datosAdulto.ocupacionId) || !Number(data.datosAdulto.estadoCivilId)) {
-            throw new Error("Datos de Ocupación o Estado Civil inválidos.");
-       }
+      if (!data.datosAdulto.ocupacionId || !data.datosAdulto.estadoCivilId || !data.datosAdulto.codigoTelefonoId) {
+        throw new Error('Datos de Ocupación, Estado Civil o Código de Teléfono inválidos.');
+      }
     }
 
     if (!data.esAdulto && data.datosMenor?.modoTutor === 'nuevo' && data.datosMenor.nuevoTutor) {
-       const tutor = data.datosMenor.nuevoTutor;
-       validarFormatoCedula(tutor.cedula, 'Nuevo Tutor');
-       await validarCedulaUnica(tutor.cedula, 'tutor');
-       tutor.telefono = validarTelefonoNica(tutor.telefono, 'Nuevo Tutor');
+      const tutor = data.datosMenor.nuevoTutor;
 
-       if (!Number(tutor.ocupacionId) || Number(tutor.ocupacionId) <= 0 || 
-           !Number(tutor.estadoCivilId) || Number(tutor.estadoCivilId) <= 0 || 
-           !Number(tutor.parentescoId) || Number(tutor.parentescoId) <= 0) {
-          throw new Error("Datos incompletos para el Tutor.");
-       }
+      validarFormatoCedula(tutor.cedula, 'Nuevo Tutor');
+      await validarCedulaUnica(tutor.cedula, 'tutor');
+      tutor.telefono = validarTelefonoNica(tutor.telefono, 'Nuevo Tutor');
+
+      if (!tutor.ocupacionId || !tutor.estadoCivilId || !tutor.parentescoId || !tutor.codigoTelefonoId) {
+        throw new Error('Datos incompletos para el Tutor.');
+      }
     }
 
     return await prisma.$transaction(async (tx) => {
-      const nuevaDireccion = await tx.direccionPaciente.create({
+      const nuevaDireccion = await tx.direccion.create({
         data: {
-          Pais: data.direccion.pais || 'Nicaragua',
-          Departamento: data.direccion.departamento,
-          Ciudad: data.direccion.ciudad,
+          Pais: 'Nicaragua',
+          ID_Municipio: data.direccion.municipioId,
           Barrio: data.direccion.barrio,
-          Calle: data.direccion.calle
-        }
+          Calle: data.direccion.calle || null,
+        },
       });
 
       const nuevoPaciente = await tx.paciente.create({
         data: {
           Nombre: data.nombre,
           Apellido: data.apellido,
-          Fecha_Nac: fechaNacObj,
+          Fecha_Nacimiento: fechaNacObj,
           Genero: data.genero,
-          Nacionalidad: data.nacionalidad,
-          ID_DireccionPaciente: nuevaDireccion.ID_DireccionPaciente,
-          ID_EstadoDeActividad: 1
-        }
+          ID_Pais: data.paisId,
+          ID_Direccion: nuevaDireccion.ID_Direccion,
+          Activo: true,
+        },
+      });
+
+      const nuevoExpediente = await tx.expediente.create({
+        data: {
+          No_Expediente: construirNumeroExpediente(nuevoPaciente.ID_Paciente),
+          FechaIngreso: new Date(),
+          ID_Paciente: nuevoPaciente.ID_Paciente,
+        },
       });
 
       if (data.esAdulto && data.datosAdulto) {
@@ -205,132 +463,244 @@ export const PacienteService = {
           data: {
             ID_PacienteAdulto: nuevoPaciente.ID_Paciente,
             No_Cedula: data.datosAdulto.cedula,
+            ID_CodigoTelefono: data.datosAdulto.codigoTelefonoId,
             No_Telefono: data.datosAdulto.telefono,
-            ID_Ocupacion: Number(data.datosAdulto.ocupacionId),
-            ID_EstadoCivil: Number(data.datosAdulto.estadoCivilId)
-          }
+            ID_Ocupacion: data.datosAdulto.ocupacionId,
+            ID_EstadoCivil: data.datosAdulto.estadoCivilId,
+          },
         });
       } else if (!data.esAdulto && data.datosMenor) {
-        let idTutorFinal = null;
+        let idTutorFinal: number | null = null;
+        const idParentescoFinal = data.datosMenor.nuevoTutor?.parentescoId || 6;
 
         if (data.datosMenor.modoTutor === 'existente' && data.datosMenor.tutorId) {
-           idTutorFinal = Number(data.datosMenor.tutorId);
+          idTutorFinal = data.datosMenor.tutorId;
         } else if (data.datosMenor.nuevoTutor) {
-           const tutorData = data.datosMenor.nuevoTutor;
-           const dirTutor = await tx.direccionTutor.create({
-             data: {
-               Pais: 'Nicaragua',
-               Departamento: tutorData.direccion.departamento,
-               Ciudad: tutorData.direccion.ciudad,
-               Barrio: tutorData.direccion.barrio,
-               Calle: tutorData.direccion.calle
-             }
-           });
-           const tutorCreado = await tx.tutor.create({
-             data: {
-               No_Cedula: tutorData.cedula,
-               Nombre: tutorData.nombre,
-               Apellido: tutorData.apellido,
-               No_Telefono: tutorData.telefono,
-               ID_Parentesco: Number(tutorData.parentescoId),
-               ID_Ocupacion: Number(tutorData.ocupacionId),
-               ID_EstadoCivil: Number(tutorData.estadoCivilId),
-               ID_DireccionTutor: dirTutor.ID_DireccionTutor
-             }
-           });
-           idTutorFinal = tutorCreado.ID_Tutor;
+          const tutorData = data.datosMenor.nuevoTutor;
+
+          const tutorCreado = await tx.tutor.create({
+            data: {
+              No_Cedula: tutorData.cedula,
+              Nombre: tutorData.nombre,
+              Apellido: tutorData.apellido,
+              ID_CodigoTelefono: tutorData.codigoTelefonoId,
+              No_Telefono: tutorData.telefono,
+              Ocupacion: tutorData.ocupacionId,
+              EstadoCivil: tutorData.estadoCivilId,
+            },
+          });
+
+          idTutorFinal = tutorCreado.ID_Tutor;
         }
 
         if (idTutorFinal) {
-            await tx.pacienteMenor.create({
-              data: {
-                ID_PacienteMenor: nuevoPaciente.ID_Paciente,
-                PartNacimiento: data.datosMenor.partNacimiento,
-                GradoEscolar: data.datosMenor.grado,
-                ID_Tutor: idTutorFinal
-              }
-            });
+          await tx.paciente_Menor.create({
+            data: {
+              ID_Paciente_Menor: nuevoPaciente.ID_Paciente,
+              PartidaDeNacimiento: data.datosMenor.partNacimiento,
+              Grado_Escolar: data.datosMenor.grado,
+            },
+          });
+
+          await tx.tutor_PacienteMenor.create({
+            data: {
+              ID_Tutor: idTutorFinal,
+              ID_Paciente_Menor: nuevoPaciente.ID_Paciente,
+              ID_Parentesco: idParentescoFinal,
+              Es_Contacto_Principal: true,
+            },
+          });
         }
       }
-      return nuevoPaciente;
+
+      return {
+        ...nuevoPaciente,
+        Expediente: nuevoExpediente,
+      };
     });
   },
 
-  update: async (id: number, data: UpdatePacienteDTO) => {
+  update: async (id: number, data: UpdatePacienteDTO, usuario?: AuthUserPayload) => {
+    validarPuedeGestionarPaciente(usuario);
+
     const fechaNacObj = new Date(data.fechaNac);
-    if (isNaN(fechaNacObj.getTime())) throw new Error("Fecha inválida");
+
+    if (Number.isNaN(fechaNacObj.getTime())) {
+      throw new Error('Fecha inválida');
+    }
 
     if (data.esAdulto && data.datosAdulto) {
-        validarFormatoCedula(data.datosAdulto.cedula, 'Paciente');
-        await validarCedulaUnica(data.datosAdulto.cedula, 'paciente', id);
-        data.datosAdulto.telefono = validarTelefonoNica(data.datosAdulto.telefono, 'Paciente');
+      validarFormatoCedula(data.datosAdulto.cedula, 'Paciente');
+      await validarCedulaUnica(data.datosAdulto.cedula, 'paciente', id);
+      data.datosAdulto.telefono = validarTelefonoNica(data.datosAdulto.telefono, 'Paciente');
     }
 
     return await prisma.$transaction(async (tx) => {
       const pacienteActualizado = await tx.paciente.update({
-        where: { ID_Paciente: id },
+        where: {
+          ID_Paciente: id,
+        },
         data: {
-          ID_EstadoDeActividad: Number(data.ID_EstadoDeActividad),
+          Activo: data.activo,
           Nombre: data.nombre,
           Apellido: data.apellido,
-          Fecha_Nac: fechaNacObj,
+          Fecha_Nacimiento: fechaNacObj,
           Genero: data.genero,
-          Nacionalidad: data.nacionalidad,
-        }
+          ID_Pais: data.paisId,
+        },
       });
 
-      await tx.direccionPaciente.update({
-        where: { ID_DireccionPaciente: pacienteActualizado.ID_DireccionPaciente },
+      await tx.direccion.update({
+        where: {
+          ID_Direccion: pacienteActualizado.ID_Direccion,
+        },
         data: {
-          Departamento: data.direccion.departamento,
-          Ciudad: data.direccion.ciudad,
+          ID_Municipio: data.direccion.municipioId,
           Barrio: data.direccion.barrio,
-          Calle: data.direccion.calle
-        }
+          Calle: data.direccion.calle || null,
+        },
       });
 
       if (data.esAdulto && data.datosAdulto) {
         await tx.pacienteAdulto.update({
-          where: { ID_PacienteAdulto: id },
+          where: {
+            ID_PacienteAdulto: id,
+          },
           data: {
             No_Cedula: data.datosAdulto.cedula,
+            ID_CodigoTelefono: data.datosAdulto.codigoTelefonoId,
             No_Telefono: data.datosAdulto.telefono,
-            ID_Ocupacion: Number(data.datosAdulto.ocupacionId),
-            ID_EstadoCivil: Number(data.datosAdulto.estadoCivilId)
-          }
+            ID_Ocupacion: data.datosAdulto.ocupacionId,
+            ID_EstadoCivil: data.datosAdulto.estadoCivilId,
+          },
         });
       } else if (!data.esAdulto && data.datosMenor) {
-        await tx.pacienteMenor.update({
-          where: { ID_PacienteMenor: id },
+        await tx.paciente_Menor.update({
+          where: {
+            ID_Paciente_Menor: id,
+          },
           data: {
-            PartNacimiento: data.datosMenor.partNacimiento,
-            GradoEscolar: data.datosMenor.grado,
-            ID_Tutor: Number(data.datosMenor.tutorId)
-          }
+            PartidaDeNacimiento: data.datosMenor.partNacimiento,
+            Grado_Escolar: data.datosMenor.grado,
+          },
         });
+
+        if (data.datosMenor.tutorId) {
+          await tx.tutor_PacienteMenor.updateMany({
+            where: {
+              ID_Paciente_Menor: id,
+            },
+            data: {
+              ID_Tutor: data.datosMenor.tutorId,
+            },
+          });
+        }
       }
+
       return pacienteActualizado;
     });
   },
 
-  // --- ESTA ES LA FUNCIÓN QUE FALTABA ---
-  getHistorialPaciente: async (id: number) => {
-    const sesiones = await prisma.sesion.findMany({
-      where: { ID_Paciente: id },
-      include: { 
-        Psicologo: true, 
-        Expediente: true,
-        Tratamiento: {
-          include: {
-            TratamientoFarmaceutico: { include: { ViaAdministracion: true } },
-            TratamientoTerapeutico: { include: { TipoDeTerapia: true } }
-          }
-        }
+  getHistorialPaciente: async (id: number, usuario?: AuthUserPayload) => {
+    const usuarioActual = validarPuedeVerDatosBasicos(usuario);
+    const puedeVerSesiones = validarPuedeVerSesionesClinicas(usuarioActual);
+    const whereCitas = construirWhereCitasPaciente(id, usuarioActual);
+
+    const citasConSesion = await prisma.cita.findMany({
+      where: {
+        ...whereCitas,
+        ID_EstadoCita: 2,
       },
-      orderBy: { ID_Sesion: 'desc' } 
+      include: {
+        Psicologo: true,
+        ...(puedeVerSesiones
+          ? {
+              Sesion: {
+                include: {
+                  Expediente: true,
+                  Tratamiento: {
+                    include: {
+                      Tratamiento_Farmaceutico: {
+                        include: {
+                          ViaAdministracion: true,
+                        },
+                      },
+                      Tratamiento_Terapeutico: {
+                        include: {
+                          TipoDe_Terapia: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            }
+          : {}),
+      },
+      orderBy: {
+        FechaCita: 'desc',
+      },
     });
 
-    const citas = await prisma.cita.findMany({ where: { ID_Paciente: id } });
-    return corregirFechasSesiones(sesiones, citas);
-  }
+    const citas = citasConSesion.map((cita) => {
+      const { Sesion, ...datosCita } = cita as typeof cita & {
+        Sesion?: unknown;
+      };
+
+      return datosCita;
+    });
+
+    const sesiones = puedeVerSesiones
+      ? citasConSesion
+          .filter((cita) => Boolean((cita as { Sesion?: unknown }).Sesion))
+          .map((cita) => {
+            const citaSesion = cita as typeof cita & {
+              Sesion: NonNullable<unknown>;
+            };
+
+            const { Sesion, ...datosCita } = citaSesion;
+
+            return {
+              ...(Sesion as Record<string, unknown>),
+              Psicologo: datosCita.Psicologo,
+              FechaCita: datosCita.FechaCita,
+              HoraCita: datosCita.HoraCita,
+              ID_Cita: datosCita.ID_Cita,
+            };
+          })
+      : [];
+
+    let expediente = await prisma.expediente.findFirst({
+      where: {
+        ID_Paciente: id,
+      },
+      orderBy: {
+        ID_Expediente: 'asc',
+      },
+      select: expedienteSelect,
+    });
+
+    if (!expediente) {
+      expediente = await prisma.expediente.create({
+        data: {
+          No_Expediente: construirNumeroExpediente(id),
+          FechaIngreso: new Date(),
+          ID_Paciente: id,
+        },
+        select: expedienteSelect,
+      });
+    }
+
+    const sesionesConExpediente = sesiones.map((sesion) => ({
+      ...sesion,
+      Expediente: (sesion as { Expediente?: unknown }).Expediente || expediente,
+      ID_Expediente: (sesion as { ID_Expediente?: number }).ID_Expediente || expediente.ID_Expediente,
+    }));
+
+    return {
+      expediente,
+      citas,
+      sesiones: sesionesConExpediente,
+    };
+  },
 };

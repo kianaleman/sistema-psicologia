@@ -1,134 +1,335 @@
-import type { 
-  Paciente, 
-  CreatePacienteDTO, 
-  Tutor, 
-  Psicologo, 
-  Cita, 
-  Factura, 
-  Ocupacion, 
-  EstadoCivil, 
-  Parentesco, 
-  MotivoCancelacion
+import type {
+  Paciente,
+  CreatePacienteDTO,
+  Tutor,
+  Psicologo,
+  Cita,
+  CreateCitaDTO,
+  Recibo,
+  Ocupacion,
+  EstadoCivil,
+  Parentesco,
+  MotivoCancelacion,
+  CreateSesionDTO,
+  Stats,
+  CrearAplicacionTestDTO,
+  CrearAplicacionTestResponse,
+  ResponderTestPublicoResponse,
+  RespuestaTestPublicoDTO,
+  TestAplicacionResumen,
+  TestPsicologico,
+  TestPublicoResponse,
 } from '../types';
+import type {
+  AuditoriaListaResponse,
+  AuditoriaResumen,
+} from '../types/auditoria';
 
-const API_URL = 'http://localhost:3000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
-// --- CLASE DE ERROR PERSONALIZADA ---
-// Esto simula la estructura de error de Axios para compatibilidad con los hooks
 export class ApiError extends Error {
-  response: { data: any; status: number };
+  response: { data: unknown; status: number };
 
-  constructor(message: string, data: any, status: number) {
+  constructor(message: string, data: unknown, status: number) {
     super(message);
     this.name = 'ApiError';
     this.response = { data, status };
   }
 }
 
-// Función genérica para hacer peticiones
+const limpiarSesion = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('usuario');
+};
+
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const token = localStorage.getItem('token');
+
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
   const response = await fetch(`${API_URL}${endpoint}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     ...options,
   });
-  
+
   if (!response.ok) {
-    // Intentamos leer el JSON de error enviado por el backend
-    const errorData = await response.json().catch(() => ({}));
-    
-    // Obtenemos el mensaje específico (ej: "La cédula ya existe...")
-    const mensaje = errorData.error || errorData.message || 'Error en la petición al servidor';
-    
-    // Lanzamos nuestro error personalizado que contiene "response.data"
+    const esEndpointLogin = endpoint === '/auth/login';
+    const esCambioPassword = endpoint === '/auth/cambiar-password-default';
+
+    const errorData = await response.json().catch(() => ({})) as Record<string, unknown>;
+
+    if (response.status === 401 && !esEndpointLogin) {
+      limpiarSesion();
+      window.location.href = '/';
+      throw new Error('Sesión expirada');
+    }
+
+    if (
+      response.status === 403 &&
+      !esCambioPassword &&
+      errorData.requiereCambioPassword === true
+    ) {
+      window.location.href = '/cambiar-password-default';
+      throw new ApiError('Debe cambiar la contraseña temporal antes de continuar.', errorData, response.status);
+    }
+
+    const mensaje = typeof errorData.error === 'string'
+      ? errorData.error
+      : typeof errorData.message === 'string'
+        ? errorData.message
+        : 'Error en la petición al servidor';
+
     throw new ApiError(mensaje, errorData, response.status);
   }
-  
+
   return response.json();
 }
 
-// Tipado para la respuesta de catálogos generales
 interface CatalogosResponse {
   ocupaciones: Ocupacion[];
   estadosCiviles: EstadoCivil[];
   parentescos: Parentesco[];
   tutores: Tutor[];
+  [key: string]: unknown;
+}
+
+interface LoginRequest {
+  email: string;
+  passwordRaw: string;
+}
+
+export interface UsuarioSesion {
+  id: number;
+  email: string;
+  roles: string[];
+  idPsicologo: number | null;
+  nombre: string;
+  requiereCambioPassword: boolean;
+  esAdmin?: boolean;
+  esPsicologo?: boolean;
+  esRecepcion?: boolean;
+}
+
+interface LoginResponse {
+  token: string;
+  requiereCambioPassword: boolean;
+  usuario: UsuarioSesion;
+}
+
+interface CambiarPasswordResponse extends LoginResponse {
+  message: string;
+}
+
+interface PsicologoCreateBody extends Omit<Psicologo, 'ID_Psicologo'> {
+  Email?: string;
+  paisId?: number;
+  direccion?: {
+    municipioId: number;
+    barrio: string;
+    calle: string;
+  };
+  especialidadIds?: number[];
+}
+
+interface PsicologoUpdateBody extends Partial<Psicologo> {
+  Email?: string;
+  paisId?: number;
+  direccion?: {
+    municipioId: number;
+    barrio: string;
+    calle: string;
+  };
+  especialidadIds?: number[];
+}
+
+interface CredencialesTemporalesResponse {
+  email: string;
+  passwordTemporal: string;
+}
+
+interface PsicologoCreateResponse {
+  psicologo: Psicologo & {
+    Email?: string | null;
+  };
+  credenciales: CredencialesTemporalesResponse;
+}
+
+interface AdminResetPasswordResponse {
+  message: string;
+  usuario: {
+    id: number;
+    email: string;
+    roles: string[];
+    idPsicologo: number | null;
+    nombre: string;
+    requiereCambioPassword: boolean;
+  };
+  credenciales: CredencialesTemporalesResponse;
+}
+
+export interface RolSistemaResponse {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+}
+
+export interface UsuarioRolResumenResponse {
+  idUsuario: number;
+  email: string;
+  activo: boolean;
+  requiereCambioPassword: boolean;
+  idPsicologo: number | null;
+  nombre: string;
+  roles: RolSistemaResponse[];
+}
+
+interface CambiarRolesUsuarioResponse {
+  message: string;
+  usuario: UsuarioRolResumenResponse;
+  rolesAntes: string[];
+  rolesDespues: string[];
 }
 
 export const api = {
-  // --- MÉTODOS GENÉRICOS (Para que funcionen los hooks como usePacientes) ---
   get: <T>(url: string) => request<T>(url),
-  post: <T>(url: string, body: any) => request<T>(url, { method: 'POST', body: JSON.stringify(body) }),
-  put: <T>(url: string, body: any) => request<T>(url, { method: 'PUT', body: JSON.stringify(body) }),
-  patch: <T>(url: string, body: any) => request<T>(url, { method: 'PATCH', body: JSON.stringify(body) }),
+  post: <T, B = unknown>(url: string, body: B) => request<T>(url, { method: 'POST', body: JSON.stringify(body) }),
+  put: <T, B = unknown>(url: string, body: B) => request<T>(url, { method: 'PUT', body: JSON.stringify(body) }),
+  patch: <T, B = unknown>(url: string, body: B) => request<T>(url, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: <T>(url: string) => request<T>(url, { method: 'DELETE' }),
 
-  // --- MÓDULOS ESPECÍFICOS (Legacy / Uso directo) ---
+  auth: {
+    login: (data: LoginRequest) => request<LoginResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    cambiarPasswordDefault: (passwordNuevaRaw: string) => request<CambiarPasswordResponse>('/auth/cambiar-password-default', {
+      method: 'POST',
+      body: JSON.stringify({ passwordNuevaRaw }),
+    }),
+    restablecerPasswordAdmin: (idUsuario: number) => request<AdminResetPasswordResponse>(`/auth/admin/reset-password/${idUsuario}`, {
+      method: 'POST',
+    }),
+    getRoles: () => request<RolSistemaResponse[]>('/auth/admin/roles'),
+    getUsuariosRoles: () => request<UsuarioRolResumenResponse[]>('/auth/admin/usuarios-roles'),
+    cambiarRolesUsuario: (idUsuario: number, rolIds: number[]) => request<CambiarRolesUsuarioResponse>(`/auth/admin/usuarios/${idUsuario}/roles`, {
+      method: 'PATCH',
+      body: JSON.stringify({ rolIds }),
+    }),
+    cambiarRolUsuario: (idUsuario: number, rolId: number) => request<CambiarRolesUsuarioResponse>(`/auth/admin/usuarios/${idUsuario}/rol`, {
+      method: 'PATCH',
+      body: JSON.stringify({ rolId }),
+    }),
+  },
+
   pacientes: {
     getAll: () => request<Paciente[]>('/pacientes'),
-    getOne: (id: string) => request<any>(`/pacientes/${id}/expediente`),
-    create: (data: CreatePacienteDTO) => request<Paciente>('/pacientes', { 
-      method: 'POST', 
-      body: JSON.stringify(data) 
+    getOne: (id: string | number) => request<unknown>(`/pacientes/${id}/expediente`),
+    create: (data: CreatePacienteDTO) => request<Paciente>('/pacientes', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
-    update: (id: number, data: Partial<CreatePacienteDTO>) => request<Paciente>(`/pacientes/${id}`, { 
-      method: 'PUT', 
-      body: JSON.stringify(data) 
+    update: (id: number, data: Partial<CreatePacienteDTO>) => request<Paciente>(`/pacientes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
     }),
-    toggleEstado: (id: number, idEstado: number) => request(`/pacientes/${id}/estado`, { 
-      method: 'PATCH', 
-      body: JSON.stringify({ ID_EstadoDeActividad: idEstado }) 
+    toggleEstado: (id: number, estado: boolean) => request<unknown>(`/pacientes/${id}/estado`, {
+      method: 'PATCH',
+      body: JSON.stringify({ Activo: estado }),
     }),
-    getHistorial: (id: number) => request<any[]>(`/pacientes/${id}/historial`),
+    getHistorial: (id: number) => request<unknown[]>(`/pacientes/${id}/historial`),
   },
 
   tutores: {
     getAll: () => request<Tutor[]>('/tutores'),
-    update: (id: number, data: any) => request(`/tutores/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    update: (id: number, data: Partial<Tutor>) => request<Tutor>(`/tutores/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
   },
 
   psicologos: {
     getAll: () => request<Psicologo[]>('/psicologos'),
-    create: (data: any) => request('/psicologos', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: number, data: any) => request(`/psicologos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    create: (data: PsicologoCreateBody) => request<PsicologoCreateResponse>('/psicologos', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    update: (id: number, data: PsicologoUpdateBody) => request<Psicologo>(`/psicologos/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
   },
 
   citas: {
     getAll: () => request<Cita[]>('/citas'),
-    update: (id: number, data: any) => request(`/citas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-    create: (data: any) => request('/citas', { method: 'POST', body: JSON.stringify(data) }),
-    cancel: (id: number, motivoId: number, notas: string) => 
-      request(`/citas/${id}/cancelar`, { 
+    update: (id: number, data: Partial<Cita>) => request<Cita>(`/citas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    create: (data: CreateCitaDTO) => request<Cita>('/citas', { method: 'POST', body: JSON.stringify(data) }),
+    cancel: (id: number, ID_MotivoCancelacion: number, NotasCancelacion: string) =>
+      request<unknown>(`/citas/${id}/cancelar`, {
         method: 'PATCH',
-        body: JSON.stringify({ motivoId, notas }) 
+        body: JSON.stringify({ ID_MotivoCancelacion, NotasCancelacion }),
       }),
+    getHorariosOcupados: (psicologoId: number, fecha: string) =>
+      request<string[]>(`/citas/horarios-ocupados?psicologoId=${psicologoId}&fecha=${fecha}`),
   },
 
   sesiones: {
-    create: (data: any) => request('/sesiones', { method: 'POST', body: JSON.stringify(data) }),
+    create: (data: CreateSesionDTO) => request<unknown>('/sesiones', { method: 'POST', body: JSON.stringify(data) }),
   },
 
   facturas: {
-    getAll: () => request<Factura[]>('/facturas'),
+    getAll: () => request<Recibo[]>('/facturas'),
   },
 
   config: {
-    getAll: (modelo: string) => request<any[]>(`/config/${modelo}`),
-    create: (modelo: string, nombre: string) => request(`/config/${modelo}`, { method: 'POST', body: JSON.stringify({ nombre }) }),
-    update: (modelo: string, id: number, nombre: string) => request(`/config/${modelo}/${id}`, { method: 'PUT', body: JSON.stringify({ nombre }) }),
-    delete: (modelo: string, id: number) => request(`/config/${modelo}/${id}`, { method: 'DELETE' }),
+    getAll: (modelo: string) => request<Record<string, unknown>[]>(`/config/${modelo}`),
+    create: (modelo: string, nombre: string) => request<unknown>(`/config/${modelo}`, { method: 'POST', body: JSON.stringify({ nombre }) }),
+    update: (modelo: string, id: number, nombre: string) => request<unknown>(`/config/${modelo}/${id}`, { method: 'PUT', body: JSON.stringify({ nombre }) }),
+    delete: (modelo: string, id: number) => request<unknown>(`/config/${modelo}/${id}`, { method: 'DELETE' }),
+  },
+
+
+  tests: {
+    getAll: () => request<TestPsicologico[]>('/tests'),
+    getOne: (id: number) => request<TestPsicologico>(`/tests/${id}`),
+    cambiarEstado: (id: number, Activo: boolean) => request<TestPsicologico>(`/tests/${id}/estado`, {
+      method: 'PATCH',
+      body: JSON.stringify({ Activo }),
+    }),
+    crearAplicacion: (data: CrearAplicacionTestDTO) => request<CrearAplicacionTestResponse>('/tests/aplicaciones', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    getAplicacion: (idAplicacion: number) => request<TestAplicacionResumen>(`/tests/aplicaciones/${idAplicacion}`),
+    anularAplicacion: (idAplicacion: number) => request<TestAplicacionResumen>(`/tests/aplicaciones/${idAplicacion}/anular`, {
+      method: 'PATCH',
+    }),
+    getResultadosPaciente: (idPaciente: number) => request<TestAplicacionResumen[]>(`/tests/pacientes/${idPaciente}/resultados`),
+    getResultadosSesion: (idSesion: number) => request<TestAplicacionResumen[]>(`/tests/sesiones/${idSesion}/resultados`),
+    getPublico: (token: string) => request<TestPublicoResponse>(`/tests/publico/${token}`),
+    responderPublico: (token: string, respuestas: RespuestaTestPublicoDTO[]) => request<ResponderTestPublicoResponse>(`/tests/publico/${token}/responder`, {
+      method: 'POST',
+      body: JSON.stringify({ respuestas }),
+    }),
+  },
+
+  auditoria: {
+    getAll: (queryParams: string) => request<AuditoriaListaResponse>(`/auditoria?${queryParams}`),
+    resumen: () => request<AuditoriaResumen>('/auditoria/resumen'),
   },
 
   general: {
-    catalogos: () => request<CatalogosResponse>('/catalogos'),
-    catalogosCitas: () => request<any>('/citas/catalogos'),
-    stats: () => request<any>('/dashboard-stats'),
-    historialCompleto: () => request<any[]>('/historial'),
+    catalogos: () => request<CatalogosResponse>('/general/catalogos'),
+    stats: () => request<Stats>('/general/dashboard-stats'),
+    historialCompleto: () => request<unknown[]>('/general/historial'),
     graficos: (inicio?: string, fin?: string) => {
       const params = new URLSearchParams();
       if (inicio) params.append('inicio', inicio);
       if (fin) params.append('fin', fin);
-      return request<any>(`/dashboard-graficos?${params.toString()}`);
+      return request<unknown>(`/general/dashboard-graficos?${params.toString()}`);
     },
     motivosCancelacion: () => request<MotivoCancelacion[]>('/general/motivos-cancelacion'),
-  }
+  },
 };
