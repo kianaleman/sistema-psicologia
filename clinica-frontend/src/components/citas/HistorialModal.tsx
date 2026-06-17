@@ -173,8 +173,34 @@ const esFechaBaseSinValorClinico = (fecha: Date) => {
 const formatearFecha = (fecha?: string | null) => {
   if (!fecha) return 'Fecha no registrada';
 
+  const valor = String(fecha);
+  const fechaClinica = valor.split('T')[0];
+  const partes = fechaClinica.split('-');
+
+  if (partes.length === 3) {
+    const anio = Number(partes[0]);
+    const mes = Number(partes[1]);
+    const dia = Number(partes[2]);
+
+    if (!anio || !mes || !dia) {
+      return 'Fecha no registrada';
+    }
+
+    const fechaManual = new Date(anio, mes - 1, dia);
+
+    if (esFechaBaseSinValorClinico(fechaManual)) {
+      return 'Fecha no registrada';
+    }
+
+    return fechaManual.toLocaleDateString('es-ES', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  }
+
   try {
-    const fechaDate = new Date(fecha);
+    const fechaDate = new Date(valor);
 
     if (!Number.isNaN(fechaDate.getTime())) {
       if (esFechaBaseSinValorClinico(fechaDate)) {
@@ -188,25 +214,9 @@ const formatearFecha = (fecha?: string | null) => {
       });
     }
 
-    const parts = fecha.toString().split('T')[0].split('-');
-
-    if (parts.length === 3) {
-      const fechaManual = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-
-      if (esFechaBaseSinValorClinico(fechaManual)) {
-        return 'Fecha no registrada';
-      }
-
-      return fechaManual.toLocaleDateString('es-ES', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      });
-    }
-
-    return fecha;
+    return valor;
   } catch {
-    return fecha;
+    return valor;
   }
 };
 
@@ -227,9 +237,9 @@ const obtenerFechaSesion = (
   // En SQL Server/Prisma un campo Time puede serializarse como 1970-01-01T...
   const citaSesion = obtenerCitaDeSesion(sesion, expedienteCompleto);
 
-  return citaSesion?.FechaCita ||
+  return sesion.FechaReal ||
     sesion.Cita?.FechaCita ||
-    sesion.FechaReal ||
+    citaSesion?.FechaCita ||
     null;
 };
 

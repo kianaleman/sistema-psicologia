@@ -6,7 +6,8 @@ import type {
   Psicologo,
   TipoCitaCatalogo,
   MetodoPago,
-  Banco
+  Banco,
+  Divisa
 } from '../../types';
 
 interface CatalogosModal {
@@ -15,6 +16,7 @@ interface CatalogosModal {
   tiposCita: TipoCitaCatalogo[];
   metodosPago: MetodoPago[];
   bancos?: Banco[];
+  divisas?: Divisa[];
 }
 
 interface Props {
@@ -111,10 +113,28 @@ const initialForm = {
   psicologoId: '',
   tipoCitaId: '',
   precio: '',
+  divisaId: '',
+  tasaCambio: '1',
   metodoPagoId: '',
   numeroReferencia: '',
   bancoId: '',
   modalidadAtencion: 'clinica' as 'clinica' | 'domicilio'
+};
+
+
+const obtenerCodigoDivisa = (divisa?: Divisa | null) => {
+  return (divisa?.Codigo_ISO || '').trim().toUpperCase();
+};
+
+const obtenerSimboloDivisa = (codigoDivisa: string) => {
+  return codigoDivisa === 'USD' ? '$' : 'C$';
+};
+
+const obtenerDivisaInicial = (divisas?: Divisa[]) => {
+  return divisas?.find((divisa) => obtenerCodigoDivisa(divisa) === 'NIO') ||
+    divisas?.find((divisa) => obtenerCodigoDivisa(divisa) === 'USD') ||
+    divisas?.[0] ||
+    null;
 };
 
 export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, catalogos, onNewPacienteClick, onCheckDisponibilidad }: Props) {
@@ -125,6 +145,15 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
   const [busquedaPsicologo, setBusquedaPsicologo] = useState('');
   const [horariosOcupados, setHorariosOcupados] = useState<string[]>([]);
   const [cargandoHorarios, setCargandoHorarios] = useState(false);
+
+  const divisaInicial = obtenerDivisaInicial(catalogos.divisas);
+  const divisaSeleccionada = catalogos.divisas?.find((divisa) => divisa.ID_Divisa.toString() === formData.divisaId) || divisaInicial;
+  const codigoDivisa = obtenerCodigoDivisa(divisaSeleccionada) || 'NIO';
+  const simboloDivisa = obtenerSimboloDivisa(codigoDivisa);
+  const esPagoDolares = codigoDivisa === 'USD';
+  const montoPago = Number(formData.precio || 0);
+  const tasaCambio = esPagoDolares ? Number(formData.tasaCambio || 0) : 1;
+  const equivalenteCordobas = esPagoDolares ? montoPago * tasaCambio : montoPago;
 
   const parse24to12 = (time24: string) => {
     if (!time24) return { hour: '08', minute: '00', period: 'AM' };
@@ -187,6 +216,8 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
 
       const recibo = Array.isArray(citaEditar.Recibo) ? citaEditar.Recibo[0] : citaEditar.Recibo;
       const precioActual = recibo?.MontoTotal ? recibo.MontoTotal.toString() : '';
+      const divisaActual = recibo?.ID_Divisa ? recibo.ID_Divisa.toString() : (divisaInicial?.ID_Divisa.toString() || '');
+      const tasaCambioActual = recibo?.Tasa_Cambio ? recibo.Tasa_Cambio.toString() : '1';
       const metodoPagoActual = recibo?.ID_MetodoPago ? recibo.ID_MetodoPago.toString() : '1';
       const bancoActual = recibo?.ID_Banco ? recibo.ID_Banco.toString() : '';
       const refActual = recibo?.Numero_Referencia || '';
@@ -200,19 +231,25 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
         psicologoId: citaEditar.ID_Psicologo?.toString() || '',
         tipoCitaId: citaEditar.ID_TipoCita?.toString() || '',
         precio: precioActual,
+        divisaId: divisaActual,
+        tasaCambio: tasaCambioActual,
         metodoPagoId: metodoPagoActual,
         numeroReferencia: refActual,
         bancoId: bancoActual,
         modalidadAtencion: modalidad
       });
     } else {
-      setFormData(initialForm);
+      setFormData({
+        ...initialForm,
+        hora: '08:00',
+        divisaId: divisaInicial?.ID_Divisa.toString() || '',
+        tasaCambio: '1',
+      });
       setBusquedaPaciente('');
       setBusquedaPsicologo('');
       setTimePart({ hour: '08', minute: '00', period: 'AM' });
-      setFormData((prev) => ({ ...prev, hora: '08:00' }));
     }
-  }, [citaEditar, isOpen]);
+  }, [citaEditar, isOpen, divisaInicial]);
 
   useEffect(() => {
     let activo = true;
@@ -257,6 +294,14 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
 
     if (!formData.pacienteId || !formData.psicologoId || !formData.fecha || !formData.hora) return;
 
+    if (!formData.tipoCitaId || !formData.precio || !formData.metodoPagoId || !formData.divisaId) {
+      return alert('Debe completar los datos de cobro.');
+    }
+
+    if (esPagoDolares && (!Number.isFinite(tasaCambio) || tasaCambio <= 0)) {
+      return alert('Debe ingresar una tasa de cambio válida para pagos en dólares.');
+    }
+
     if (formData.metodoPagoId && formData.metodoPagoId !== '1' && !formData.numeroReferencia) {
       return alert('El número de referencia es obligatorio para transferencias.');
     }
@@ -276,7 +321,8 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
 
       Precio: parseFloat(formData.precio || '0'),
       ID_MetodoPago: parseInt(formData.metodoPagoId || '1'),
-      ID_Divisa: 1,
+      ID_Divisa: parseInt(formData.divisaId),
+      Tasa_Cambio: esPagoDolares ? parseFloat(formData.tasaCambio || '0') : 1,
       ...(formData.metodoPagoId !== '1' && formData.bancoId ? { ID_Banco: parseInt(formData.bancoId) } : {}),
       ...(formData.metodoPagoId !== '1' && formData.numeroReferencia ? { Numero_Referencia: formData.numeroReferencia } : {})
     };
@@ -414,8 +460,13 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                     <div className="rounded-2xl bg-emerald-50 p-4 text-emerald-800">
                       <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600">Cobro</p>
                       <p className="mt-1 font-mono text-xl font-black">
-                        C$ {Number(formData.precio || 0).toFixed(2)}
+                        {simboloDivisa} {montoPago.toFixed(2)}
                       </p>
+                      {esPagoDolares && tasaCambio > 0 && (
+                        <p className="mt-1 text-xs font-bold text-emerald-700/80">
+                          Equiv. C$ {equivalenteCordobas.toFixed(2)}
+                        </p>
+                      )}
                       <p className="mt-1 truncate text-xs font-medium text-emerald-600/80" title={metodoPagoSeleccionado?.Nombre_Metodo || 'Sin método'}>
                         {metodoPagoSeleccionado?.Nombre_Metodo || 'Sin método'}
                       </p>
@@ -744,7 +795,7 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
 
                       <div>
                         <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                          Costo total
+                          Monto pagado
                         </label>
                         <input
                           required
@@ -757,6 +808,64 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                           onChange={(e) => setFormData({ ...formData, precio: e.target.value })}
                         />
                       </div>
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                            Moneda
+                          </label>
+                          <select
+                            required
+                            className="select select-bordered h-11 w-full rounded-2xl bg-white text-sm font-medium"
+                            value={formData.divisaId}
+                            onChange={(e) => {
+                              const nuevaDivisa = catalogos.divisas?.find((divisa) => divisa.ID_Divisa.toString() === e.target.value);
+                              const nuevoCodigo = obtenerCodigoDivisa(nuevaDivisa);
+
+                              setFormData({
+                                ...formData,
+                                divisaId: e.target.value,
+                                tasaCambio: nuevoCodigo === 'USD' ? formData.tasaCambio : '1',
+                              });
+                            }}
+                          >
+                            <option value="">Seleccionar...</option>
+                            {catalogos.divisas?.map((divisa) => (
+                              <option key={divisa.ID_Divisa} value={divisa.ID_Divisa}>
+                                {obtenerSimboloDivisa(obtenerCodigoDivisa(divisa))} {divisa.Codigo_ISO} - {divisa.Nombre}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                            Tasa de cambio
+                          </label>
+                          <input
+                            required={esPagoDolares}
+                            disabled={!esPagoDolares}
+                            type="number"
+                            step="0.0001"
+                            min="0"
+                            placeholder="Ej: 36.5000"
+                            className="input input-bordered h-11 w-full rounded-2xl bg-white font-mono text-sm font-bold disabled:bg-slate-100 disabled:text-slate-400"
+                            value={formData.tasaCambio}
+                            onChange={(e) => setFormData({ ...formData, tasaCambio: e.target.value })}
+                          />
+                        </div>
+                      </div>
+
+                      {esPagoDolares && (
+                        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-800">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600">
+                            Equivalente en córdobas
+                          </p>
+                          <p className="mt-1 font-mono text-lg font-black">
+                            C$ {equivalenteCordobas.toFixed(2)}
+                          </p>
+                        </div>
+                      )}
 
                       <div>
                         <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-400">

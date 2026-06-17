@@ -25,7 +25,7 @@ import type {
   AuditoriaResumen,
 } from '../types/auditoria';
 
-const API_URL = 'http://localhost:3000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 export class ApiError extends Error {
   response: { data: unknown; status: number };

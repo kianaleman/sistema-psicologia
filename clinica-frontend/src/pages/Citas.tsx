@@ -110,6 +110,11 @@ export default function Citas() {
   const [selectedCita, setSelectedCita] = useState<Cita | null>(null);
   const [idCancelar, setIdCancelar] = useState<number | null>(null);
   const [isPacienteModalOpen, setIsPacienteModalOpen] = useState(false);
+  const [citaInicioAnticipado, setCitaInicioAnticipado] = useState<{
+    cita: Cita;
+    fechaHora: Date;
+    tiempoRestante: string;
+  } | null>(null);
 
   const openModal = (
     type: "create" | "edit" | "session" | "view",
@@ -147,13 +152,51 @@ export default function Citas() {
     }
   };
 
+  const intentarIniciarSesion = (cita: Cita, eventTimeStamp: number) => {
+    const fechaHoraCita = obtenerFechaHoraCita(cita.FechaCita, cita.HoraCita);
+    const ahoraMs = obtenerMarcaTiempoEvento(eventTimeStamp);
+
+    if (fechaHoraCita && fechaHoraCita.getTime() > ahoraMs) {
+      setCitaInicioAnticipado({
+        cita,
+        fechaHora: fechaHoraCita,
+        tiempoRestante: formatearTiempoRestante(
+          fechaHoraCita.getTime() - ahoraMs,
+        ),
+      });
+      return;
+    }
+
+    openModal("session", cita);
+  };
+
+  const confirmarInicioAnticipado = () => {
+    if (!citaInicioAnticipado) return;
+
+    openModal("session", citaInicioAnticipado.cita);
+    setCitaInicioAnticipado(null);
+  };
+
+  const obtenerMensajeError = (error: unknown) => {
+    if (error instanceof Error && error.message) {
+      return error.message;
+    }
+
+    return "Error al guardar la sesión";
+  };
+
   const handleFinalizarSesion = async (data: CreateSesionDTO) => {
-    toast.promise(acciones.guardarSesion(data), {
-      loading: "Finalizando...",
-      success: "Sesión guardada",
-      error: "Error",
-    });
-    setModalOpen(null);
+    try {
+      await toast.promise(acciones.guardarSesion(data), {
+        loading: "Finalizando...",
+        success: "Sesión guardada",
+        error: obtenerMensajeError,
+      });
+
+      setModalOpen(null);
+    } catch {
+      // El mensaje ya se muestra mediante toast.promise.
+    }
   };
 
   const formatearHora = (h: string) => {
@@ -181,6 +224,70 @@ export default function Citas() {
 
     const fechaStr = fechaObj.toLocaleDateString("es-ES", opciones);
     return fechaStr.charAt(0).toUpperCase() + fechaStr.slice(1);
+  };
+
+  const obtenerFechaHoraCita = (fechaCita?: string, horaCita?: string) => {
+    if (!fechaCita || !horaCita) return null;
+
+    const fecha = new Date(fechaCita);
+    const hora = new Date(horaCita);
+
+    if (Number.isNaN(fecha.getTime()) || Number.isNaN(hora.getTime())) {
+      return null;
+    }
+
+    return new Date(
+      fecha.getUTCFullYear(),
+      fecha.getUTCMonth(),
+      fecha.getUTCDate(),
+      hora.getUTCHours(),
+      hora.getUTCMinutes(),
+      0,
+      0,
+    );
+  };
+
+  const formatearFechaHoraLocal = (fecha: Date) => {
+    return fecha.toLocaleString("es-NI", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
+  const formatearTiempoRestante = (milisegundos: number) => {
+    const minutosTotales = Math.max(1, Math.ceil(milisegundos / 60000));
+    const dias = Math.floor(minutosTotales / 1440);
+    const horas = Math.floor((minutosTotales % 1440) / 60);
+    const minutos = minutosTotales % 60;
+
+    const partes: string[] = [];
+
+    if (dias > 0) partes.push(`${dias} ${dias === 1 ? "día" : "días"}`);
+    if (horas > 0) partes.push(`${horas} ${horas === 1 ? "hora" : "horas"}`);
+    if (minutos > 0) {
+      partes.push(`${minutos} ${minutos === 1 ? "minuto" : "minutos"}`);
+    }
+
+    return partes.slice(0, 2).join(" y ") || "menos de 1 minuto";
+  };
+
+  const obtenerMarcaTiempoEvento = (eventTimeStamp: number) => {
+    if (eventTimeStamp > 1_000_000_000_000) {
+      return eventTimeStamp;
+    }
+
+    const timeOrigin =
+      typeof performance !== "undefined" &&
+      Number.isFinite(performance.timeOrigin)
+        ? performance.timeOrigin
+        : 0;
+
+    return timeOrigin + eventTimeStamp;
   };
 
   const getEstadoColor = (st: string) => {
@@ -577,7 +684,9 @@ export default function Citas() {
                           </button>
                           <button
                             className="btn btn-sm rounded-xl border-slate-950 bg-slate-950 px-5 text-white shadow-lg shadow-slate-200 hover:border-slate-800 hover:bg-slate-800"
-                            onClick={() => openModal("session", cita)}
+                            onClick={(event) =>
+                              intentarIniciarSesion(cita, event.timeStamp)
+                            }
                           >
                             Iniciar
                           </button>
@@ -645,6 +754,97 @@ export default function Citas() {
         onClose={() => setModalOpen(null)}
         cita={selectedCita}
       />
+
+      {citaInicioAnticipado && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-xl rounded-[2rem] border border-amber-100 bg-white p-0 shadow-2xl">
+            <div className="border-b border-amber-100 bg-amber-50 px-6 py-5">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-amber-600 shadow-sm">
+                  <Icons.Clock />
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-600">
+                    Inicio anticipado
+                  </p>
+                  <h3 className="mt-1 text-xl font-black text-slate-950">
+                    La cita aún no llega a su hora programada
+                  </h3>
+                  <p className="mt-2 text-sm leading-relaxed text-amber-800/80">
+                    Confirma esta acción solo si el paciente ya está listo y el
+                    psicólogo desea iniciar la sesión antes de la hora registrada.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 px-6 py-5">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                  Paciente
+                </p>
+                <p className="mt-1 text-base font-black text-slate-900">
+                  {citaInicioAnticipado.cita.Paciente?.Nombre}{" "}
+                  {citaInicioAnticipado.cita.Paciente?.Apellido}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-500">
+                    Hora programada
+                  </p>
+                  <p className="mt-1 text-sm font-black leading-relaxed text-blue-900">
+                    {formatearFechaHoraLocal(citaInicioAnticipado.fechaHora)}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-600">
+                    Tiempo restante
+                  </p>
+                  <p className="mt-1 text-sm font-black text-amber-900">
+                    {citaInicioAnticipado.tiempoRestante}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm font-medium leading-relaxed text-slate-500">
+                Si continúas, se abrirá el registro de sesión para esta cita y
+                quedará bajo responsabilidad del psicólogo iniciar antes del
+                horario programado.
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                className="btn rounded-2xl border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                onClick={() => setCitaInicioAnticipado(null)}
+              >
+                Volver a la agenda
+              </button>
+
+              <button
+                type="button"
+                className="btn rounded-2xl border-amber-600 bg-amber-600 px-6 text-white hover:border-amber-700 hover:bg-amber-700"
+                onClick={confirmarInicioAnticipado}
+              >
+                Iniciar de todas formas
+              </button>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="modal-backdrop"
+            onClick={() => setCitaInicioAnticipado(null)}
+          >
+            cerrar
+          </button>
+        </div>
+      )}
 
       <CancelarCitaModal
         isOpen={!!idCancelar}

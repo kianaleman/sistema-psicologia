@@ -23,7 +23,7 @@ type CreateSesionDTO = {
   ID_Cita: number;
   ID_Expediente: number;
   HoraDeInicio: string;
-  HoraFinal: string;
+  HoraFinal?: string;
   Observaciones: string;
   DiagnosticoDiferencial: string;
   HistorialDeEvolucion: string;
@@ -42,6 +42,24 @@ const toNumber = (value: unknown): number => {
 
 const toStringValue = (value: unknown): string => {
   return typeof value === 'string' ? value.trim() : '';
+};
+
+const crearFechaActualLocal = () => {
+  const fecha = new Date();
+  const year = fecha.getFullYear();
+  const month = String(fecha.getMonth() + 1).padStart(2, '0');
+  const day = String(fecha.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+};
+
+const crearHoraActualLocal = () => {
+  const fecha = new Date();
+  const hours = String(fecha.getHours()).padStart(2, '0');
+  const minutes = String(fecha.getMinutes()).padStart(2, '0');
+  const seconds = String(fecha.getSeconds()).padStart(2, '0');
+
+  return `${hours}:${minutes}:${seconds}`;
 };
 
 const normalizarExploraciones = (value: unknown): number[] => {
@@ -64,7 +82,7 @@ const normalizarTratamiento = (value: unknown): TratamientoDTO | undefined => {
   const tratamientoBase: TratamientoDTO = {
     Tipo: tipo,
     Frecuencia: toStringValue(value.Frecuencia) || 'Según indicación',
-    FechaInicio: toStringValue(value.FechaInicio) || new Date().toISOString(),
+    FechaInicio: toStringValue(value.FechaInicio) || crearFechaActualLocal(),
   };
 
   const fechaFin = toStringValue(value.FechaFin);
@@ -98,7 +116,7 @@ const normalizarBody = (body: unknown): CreateSesionDTO | null => {
     ID_Cita: toNumber(body.ID_Cita),
     ID_Expediente: toNumber(body.ID_Expediente || 0),
     HoraDeInicio: toStringValue(body.HoraDeInicio),
-    HoraFinal: toStringValue(body.HoraFinal),
+    HoraFinal: toStringValue(body.HoraFinal) || crearHoraActualLocal(),
     Observaciones: toStringValue(body.Observaciones),
     DiagnosticoDiferencial: toStringValue(body.DiagnosticoDiferencial),
     HistorialDeEvolucion: toStringValue(body.HistorialDeEvolucion),
@@ -118,7 +136,6 @@ const normalizarBody = (body: unknown): CreateSesionDTO | null => {
 const validarPayload = (payload: CreateSesionDTO): string | null => {
   if (!Number.isInteger(payload.ID_Cita) || payload.ID_Cita <= 0) return 'ID_Cita es requerido y debe ser un número válido.';
   if (!payload.HoraDeInicio) return 'HoraDeInicio es requerida.';
-  if (!payload.HoraFinal) return 'HoraFinal es requerida.';
   if (!payload.Observaciones) return 'Observaciones es requerido.';
   if (!payload.DiagnosticoDiferencial) return 'DiagnosticoDiferencial es requerido.';
   if (!payload.HistorialDeEvolucion) return 'HistorialDeEvolucion es requerido.';
@@ -164,7 +181,7 @@ const resumenSesionParaAuditoria = (payload: CreateSesionDTO) => {
     ID_Cita: payload.ID_Cita,
     ID_Expediente: payload.ID_Expediente,
     HoraDeInicio: payload.HoraDeInicio,
-    HoraFinal: payload.HoraFinal,
+    HoraFinal: payload.HoraFinal || crearHoraActualLocal(),
     camposClinicosRegistrados: [
       'Observaciones',
       'DiagnosticoDiferencial',

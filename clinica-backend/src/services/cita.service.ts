@@ -29,6 +29,7 @@ interface CreateCitaDTO {
 
   Precio: number;
   ID_Divisa?: number;
+  Tasa_Cambio?: number;
   ID_MetodoPago: number;
   ID_Banco?: number;
   Numero_Referencia?: string;
@@ -87,6 +88,76 @@ const obtenerPsicologoPermitidoParaCita = (psicologoId: number, usuario?: AuthUs
 
   throw new Error('No tiene permisos para gestionar citas.');
 };
+
+type ReciboPagoActual = {
+  MontoTotal: Prisma.Decimal | number | string | null;
+  ID_Divisa: number | null;
+  Tasa_Cambio: Prisma.Decimal | number | string | null;
+};
+
+const normalizarCodigoDivisa = (codigo?: string | null) => {
+  return (codigo || '').trim().toUpperCase();
+};
+
+const obtenerDivisaPorId = async (idDivisa?: number | null) => {
+  const divisa = await prisma.divisa.findFirst({
+    where: idDivisa
+      ? { ID_Divisa: idDivisa }
+      : {
+          Codigo_ISO: {
+            in: ['NIO', 'USD'],
+          },
+        },
+    orderBy: {
+      Codigo_ISO: 'asc',
+    },
+  });
+
+  if (!divisa) {
+    throw new Error('Debe configurar al menos una divisa válida para registrar pagos.');
+  }
+
+  return divisa;
+};
+
+const normalizarPago = async (
+  data: Partial<CreateCitaDTO>,
+  reciboActual?: ReciboPagoActual | null
+) => {
+  const monto = data.Precio !== undefined
+    ? Number(data.Precio)
+    : Number(reciboActual?.MontoTotal ?? 0);
+
+  if (!Number.isFinite(monto) || monto <= 0) {
+    throw new Error('El monto del pago debe ser mayor que cero.');
+  }
+
+  const idDivisaFinal = data.ID_Divisa ?? reciboActual?.ID_Divisa ?? null;
+  const divisa = await obtenerDivisaPorId(idDivisaFinal);
+  const codigoDivisa = normalizarCodigoDivisa(divisa.Codigo_ISO);
+
+  if (codigoDivisa !== 'NIO' && codigoDivisa !== 'USD') {
+    throw new Error('Solo se permiten pagos en córdobas (NIO) o dólares (USD).');
+  }
+
+  const tasaCambioBase = data.Tasa_Cambio !== undefined
+    ? Number(data.Tasa_Cambio)
+    : Number(reciboActual?.Tasa_Cambio ?? 0);
+
+  const tasaCambio = codigoDivisa === 'USD' ? tasaCambioBase : 1;
+
+  if (codigoDivisa === 'USD' && (!Number.isFinite(tasaCambio) || tasaCambio <= 0)) {
+    throw new Error('Debe indicar una tasa de cambio válida para pagos en dólares.');
+  }
+
+  return {
+    monto,
+    idDivisa: divisa.ID_Divisa,
+    tasaCambio,
+    codigoDivisa,
+  };
+};
+
 
 const validarAccesoACitaExistente = (
   cita: { ID_Psicologo: number },
@@ -326,6 +397,8 @@ export const CitaService = {
 
     await verificarDisponibilidad(psicologoPermitido, fechaSoloDia, fechaParaGuardar);
 
+    const pago = await normalizarPago(data);
+
     return await prisma.$transaction(async (tx) => {
       const citaCreada = await tx.cita.create({
         data: {
@@ -346,13 +419,15 @@ export const CitaService = {
       const reciboCreado = await tx.recibo.create({
         data: {
           ID_Cita: citaCreada.ID_Cita,
-          ID_Divisa: data.ID_Divisa || 1,
+          ID_Divisa: pago.idDivisa,
           ID_MetodoPago: data.ID_MetodoPago,
           FechaDePago: fechaHoraActual,
           HoraDePago: horaPagoNica,
-          MontoTotal: data.Precio,
-          Observacion: 'Pago registrado al agendar cita',
-          Tasa_Cambio: 1.0000,
+          MontoTotal: pago.monto,
+          Observacion: pago.codigoDivisa === 'USD'
+            ? `Pago registrado al agendar cita. Equivalente C$ ${(pago.monto * pago.tasaCambio).toFixed(2)}`
+            : 'Pago registrado al agendar cita',
+          Tasa_Cambio: pago.tasaCambio,
           ID_Banco: data.ID_MetodoPago !== 1 ? data.ID_Banco ?? null : null,
           Numero_Referencia: data.ID_MetodoPago !== 1 ? data.Numero_Referencia ?? null : null,
         },
@@ -447,7 +522,14 @@ export const CitaService = {
         },
       });
 
-      if (data.Precio !== undefined || data.ID_MetodoPago !== undefined) {
+      if (
+        data.Precio !== undefined ||
+        data.ID_Divisa !== undefined ||
+        data.Tasa_Cambio !== undefined ||
+        data.ID_MetodoPago !== undefined ||
+        data.ID_Banco !== undefined ||
+        data.Numero_Referencia !== undefined
+      ) {
         const recibo = await tx.recibo.findFirst({
           where: {
             ID_Cita: id,
@@ -456,14 +538,19 @@ export const CitaService = {
 
         if (recibo) {
           const metodoPagoFinal = data.ID_MetodoPago ?? recibo.ID_MetodoPago;
+          const pago = await normalizarPago(data, recibo);
 
           await tx.recibo.update({
             where: {
               Cod_Recibo: recibo.Cod_Recibo,
             },
             data: {
-              MontoTotal: data.Precio ?? recibo.MontoTotal,
-              ID_Divisa: data.ID_Divisa ?? recibo.ID_Divisa,
+              MontoTotal: pago.monto,
+              ID_Divisa: pago.idDivisa,
+              Tasa_Cambio: pago.tasaCambio,
+              Observacion: pago.codigoDivisa === 'USD'
+                ? `Pago actualizado. Equivalente C$ ${(pago.monto * pago.tasaCambio).toFixed(2)}`
+                : recibo.Observacion,
               ID_MetodoPago: metodoPagoFinal,
               ID_Banco: metodoPagoFinal !== 1 ? data.ID_Banco ?? recibo.ID_Banco ?? null : null,
               Numero_Referencia: metodoPagoFinal !== 1

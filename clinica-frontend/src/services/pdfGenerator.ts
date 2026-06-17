@@ -272,11 +272,21 @@ const getTutorMenor = (pacienteMenor?: PacienteMenorPDF | null) => {
 };
 
 const getDivisaCodigo = (recibo: ReciboPDF) => {
-  return recibo.Divisa?.Codigo_ISO || (recibo.ID_Divisa === 2 ? 'USD' : 'NIO');
+  return (recibo.Divisa?.Codigo_ISO || (recibo.ID_Divisa === 2 ? 'USD' : 'NIO')).trim().toUpperCase();
 };
 
 const getDivisaSymbol = (recibo: ReciboPDF) => {
   return getDivisaCodigo(recibo) === 'USD' ? '$' : 'C$';
+};
+
+const getTasaCambio = (recibo: ReciboPDF) => {
+  const tasa = Number(recibo.Tasa_Cambio || 1);
+  return Number.isFinite(tasa) && tasa > 0 ? tasa : 1;
+};
+
+const getMontoEquivalenteCordobas = (recibo: ReciboPDF) => {
+  const monto = Number(recibo.MontoTotal || 0);
+  return getDivisaCodigo(recibo) === 'USD' ? monto * getTasaCambio(recibo) : monto;
 };
 
 // const formatearMonto = (monto?: number | string | null, simbolo = 'C$') => {
@@ -422,6 +432,7 @@ export const generarPDFRecibo = (recibo: ReciboPDF) => {
   }) as JsPDFWithAutoTable;
 
   const divisaSymbol = getDivisaSymbol(recibo);
+  const divisaCodigo = getDivisaCodigo(recibo);
   const width = 80;
   let yPos = 10;
 
@@ -514,7 +525,12 @@ export const generarPDFRecibo = (recibo: ReciboPDF) => {
   doc.text('TOTAL PAGADO:', 5, yPos);
   doc.text(`${divisaSymbol} ${Number(recibo.MontoTotal || 0).toFixed(2)}`, 75, yPos, { align: 'right' });
 
-  yPos += 6;
+  yPos += 5;
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Moneda: ${divisaCodigo}`, 5, yPos);
+
+  yPos += 4;
   doc.setFontSize(7);
   doc.setFont('helvetica', 'italic');
   doc.text(`Método: ${getMetodoPago(recibo)}`, 5, yPos);
@@ -529,10 +545,13 @@ export const generarPDFRecibo = (recibo: ReciboPDF) => {
     doc.text(`Ref: ${recibo.Numero_Referencia}`, 5, yPos);
   }
 
-  const tasaCambio = Number(recibo.Tasa_Cambio || 0);
-  if (tasaCambio > 1) {
+  const tasaCambio = getTasaCambio(recibo);
+  if (divisaCodigo === 'USD') {
     yPos += 3;
-    doc.text(`T. Cambio: ${tasaCambio.toFixed(2)}`, 5, yPos);
+    doc.text(`T. Cambio: C$ ${tasaCambio.toFixed(4)}`, 5, yPos);
+
+    yPos += 3;
+    doc.text(`Equivalente: C$ ${getMontoEquivalenteCordobas(recibo).toFixed(2)}`, 5, yPos);
   }
 
   yPos += 12;
@@ -577,6 +596,9 @@ export const generarPDFReporteFinanciero = (
     .filter((recibo) => getDivisaCodigo(recibo) === 'USD')
     .reduce((acc, curr) => acc + Number(curr.MontoTotal || 0), 0);
 
+  const totalEquivalenteNIO = recibos
+    .reduce((acc, curr) => acc + getMontoEquivalenteCordobas(curr), 0);
+
   const filas = recibos.map((recibo) => [
     `#${getNumeroRecibo(recibo)}`,
     formatearFecha(getFechaRecibo(recibo)),
@@ -584,16 +606,18 @@ export const generarPDFReporteFinanciero = (
     getMetodoPago(recibo),
     getDivisaCodigo(recibo),
     `${getDivisaSymbol(recibo)} ${Number(recibo.MontoTotal || 0).toFixed(2)}`,
+    `C$ ${getMontoEquivalenteCordobas(recibo).toFixed(2)}`,
   ]);
 
   autoTable(doc, {
     startY: 50,
-    head: [['N°', 'FECHA', 'PACIENTE', 'MÉTODO', 'MONEDA', 'MONTO']],
+    head: [['N°', 'FECHA', 'PACIENTE', 'MÉTODO', 'MONEDA', 'MONTO', 'EQ. C$']],
     body: filas,
     headStyles: { fillColor: COLORS.header as RGBColor },
     styles: { fontSize: 8 },
     columnStyles: {
       5: { halign: 'right', fontStyle: 'bold' },
+      6: { halign: 'right', fontStyle: 'bold' },
     },
   });
 
@@ -605,6 +629,9 @@ export const generarPDFReporteFinanciero = (
 
   doc.setTextColor(COLORS.accent[0], COLORS.accent[1], COLORS.accent[2]);
   doc.text(`Total Dólares (USD): $ ${totalUSD.toFixed(2)}`, 14, finalY + 7);
+
+  doc.setTextColor(COLORS.header[0], COLORS.header[1], COLORS.header[2]);
+  doc.text(`Total equivalente en Córdobas: C$ ${totalEquivalenteNIO.toFixed(2)}`, 14, finalY + 14);
 
   doc.save('Reporte_Financiero_Resiliencia.pdf');
 };

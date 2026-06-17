@@ -24,7 +24,7 @@ interface CreateSesionDTO {
   ID_Cita: number;
   ID_Expediente: number;
   HoraDeInicio: string;
-  HoraFinal: string;
+  HoraFinal?: string;
   Observaciones: string;
   DiagnosticoDiferencial: string;
   HistorialDeEvolucion: string;
@@ -93,10 +93,18 @@ const construirFechaDesdeHora = (hora: number, minuto: number, segundo = 0) => {
     return null;
   }
 
-  const fecha = new Date();
-  fecha.setHours(hora, minuto, segundo, 0);
+  return new Date(1970, 0, 1, hora, minuto, segundo, 0);
+};
 
-  return fecha;
+const obtenerHoraSistemaActual = () => {
+  const ahora = new Date();
+  const horaActual = construirFechaDesdeHora(
+    ahora.getHours(),
+    ahora.getMinutes(),
+    ahora.getSeconds()
+  );
+
+  return horaActual || new Date(1970, 0, 1, 0, 0, 0, 0);
 };
 
 const construirFecha = (value: string, field: string) => {
@@ -119,6 +127,29 @@ const construirFecha = (value: string, field: string) => {
     }
 
     return fecha;
+  }
+
+  const dateOnlyMatch = rawValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (dateOnlyMatch) {
+    const year = Number(dateOnlyMatch[1]);
+    const month = Number(dateOnlyMatch[2]);
+    const day = Number(dateOnlyMatch[3]);
+
+    return new Date(year, month - 1, day, 12, 0, 0, 0);
+  }
+
+  const localDateTimeMatch = rawValue.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+
+  if (localDateTimeMatch) {
+    const year = Number(localDateTimeMatch[1]);
+    const month = Number(localDateTimeMatch[2]);
+    const day = Number(localDateTimeMatch[3]);
+    const hour = Number(localDateTimeMatch[4]);
+    const minute = Number(localDateTimeMatch[5]);
+    const second = Number(localDateTimeMatch[6] || 0);
+
+    return new Date(year, month - 1, day, hour, minute, second, 0);
   }
 
   const fecha = new Date(rawValue);
@@ -229,7 +260,7 @@ export const SesionService = {
           ID_Cita: data.ID_Cita,
           ID_Expediente: expedienteId,
           HoraDeInicio: construirFecha(data.HoraDeInicio, 'HoraDeInicio'),
-          HoraFinal: construirFecha(data.HoraFinal, 'HoraFinal'),
+          HoraFinal: obtenerHoraSistemaActual(),
           Observaciones: data.Observaciones,
           DiagnosticoDiferencial: data.DiagnosticoDiferencial,
           HistorialDeEvolucion: data.HistorialDeEvolucion,
