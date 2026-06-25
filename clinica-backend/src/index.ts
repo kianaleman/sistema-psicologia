@@ -15,6 +15,7 @@ import facturaRoutes from './routes/factura.routes.js';
 import configuracionRoutes from './routes/configuracion.routes.js';
 import auditoriaRoutes from './routes/auditoria.routes.js';
 import testPsicologicoRoutes from './routes/testPsicologico.routes.js';
+import backupRoutes from './routes/backup.routes.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -47,6 +48,7 @@ app.use('/api/config', configuracionRoutes);
 app.use('/api/general', generalRoutes);
 app.use('/api/auditoria', auditoriaRoutes);
 app.use('/api/tests', testPsicologicoRoutes);
+app.use('/api/backups', backupRoutes);
 
 app.listen(PORT, () => {
   console.log(`Servidor ONLINE en http://localhost:${PORT}`);

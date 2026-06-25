@@ -1,4 +1,5 @@
 import { CATALOGOS_CONFIG, useConfiguracion } from '../hooks/useConfiguracion';
+import BackupSistema from '../components/configuracion/BackupSistema';
 
 const Icons = {
   Settings: () => (
@@ -126,6 +127,8 @@ export default function Configuracion() {
           <p className="mt-1 text-xs font-medium text-emerald-500/70">Elementos en catálogo actual</p>
         </div>
       </section>
+
+      <BackupSistema />
 
       <section className="grid grid-cols-1 gap-8 xl:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="rounded-[2rem] border border-white/80 bg-white shadow-sm">

@@ -216,12 +216,10 @@ export interface EstadoCitaCatalogo {
 export interface ReciboCita {
   Cod_Recibo?: number;
   MontoTotal: number;
-  Tasa_Cambio?: number | string | null;
   ID_MetodoPago: number;
   ID_Banco?: number | null;
   Numero_Referencia?: string | null;
-  ID_Divisa?: number | null;
-  Divisa?: Divisa | null;
+  ID_Divisa?: number;
 }
 
 export interface Cita {
@@ -274,7 +272,6 @@ export interface CreateCitaDTO {
   Precio: number;
   ID_MetodoPago: number;
   ID_Divisa?: number;
-  Tasa_Cambio?: number;
   ID_Banco?: number;
   Numero_Referencia?: string;
 }
@@ -293,23 +290,17 @@ export interface Banco {
   Activo: boolean;
 }
 
-export interface Divisa {
-  ID_Divisa: number;
-  Codigo_ISO: string;
-  Nombre: string;
-}
-
 // En la BD actual, facturas es la tabla Recibo
 export interface Recibo {
   Cod_Recibo: number;
   ID_Cita?: number;
-  ID_Divisa?: number | null;
+  ID_Divisa?: number;
   ID_MetodoPago?: number;
   FechaRecibo: string;
   FechaDePago?: string;
   HoraDePago?: string;
   MontoTotal?: number;
-  Tasa_Cambio?: number | string | null;
+  Tasa_Cambio?: number;
   Observacion?: string;
   ID_Banco?: number;
   Numero_Referencia?: string;
@@ -317,7 +308,6 @@ export interface Recibo {
   Cita?: Cita;
   MetodoPago?: MetodoPago;
   Banco?: Banco;
-  Divisa?: Divisa | null;
 }
 
 // ==========================================

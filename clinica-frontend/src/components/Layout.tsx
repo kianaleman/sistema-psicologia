@@ -27,6 +27,7 @@ type IconName =
   | 'tutors'
   | 'audit'
   | 'settings'
+  | 'manual'
   | 'logout'
   | 'user'
   | 'menu';
@@ -127,6 +128,15 @@ const Icons = {
     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.04.04a2 2 0 0 1-2.83 2.83l-.04-.04A1.8 1.8 0 0 0 15 19.4a1.8 1.8 0 0 0-1 .6 1.8 1.8 0 0 0-.4 1.2V21a2 2 0 0 1-4 0v-.06A1.8 1.8 0 0 0 9 19.4a1.8 1.8 0 0 0-1.98.36l-.04.04a2 2 0 0 1-2.83-2.83l.04-.04A1.8 1.8 0 0 0 4.6 15a1.8 1.8 0 0 0-.6-1 1.8 1.8 0 0 0-1.2-.4H3a2 2 0 0 1 0-4h.06A1.8 1.8 0 0 0 4.6 9a1.8 1.8 0 0 0-.36-1.98l-.04-.04a2 2 0 0 1 2.83-2.83l.04.04A1.8 1.8 0 0 0 9 4.6a1.8 1.8 0 0 0 1-.6 1.8 1.8 0 0 0 .4-1.2V3a2 2 0 0 1 4 0v.06A1.8 1.8 0 0 0 15 4.6a1.8 1.8 0 0 0 1.98-.36l.04-.04a2 2 0 0 1 2.83 2.83l-.04.04A1.8 1.8 0 0 0 19.4 9c.2.4.4.73.6 1 .28.28.7.4 1.2.4H21a2 2 0 0 1 0 4h-.06A1.8 1.8 0 0 0 19.4 15z" />
+    </svg>
+  ),
+  manual: () => (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z" />
+      <path d="M8 6h8" />
+      <path d="M8 10h7" />
+      <path d="M8 14h5" />
     </svg>
   ),
   logout: () => (
@@ -384,6 +394,10 @@ export default function Layout() {
               )}
             </SidebarSection>
           )}
+
+          <SidebarSection title="Soporte">
+            <NavItem to="/manual-usuario" label="Manual de usuario" icon="manual" />
+          </SidebarSection>
         </nav>
 
         <div className="relative z-10 border-t border-white/10 p-5">
@@ -465,6 +479,7 @@ export default function Layout() {
               {puedeVerConfiguracion && (
                 <Link to="/configuracion" className="btn btn-sm rounded-full bg-white text-slate-600 border-slate-200">Ajustes</Link>
               )}
+              <Link to="/manual-usuario" className="btn btn-sm rounded-full bg-white text-slate-600 border-slate-200">Manual</Link>
             </div>
           </div>
         </header>

@@ -1,9 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
-import type { Recibo, Cita, Paciente, Psicologo, MetodoPago, Banco, Divisa } from '../types';
+import type { Recibo, Cita, Paciente, Psicologo, MetodoPago, Banco } from '../types';
+
+type DivisaFacturacion = {
+  ID_Divisa: number;
+  Codigo_ISO: string;
+  Nombre: string;
+};
 
 type ReciboFacturacion = Recibo & {
-  Divisa?: Divisa | null;
+  Divisa?: DivisaFacturacion | null;
   MetodoPago?: MetodoPago | null;
   Banco?: Banco | null;
   Cita?: Cita & {
@@ -54,26 +60,6 @@ function obtenerNombrePsicologo(recibo: ReciboFacturacion) {
   return `${psicologo.Nombre || ''} ${psicologo.Apellido || ''}`.trim().toLowerCase();
 }
 
-export function obtenerCodigoDivisaRecibo(recibo: ReciboFacturacion) {
-  return (recibo.Divisa?.Codigo_ISO || '').trim().toUpperCase() || 'NIO';
-}
-
-export function obtenerSimboloDivisaRecibo(recibo: ReciboFacturacion) {
-  return obtenerCodigoDivisaRecibo(recibo) === 'USD' ? '$' : 'C$';
-}
-
-export function calcularEquivalenteCordobas(recibo: ReciboFacturacion) {
-  const monto = Number(recibo.MontoTotal || 0);
-  const codigoDivisa = obtenerCodigoDivisaRecibo(recibo);
-  const tasaCambio = Number(recibo.Tasa_Cambio || 1);
-
-  if (codigoDivisa === 'USD') {
-    return monto * (Number.isFinite(tasaCambio) && tasaCambio > 0 ? tasaCambio : 0);
-  }
-
-  return monto;
-}
-
 export const useFacturacion = () => {
   const [recibos, setRecibos] = useState<ReciboFacturacion[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -117,7 +103,6 @@ export const useFacturacion = () => {
       const metodoPago = recibo.MetodoPago?.Nombre_Metodo?.toLowerCase() || '';
       const banco = recibo.Banco?.Nombre_Banco?.toLowerCase() || '';
       const referencia = recibo.Numero_Referencia?.toLowerCase() || '';
-      const divisa = obtenerCodigoDivisaRecibo(recibo).toLowerCase();
 
       return (
         pacienteNombre.includes(termino) ||
@@ -127,32 +112,18 @@ export const useFacturacion = () => {
         numeroRecibo.includes(termino) ||
         metodoPago.includes(termino) ||
         banco.includes(termino) ||
-        referencia.includes(termino) ||
-        divisa.includes(termino)
+        referencia.includes(termino)
       );
     });
   }, [recibos, filtros]);
 
   const totales = useMemo(() => {
-    const ingresosCordobas = facturasFiltradas
-      .filter((recibo) => obtenerCodigoDivisaRecibo(recibo) !== 'USD')
-      .reduce((acc, curr) => acc + Number(curr.MontoTotal || 0), 0);
-
-    const ingresosDolares = facturasFiltradas
-      .filter((recibo) => obtenerCodigoDivisaRecibo(recibo) === 'USD')
-      .reduce((acc, curr) => acc + Number(curr.MontoTotal || 0), 0);
-
-    const equivalenteCordobas = facturasFiltradas
-      .reduce((acc, curr) => acc + calcularEquivalenteCordobas(curr), 0);
-
+    const ingresos = facturasFiltradas.reduce((acc, curr) => acc + Number(curr.MontoTotal || 0), 0);
     const transacciones = facturasFiltradas.length;
-    const ticketPromedio = transacciones > 0 ? equivalenteCordobas / transacciones : 0;
+    const ticketPromedio = transacciones > 0 ? ingresos / transacciones : 0;
 
     return {
-      ingresos: equivalenteCordobas,
-      ingresosCordobas,
-      ingresosDolares,
-      equivalenteCordobas,
+      ingresos,
       transacciones,
       ticketPromedio,
     };

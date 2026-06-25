@@ -19,6 +19,7 @@ import ResetPassword from './pages/ResetPassword';
 import Auditoria from './pages/Auditoria';
 import TestsPsicologicos from './pages/TestsPsicologicos';
 import TestPublico from './pages/TestPublico';
+import ManualUsuario from './pages/ManualUsuario';
 
 export default function App() {
   return (
@@ -44,6 +45,7 @@ export default function App() {
             <Route path="/configuracion" element={<Configuracion />} />
             <Route path="/auditoria" element={<Auditoria />} />
             <Route path="/tests" element={<TestsPsicologicos />} />
+            <Route path="/manual-usuario" element={<ManualUsuario />} />
           </Route>
         </Route>
 

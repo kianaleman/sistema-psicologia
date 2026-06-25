@@ -91,53 +91,12 @@ const initialTratamiento: TratamientoLocal = {
   tipoTerapiaId: "",
 };
 
-const pad2 = (value: number) => String(value).padStart(2, "0");
-
 const crearFechaInput = (fecha: Date) => {
   const year = fecha.getFullYear();
-  const month = pad2(fecha.getMonth() + 1);
-  const day = pad2(fecha.getDate());
+  const month = String(fecha.getMonth() + 1).padStart(2, "0");
+  const day = String(fecha.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
-};
-
-const crearHoraInput = (fecha: Date) => {
-  return `${pad2(fecha.getHours())}:${pad2(fecha.getMinutes())}:${pad2(fecha.getSeconds())}`;
-};
-
-const crearFechaHoraLocal = (fecha: Date) => {
-  return `${crearFechaInput(fecha)}T${crearHoraInput(fecha)}`;
-};
-
-const obtenerFechaDesdeValor = (value: string) => {
-  const fechaLocal = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
-
-  if (fechaLocal) {
-    const year = Number(fechaLocal[1]);
-    const month = Number(fechaLocal[2]);
-    const day = Number(fechaLocal[3]);
-
-    return new Date(year, month - 1, day, 12, 0, 0, 0);
-  }
-
-  const fecha = new Date(value);
-  return Number.isNaN(fecha.getTime()) ? null : fecha;
-};
-
-const obtenerHoraDesdeValor = (value: string | null) => {
-  if (!value) return null;
-
-  const horaLocal = value.match(/(?:T|^)(\d{2}:\d{2}(?::\d{2})?)/);
-
-  if (horaLocal) {
-    return horaLocal[1].length === 5 ? `${horaLocal[1]}:00` : horaLocal[1];
-  }
-
-  const fecha = new Date(value);
-
-  if (Number.isNaN(fecha.getTime())) return null;
-
-  return crearHoraInput(fecha);
 };
 
 const getFechaMananaInput = () => {
@@ -199,9 +158,9 @@ export default function SesionModal({
   const obtenerFechaCita = (fecha?: string | Date | null) => {
     if (!fecha) return null;
 
-    const fechaCita = fecha instanceof Date ? fecha : obtenerFechaDesdeValor(fecha);
+    const fechaCita = fecha instanceof Date ? fecha : new Date(fecha);
 
-    if (!fechaCita || Number.isNaN(fechaCita.getTime())) return null;
+    if (Number.isNaN(fechaCita.getTime())) return null;
 
     return fechaCita;
   };
@@ -223,7 +182,7 @@ export default function SesionModal({
   const inicializarSesion = useCallback((citaId: number) => {
     const storageKey = `sesion_inicio_${citaId}`;
     const horaGuardada = sessionStorage.getItem(storageKey);
-    const horaInicio = horaGuardada || crearFechaHoraLocal(new Date());
+    const horaInicio = horaGuardada || new Date().toISOString();
 
     if (!horaGuardada) {
       sessionStorage.setItem(storageKey, horaInicio);
@@ -337,13 +296,18 @@ export default function SesionModal({
     onClose();
   };
 
-  const formatearHoraSistema = (fechaHora: string | null) => {
-    const hora = obtenerHoraDesdeValor(fechaHora);
+  const formatearHoraSistema = (fechaIso: string | null) => {
+    if (!fechaIso) return "--:--";
 
-    if (!hora) return "--:--";
+    const fecha = new Date(fechaIso);
 
-    const [hours = "00", minutes = "00", seconds = "00"] = hora.split(":");
-    return `${hours}:${minutes}:${seconds}`;
+    if (Number.isNaN(fecha.getTime())) return "--:--";
+
+    return fecha.toLocaleTimeString("es-NI", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
   };
 
   const formatearFechaCita = (fecha?: string | Date | null) => {
@@ -441,8 +405,7 @@ export default function SesionModal({
       return;
     }
 
-    const horaCierreSistema = crearHoraInput(new Date());
-    const fechaInicioTratamiento = crearFechaInput(obtenerFechaDesdeValor(horaInicioSistema) || new Date());
+    const horaFinalSistema = new Date().toISOString();
 
     const tratamientosFormateados: NonNullable<CreateSesionDTO["Tratamiento"]>[] = listaTratamientos.map((tratamiento) => {
       if (tratamiento.tipo === "farmacologico") {
@@ -450,7 +413,7 @@ export default function SesionModal({
           id: tratamiento.id,
           Frecuencia: tratamiento.frecuencia,
           Tipo: "farmaceutico",
-          FechaInicio: fechaInicioTratamiento,
+          FechaInicio: horaInicioSistema,
           Farmaceutico: {
             ID_ViaAdministracion: Number(tratamiento.viaAdminId),
             Nombre_Medicamento: tratamiento.medicamento,
@@ -463,7 +426,7 @@ export default function SesionModal({
         id: tratamiento.id,
         Frecuencia: tratamiento.frecuencia,
         Tipo: "terapeutico",
-        FechaInicio: fechaInicioTratamiento,
+        FechaInicio: horaInicioSistema,
         Terapeutico: {
           ID_Tipo_Terapia: Number(tratamiento.tipoTerapiaId),
           Objetivo: tratamiento.objetivo,
@@ -476,8 +439,8 @@ export default function SesionModal({
     const payload: CreateSesionDTO = {
       ID_Cita: cita.ID_Cita,
       ID_Expediente: 0,
-      HoraDeInicio: obtenerHoraDesdeValor(horaInicioSistema) || "00:00:00",
-      HoraFinal: horaCierreSistema,
+      HoraDeInicio: horaInicioSistema,
+      HoraFinal: horaFinalSistema,
       Observaciones: datosSesion.observaciones.trim(),
       DiagnosticoDiferencial: datosSesion.diagnostico.trim(),
       HistorialDeEvolucion: datosSesion.historial.trim(),

@@ -14,7 +14,6 @@ import type {
   TipoDeTerapia,
   ExploracionPsicologica,
   Banco,
-  Divisa,
 } from '../types';
 
 // Definimos la interfaz estricta para los catálogos locales del hook
@@ -28,7 +27,6 @@ interface CatalogosCita {
   tiposTerapia: TipoDeTerapia[];
   exploraciones: ExploracionPsicologica[];
   bancos: Banco[];
-  divisas: Divisa[];
 }
 
 export const useCitas = () => {
@@ -55,8 +53,7 @@ export const useCitas = () => {
     viasAdmin: [],       
     tiposTerapia: [],    
     exploraciones: [],
-    bancos: [],
-    divisas: []    
+    bancos: []    
   });
 
   const fetchCitas = useCallback(async () => {
@@ -88,8 +85,7 @@ export const useCitas = () => {
          viasAdmin: (general.viasAdministracion as ViaAdministracion[]) || [], 
          tiposTerapia: (general.tiposTerapia as TipoDeTerapia[]) || [],
          exploraciones: (general.exploraciones as ExploracionPsicologica[]) || [],
-         bancos: (general.bancos as Banco[]) || [],
-         divisas: (general.divisas as Divisa[]) || []
+         bancos: (general.bancos as Banco[]) || []
       });
     } catch (err) {
       console.error("Error al cargar catálogos de citas", err);

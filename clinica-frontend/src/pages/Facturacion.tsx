@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { calcularEquivalenteCordobas, obtenerCodigoDivisaRecibo, obtenerSimboloDivisaRecibo, useFacturacion, type ReciboFacturacion } from '../hooks/useFacturacion';
+import { useFacturacion, type ReciboFacturacion } from '../hooks/useFacturacion';
 import { generarPDFFactura, generarPDFReporteFinanciero } from '../services/pdfGenerator';
 
 const Icons = {
@@ -121,8 +121,8 @@ function formatearFecha(fecha?: string | null) {
   });
 }
 
-function formatearDinero(monto?: number | string | null, simbolo = 'C$') {
-  return `${simbolo} ${Number(monto || 0).toFixed(2)}`;
+function formatearDinero(monto?: number | string | null) {
+  return `C$ ${Number(monto || 0).toFixed(2)}`;
 }
 
 function formatearNumeroRecibo(codRecibo: number) {
@@ -155,10 +155,6 @@ function obtenerFechaFactura(factura: ReciboFacturacion) {
 
 function obtenerMetodoPago(factura: ReciboFacturacion) {
   return factura.MetodoPago?.Nombre_Metodo || 'Sin método';
-}
-
-function obtenerTasaCambio(factura: ReciboFacturacion) {
-  return Number(factura.Tasa_Cambio || 1);
 }
 
 export default function Facturacion() {
@@ -194,41 +190,32 @@ export default function Facturacion() {
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 sm:grid-cols-4">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <KpiCard
-          title="Equivalente C$"
-          value={formatearDinero(totales.equivalenteCordobas)}
-          subtitle="Ingresos convertidos a córdobas"
+          title="Ingresos periodo"
+          value={formatearDinero(totales.ingresos)}
+          subtitle="Suma de recibos filtrados"
           icon={<Icons.TrendingUp />}
           bgClass="border-emerald-100 bg-emerald-50"
           colorClass="text-emerald-800"
         />
 
         <KpiCard
-          title="Cobrado en C$"
-          value={formatearDinero(totales.ingresosCordobas)}
-          subtitle="Pagos registrados en córdobas"
+          title="Transacciones"
+          value={totales.transacciones}
+          subtitle="Recibos en el periodo"
           icon={<Icons.Receipt />}
           bgClass="border-white/80 bg-white"
           colorClass="text-slate-800"
         />
 
         <KpiCard
-          title="Cobrado en $"
-          value={formatearDinero(totales.ingresosDolares, '$')}
-          subtitle="Pagos registrados en dólares"
-          icon={<Icons.Wallet />}
-          bgClass="border-blue-100 bg-blue-50"
-          colorClass="text-blue-800"
-        />
-
-        <KpiCard
           title="Ticket promedio"
           value={formatearDinero(totales.ticketPromedio)}
-          subtitle="Promedio equivalente en córdobas"
+          subtitle="Promedio por recibo"
           icon={<Icons.CreditCard />}
-          bgClass="border-amber-100 bg-amber-50"
-          colorClass="text-amber-800"
+          bgClass="border-blue-100 bg-blue-50"
+          colorClass="text-blue-800"
         />
       </section>
 
@@ -328,18 +315,13 @@ export default function Facturacion() {
                 const servicio = obtenerServicio(factura);
                 const metodoPago = obtenerMetodoPago(factura);
                 const motivoConsulta = factura.Cita?.MotivoConsulta || 'Sin motivo registrado';
-                const codigoDivisa = obtenerCodigoDivisaRecibo(factura);
-                const simboloDivisa = obtenerSimboloDivisaRecibo(factura);
-                const equivalenteCordobas = calcularEquivalenteCordobas(factura);
-                const tasaCambio = obtenerTasaCambio(factura);
-                const esPagoDolares = codigoDivisa === 'USD';
 
                 return (
                   <article
                     key={factura.Cod_Recibo}
                     className="group overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-100 hover:shadow-xl hover:shadow-slate-200/70"
                   >
-                    <div className="grid grid-cols-1 gap-5 p-5 xl:grid-cols-[150px_minmax(0,1.3fr)_minmax(0,1.35fr)_minmax(0,1fr)_210px_120px] xl:items-center">
+                    <div className="grid grid-cols-1 gap-5 p-5 xl:grid-cols-[150px_minmax(0,1.3fr)_minmax(0,1.35fr)_minmax(0,1fr)_170px_120px] xl:items-center">
                       <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Recibo</p>
                         <p className="mt-1 font-mono text-sm font-black text-slate-800">
@@ -405,17 +387,8 @@ export default function Facturacion() {
                       <div className="text-left xl:text-right">
                         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Monto</p>
                         <p className="mt-1 font-mono text-xl font-black text-emerald-600">
-                          {formatearDinero(factura.MontoTotal, simboloDivisa)}
+                          {formatearDinero(factura.MontoTotal)}
                         </p>
-                        <p className="mt-1 text-xs font-bold text-slate-500">
-                          {codigoDivisa}
-                        </p>
-                        {esPagoDolares && (
-                          <div className="mt-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
-                            <p>T/C C$ {tasaCambio.toFixed(4)}</p>
-                            <p>Equiv. C$ {equivalenteCordobas.toFixed(2)}</p>
-                          </div>
-                        )}
                       </div>
 
                       <div className="flex justify-start xl:justify-end">

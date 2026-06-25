@@ -25,7 +25,7 @@ import type {
   AuditoriaResumen,
 } from '../types/auditoria';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_URL = 'http://localhost:3000/api';
 
 export class ApiError extends Error {
   response: { data: unknown; status: number };
@@ -85,7 +85,45 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     throw new ApiError(mensaje, errorData, response.status);
   }
 
+  
+
   return response.json();
+}
+
+async function downloadRequest(endpoint: string, nombreArchivo: string): Promise<void> {
+  const token = localStorage.getItem('token');
+
+  const headers: HeadersInit = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    headers,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({})) as Record<string, unknown>;
+
+    const mensaje = typeof errorData.error === 'string'
+      ? errorData.error
+      : typeof errorData.message === 'string'
+        ? errorData.message
+        : 'No se pudo descargar el archivo.';
+
+    throw new ApiError(mensaje, errorData, response.status);
+  }
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const enlace = document.createElement('a');
+
+  enlace.href = url;
+  enlace.download = nombreArchivo;
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+
+  window.URL.revokeObjectURL(url);
 }
 
 interface CatalogosResponse {
@@ -315,6 +353,19 @@ export const api = {
     }),
   },
 
+  backups: {
+    listar: () => request<BackupListaResponse>('/backups'),
+    generar: () => request<BackupGenerarResponse>('/backups/generar', {
+      method: 'POST',
+    }),
+    descargar: (archivo: string) =>
+      downloadRequest(`/backups/descargar/${encodeURIComponent(archivo)}`, archivo),
+    eliminar: (archivo: string) =>
+      request<BackupEliminarResponse>(`/backups/${encodeURIComponent(archivo)}`, {
+        method: 'DELETE',
+      }),
+  },
+
   auditoria: {
     getAll: (queryParams: string) => request<AuditoriaListaResponse>(`/auditoria?${queryParams}`),
     resumen: () => request<AuditoriaResumen>('/auditoria/resumen'),
@@ -333,3 +384,33 @@ export const api = {
     motivosCancelacion: () => request<MotivoCancelacion[]>('/general/motivos-cancelacion'),
   },
 };
+
+
+export interface BackupSistemaItem {
+  archivo: string;
+  nombreBaseDatos: string;
+  tamanoBytes: number;
+  tamanoLegible: string;
+  fechaCreacion: string;
+  fechaModificacion: string;
+  verificado?: boolean;
+}
+
+export interface BackupListaResponse {
+  total: number;
+  backups: BackupSistemaItem[];
+}
+
+export interface BackupGenerarResponse {
+  message: string;
+  backup: BackupSistemaItem;
+}
+
+export interface BackupEliminarResponse {
+  message: string;
+  resultado: {
+    archivo: string;
+    eliminado: boolean;
+  };
+}
+
