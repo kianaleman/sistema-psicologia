@@ -1,6 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
-import { AuditoriaService } from '../services/auditoria.service.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -31,52 +30,87 @@ declare global {
   namespace Express {
     interface Request {
       user?: AuthUserPayload;
+      usuario?: AuthUserPayload;
     }
   }
 }
 
-const registrarFalloSeguridad = (
-  req: Request,
-  accion: string,
-  mensaje: string,
-  codigoEstado: number,
-  datosDespues?: unknown
-) => {
-  void AuditoriaService.registrarDesdeRequest(req, {
-    accion,
-    modulo: 'SEGURIDAD',
-    entidad: 'Auth',
-    resultado: 'FALLO',
-    codigoEstado,
-    mensaje,
-    datosDespues,
-  });
+const normalizarTexto = (value: string) => {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
 };
 
 const obtenerRoles = (payload: JwtPayload) => {
   if (!Array.isArray(payload.roles)) return [];
 
-  return payload.roles.filter((rol): rol is string => typeof rol === 'string');
+  return payload.roles
+    .filter((rol): rol is string => typeof rol === 'string')
+    .map((rol) => rol.trim())
+    .filter(Boolean);
+};
+
+const tieneRol = (roles: string[], rolesValidos: string[]) => {
+  const rolesNormalizados = roles.map(normalizarTexto);
+  const rolesValidosNormalizados = rolesValidos.map(normalizarTexto);
+
+  return rolesNormalizados.some((rol) => rolesValidosNormalizados.includes(rol));
+};
+
+const obtenerIdUsuario = (payload: JwtPayload) => {
+  const posiblesIds = [
+    payload.idUsuario,
+    payload.ID_Usuario,
+    payload.id,
+    payload.userId,
+  ];
+
+  const id = posiblesIds
+    .map((value) => Number(value))
+    .find((value) => Number.isInteger(value) && value > 0);
+
+  return id || 0;
 };
 
 const construirUsuarioAutenticado = (payload: JwtPayload): AuthUserPayload => {
-  const idUsuario = Number(payload.idUsuario);
-  const email = typeof payload.email === 'string' ? payload.email : '';
+  const idUsuario = obtenerIdUsuario(payload);
+  const email = typeof payload.email === 'string'
+    ? payload.email
+    : typeof payload.Email === 'string'
+      ? payload.Email
+      : '';
+
   const roles = obtenerRoles(payload);
 
   const idPsicologoRaw = payload.idPsicologo === null || payload.idPsicologo === undefined
-    ? null
-    : Number(payload.idPsicologo);
+    ? payload.ID_Psicologo
+    : payload.idPsicologo;
 
-  if (!Number.isInteger(idUsuario) || idUsuario <= 0 || !email) {
-    throw new Error('Token sin datos de usuario válidos.');
+  const idPsicologoNumber = Number(idPsicologoRaw);
+  const idPsicologo = Number.isInteger(idPsicologoNumber) && idPsicologoNumber > 0
+    ? idPsicologoNumber
+    : null;
+
+  if (!Number.isInteger(idUsuario) || idUsuario <= 0) {
+    throw new Error('Token sin datos de usuario validos.');
   }
 
-  const idPsicologo = typeof idPsicologoRaw === 'number'
-    && Number.isInteger(idPsicologoRaw)
-    && idPsicologoRaw > 0
-    ? idPsicologoRaw
-    : null;
+  const esAdmin = Boolean(
+    payload.esAdmin ||
+    tieneRol(roles, ['Administrador', 'Admin', 'ADMINISTRADOR', 'ADMIN'])
+  );
+
+  const esPsicologo = Boolean(
+    payload.esPsicologo ||
+    tieneRol(roles, ['Psicologo', 'Psicólogo', 'PSICOLOGO'])
+  );
+
+  const esRecepcion = Boolean(
+    payload.esRecepcion ||
+    tieneRol(roles, ['Recepcion', 'Recepción', 'RECEPCION'])
+  );
 
   return {
     ...payload,
@@ -85,28 +119,33 @@ const construirUsuarioAutenticado = (payload: JwtPayload): AuthUserPayload => {
     roles,
     idPsicologo,
     requiereCambioPassword: Boolean(payload.requiereCambioPassword),
-    esAdmin: roles.includes(ROLES.ADMINISTRADOR),
-    esPsicologo: roles.includes(ROLES.PSICOLOGO),
-    esRecepcion: roles.includes(ROLES.RECEPCION),
+    esAdmin,
+    esPsicologo,
+    esRecepcion,
   };
 };
 
-export const verificarToken = (req: Request, res: Response, next: NextFunction): void => {
-  const authHeader = req.headers.authorization;
+const obtenerTokenDesdeHeader = (req: Request) => {
+  const authHeader = req.headers.authorization || req.headers.Authorization;
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    const mensaje = 'Acceso denegado. No se proporcionó un token válido.';
-    registrarFalloSeguridad(req, 'ACCESO_SIN_TOKEN', mensaje, 401);
-    res.status(401).json({ error: mensaje });
-    return;
+  if (typeof authHeader !== 'string') {
+    return '';
   }
 
-  const token = authHeader.split(' ')[1];
+  if (!authHeader.startsWith('Bearer ')) {
+    return '';
+  }
+
+  return authHeader.replace('Bearer ', '').trim();
+};
+
+export const verificarToken = (req: Request, res: Response, next: NextFunction): void => {
+  const token = obtenerTokenDesdeHeader(req);
 
   if (!token) {
-    const mensaje = 'Acceso denegado. Token malformado o vacío.';
-    registrarFalloSeguridad(req, 'TOKEN_MALFORMADO', mensaje, 401);
-    res.status(401).json({ error: mensaje });
+    res.status(401).json({
+      error: 'Acceso denegado. No se proporcionó un token válido.',
+    });
     return;
   }
 
@@ -114,49 +153,46 @@ export const verificarToken = (req: Request, res: Response, next: NextFunction):
     const payload = jwt.verify(token, JWT_SECRET);
 
     if (typeof payload === 'string') {
-      const mensaje = 'Token inválido o expirado.';
-      registrarFalloSeguridad(req, 'TOKEN_INVALIDO', mensaje, 403);
-      res.status(403).json({ error: mensaje });
+      res.status(403).json({
+        error: 'Token inválido o expirado.',
+      });
       return;
     }
 
-    req.user = construirUsuarioAutenticado(payload);
+    const usuarioAutenticado = construirUsuarioAutenticado(payload);
+
+    req.user = usuarioAutenticado;
+    req.usuario = usuarioAutenticado;
+
     next();
-  } catch {
-    const mensaje = 'Token inválido o expirado.';
-    registrarFalloSeguridad(req, 'TOKEN_INVALIDO', mensaje, 403);
-    res.status(403).json({ error: mensaje });
+  } catch (error) {
+    console.error('Error al validar token:', error);
+
+    res.status(403).json({
+      error: 'Token inválido o expirado.',
+    });
   }
 };
 
 export const permitirRoles = (...rolesPermitidos: RolSistema[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (!req.user) {
-      const mensaje = 'Acceso no autorizado.';
-      registrarFalloSeguridad(req, 'ACCESO_NO_AUTORIZADO', mensaje, 401, { rolesPermitidos });
-      res.status(401).json({ error: mensaje });
+    const usuario = req.user || req.usuario;
+
+    if (!usuario) {
+      res.status(401).json({
+        error: 'Acceso no autorizado.',
+      });
       return;
     }
 
-    const tieneRolPermitido = rolesPermitidos.some((rol) => req.user?.roles.includes(rol));
+    const tieneRolPermitido = rolesPermitidos.some((rolPermitido) => {
+      return tieneRol(usuario.roles, [rolPermitido]);
+    });
 
     if (!tieneRolPermitido) {
-      const mensaje = 'No tiene permisos para realizar esta acción.';
-
-      void AuditoriaService.registrarDesdeRequest(req, {
-        accion: 'ACCESO_DENEGADO_ROL',
-        modulo: 'SEGURIDAD',
-        entidad: 'Auth',
-        resultado: 'FALLO',
-        codigoEstado: 403,
-        mensaje,
-        datosDespues: {
-          rolesUsuario: req.user.roles,
-          rolesPermitidos,
-        },
+      res.status(403).json({
+        error: 'No tiene permisos para realizar esta acción.',
       });
-
-      res.status(403).json({ error: mensaje });
       return;
     }
 
@@ -164,21 +200,16 @@ export const permitirRoles = (...rolesPermitidos: RolSistema[]) => {
   };
 };
 
-export const bloquearSiRequiereCambioPassword = (req: Request, res: Response, next: NextFunction): void => {
-  if (req.user?.requiereCambioPassword) {
-    const mensaje = 'Debe cambiar la contraseña temporal antes de continuar.';
+export const bloquearSiRequiereCambioPassword = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  const usuario = req.user || req.usuario;
 
-    void AuditoriaService.registrarDesdeRequest(req, {
-      accion: 'ACCESO_BLOQUEADO_PASSWORD_TEMPORAL',
-      modulo: 'SEGURIDAD',
-      entidad: 'Auth',
-      resultado: 'FALLO',
-      codigoEstado: 403,
-      mensaje,
-    });
-
+  if (usuario?.requiereCambioPassword) {
     res.status(403).json({
-      error: mensaje,
+      error: 'Debe cambiar la contraseña temporal antes de continuar.',
       requiereCambioPassword: true,
     });
     return;
@@ -187,21 +218,16 @@ export const bloquearSiRequiereCambioPassword = (req: Request, res: Response, ne
   next();
 };
 
-export const requierePsicologoAsignado = (req: Request, res: Response, next: NextFunction): void => {
-  if (req.user?.esPsicologo && !req.user.idPsicologo) {
-    const mensaje = 'El usuario psicólogo no tiene un perfil de psicólogo vinculado.';
+export const requierePsicologoAsignado = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  const usuario = req.user || req.usuario;
 
-    void AuditoriaService.registrarDesdeRequest(req, {
-      accion: 'ACCESO_BLOQUEADO_PSICOLOGO_NO_VINCULADO',
-      modulo: 'SEGURIDAD',
-      entidad: 'Auth',
-      resultado: 'FALLO',
-      codigoEstado: 403,
-      mensaje,
-    });
-
+  if (usuario?.esPsicologo && !usuario.idPsicologo) {
     res.status(403).json({
-      error: mensaje,
+      error: 'El usuario psicólogo no tiene un perfil de psicólogo vinculado.',
     });
     return;
   }

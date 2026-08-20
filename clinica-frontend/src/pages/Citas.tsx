@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { toast } from "sonner";
+import { api } from "../services/api";
 import { useCitas } from "../hooks/useCitas";
 import { usePacientes } from "../hooks/usePacientes";
 import type {
@@ -147,13 +148,28 @@ export default function Citas() {
     }
   };
 
+  const obtenerMensajeError = (error: unknown) => {
+    if (error instanceof Error && error.message.trim()) {
+      return error.message;
+    }
+
+    return "Error al finalizar la sesión.";
+  };
+
   const handleFinalizarSesion = async (data: CreateSesionDTO) => {
-    toast.promise(acciones.guardarSesion(data), {
-      loading: "Finalizando...",
-      success: "Sesión guardada",
-      error: "Error",
-    });
-    setModalOpen(null);
+    try {
+      await api.sesiones.create(data);
+
+      toast.success("Sesión guardada correctamente");
+      setModalOpen(null);
+      setSelectedCita(null);
+
+      setFiltro("periodo", filtros.periodo);
+    } catch (error: unknown) {
+      const mensaje = obtenerMensajeError(error);
+      toast.error(mensaje);
+      throw error;
+    }
   };
 
   const formatearHora = (h: string) => {

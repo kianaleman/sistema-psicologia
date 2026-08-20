@@ -24,7 +24,7 @@ interface CreateSesionDTO {
   ID_Cita: number;
   ID_Expediente: number;
   HoraDeInicio: string;
-  HoraFinal: string;
+  HoraFinal?: string;
   Observaciones: string;
   DiagnosticoDiferencial: string;
   HistorialDeEvolucion: string;
@@ -33,9 +33,42 @@ interface CreateSesionDTO {
   Tratamiento?: TratamientoDTO;
 }
 
+type CitaSesionPermiso = {
+  ID_Psicologo: number;
+};
+
+const normalizarTexto = (value: string) => {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+};
+
+const tieneRol = (usuario: AuthUserPayload, rolesValidos: string[]) => {
+  const rolesUsuario = usuario.roles.map(normalizarTexto);
+  const rolesValidosNormalizados = rolesValidos.map(normalizarTexto);
+
+  return rolesUsuario.some((rol) => rolesValidosNormalizados.includes(rol));
+};
+
+const esUsuarioAdmin = (usuario: AuthUserPayload) => {
+  return Boolean(
+    usuario.esAdmin ||
+    tieneRol(usuario, ['Administrador', 'Admin', 'ADMINISTRADOR', 'ADMIN'])
+  );
+};
+
+const esUsuarioPsicologo = (usuario: AuthUserPayload) => {
+  return Boolean(
+    usuario.esPsicologo ||
+    tieneRol(usuario, ['Psicologo', 'Psicólogo', 'PSICOLOGO'])
+  );
+};
+
 const validarUsuarioAutenticado = (usuario?: AuthUserPayload) => {
-  if (!usuario) {
-    throw new Error('Acceso no autorizado.');
+  if (!usuario || !usuario.idUsuario) {
+    throw new Error('Acceso denegado. No se proporcionó un token válido.');
   }
 
   return usuario;
@@ -50,16 +83,16 @@ const validarPsicologoVinculado = (usuario: AuthUserPayload) => {
 };
 
 const validarPuedeGestionarSesion = (
-  cita: { ID_Psicologo: number },
+  cita: CitaSesionPermiso,
   usuario?: AuthUserPayload
 ) => {
   const usuarioActual = validarUsuarioAutenticado(usuario);
 
-  if (usuarioActual.esAdmin) {
+  if (esUsuarioAdmin(usuarioActual)) {
     return;
   }
 
-  if (usuarioActual.esPsicologo) {
+  if (esUsuarioPsicologo(usuarioActual)) {
     const idPsicologo = validarPsicologoVinculado(usuarioActual);
 
     if (cita.ID_Psicologo !== idPsicologo) {
@@ -93,10 +126,18 @@ const construirFechaDesdeHora = (hora: number, minuto: number, segundo = 0) => {
     return null;
   }
 
-  const fecha = new Date();
-  fecha.setHours(hora, minuto, segundo, 0);
+  return new Date(1970, 0, 1, hora, minuto, segundo, 0);
+};
 
-  return fecha;
+const obtenerHoraSistemaActual = () => {
+  const ahora = new Date();
+  const horaActual = construirFechaDesdeHora(
+    ahora.getHours(),
+    ahora.getMinutes(),
+    ahora.getSeconds()
+  );
+
+  return horaActual || new Date(1970, 0, 1, 0, 0, 0, 0);
 };
 
 const construirFecha = (value: string, field: string) => {
@@ -119,6 +160,29 @@ const construirFecha = (value: string, field: string) => {
     }
 
     return fecha;
+  }
+
+  const dateOnlyMatch = rawValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (dateOnlyMatch) {
+    const year = Number(dateOnlyMatch[1]);
+    const month = Number(dateOnlyMatch[2]);
+    const day = Number(dateOnlyMatch[3]);
+
+    return new Date(year, month - 1, day, 12, 0, 0, 0);
+  }
+
+  const localDateTimeMatch = rawValue.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+
+  if (localDateTimeMatch) {
+    const year = Number(localDateTimeMatch[1]);
+    const month = Number(localDateTimeMatch[2]);
+    const day = Number(localDateTimeMatch[3]);
+    const hour = Number(localDateTimeMatch[4]);
+    const minute = Number(localDateTimeMatch[5]);
+    const second = Number(localDateTimeMatch[6] || 0);
+
+    return new Date(year, month - 1, day, hour, minute, second, 0);
   }
 
   const fecha = new Date(rawValue);
@@ -229,7 +293,7 @@ export const SesionService = {
           ID_Cita: data.ID_Cita,
           ID_Expediente: expedienteId,
           HoraDeInicio: construirFecha(data.HoraDeInicio, 'HoraDeInicio'),
-          HoraFinal: construirFecha(data.HoraFinal, 'HoraFinal'),
+          HoraFinal: obtenerHoraSistemaActual(),
           Observaciones: data.Observaciones,
           DiagnosticoDiferencial: data.DiagnosticoDiferencial,
           HistorialDeEvolucion: data.HistorialDeEvolucion,
@@ -306,13 +370,13 @@ export const SesionService = {
   ) => {
     const usuarioActual = validarUsuarioAutenticado(usuario);
 
-    if (!usuarioActual.esAdmin && !usuarioActual.esPsicologo) {
+    if (!esUsuarioAdmin(usuarioActual) && !esUsuarioPsicologo(usuarioActual)) {
       throw new Error('No tiene permisos para consultar sesiones clínicas.');
     }
 
     let idPsicologoConsulta = psicologoId;
 
-    if (usuarioActual.esPsicologo) {
+    if (esUsuarioPsicologo(usuarioActual) && !esUsuarioAdmin(usuarioActual)) {
       const idPsicologo = validarPsicologoVinculado(usuarioActual);
 
       if (psicologoId !== idPsicologo) {

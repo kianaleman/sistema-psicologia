@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { SesionService } from '../services/sesion.service.js';
 import { AuditoriaService } from '../services/auditoria.service.js';
+import type { AuthUserPayload } from '../middlewares/auth.middleware.js';
 
 type TratamientoDTO = {
   id?: number;
@@ -23,7 +24,7 @@ type CreateSesionDTO = {
   ID_Cita: number;
   ID_Expediente: number;
   HoraDeInicio: string;
-  HoraFinal: string;
+  HoraFinal?: string;
   Observaciones: string;
   DiagnosticoDiferencial: string;
   HistorialDeEvolucion: string;
@@ -36,12 +37,34 @@ const esObjeto = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null;
 };
 
+const obtenerUsuarioAutenticado = (req: Request): AuthUserPayload | undefined => {
+  return req.user || req.usuario;
+};
+
 const toNumber = (value: unknown): number => {
   return Number(value);
 };
 
 const toStringValue = (value: unknown): string => {
   return typeof value === 'string' ? value.trim() : '';
+};
+
+const crearFechaActualLocal = () => {
+  const fecha = new Date();
+  const year = fecha.getFullYear();
+  const month = String(fecha.getMonth() + 1).padStart(2, '0');
+  const day = String(fecha.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+};
+
+const crearHoraActualLocal = () => {
+  const fecha = new Date();
+  const hours = String(fecha.getHours()).padStart(2, '0');
+  const minutes = String(fecha.getMinutes()).padStart(2, '0');
+  const seconds = String(fecha.getSeconds()).padStart(2, '0');
+
+  return `${hours}:${minutes}:${seconds}`;
 };
 
 const normalizarExploraciones = (value: unknown): number[] => {
@@ -64,7 +87,7 @@ const normalizarTratamiento = (value: unknown): TratamientoDTO | undefined => {
   const tratamientoBase: TratamientoDTO = {
     Tipo: tipo,
     Frecuencia: toStringValue(value.Frecuencia) || 'Según indicación',
-    FechaInicio: toStringValue(value.FechaInicio) || new Date().toISOString(),
+    FechaInicio: toStringValue(value.FechaInicio) || crearFechaActualLocal(),
   };
 
   const fechaFin = toStringValue(value.FechaFin);
@@ -98,7 +121,7 @@ const normalizarBody = (body: unknown): CreateSesionDTO | null => {
     ID_Cita: toNumber(body.ID_Cita),
     ID_Expediente: toNumber(body.ID_Expediente || 0),
     HoraDeInicio: toStringValue(body.HoraDeInicio),
-    HoraFinal: toStringValue(body.HoraFinal),
+    HoraFinal: toStringValue(body.HoraFinal) || crearHoraActualLocal(),
     Observaciones: toStringValue(body.Observaciones),
     DiagnosticoDiferencial: toStringValue(body.DiagnosticoDiferencial),
     HistorialDeEvolucion: toStringValue(body.HistorialDeEvolucion),
@@ -118,10 +141,7 @@ const normalizarBody = (body: unknown): CreateSesionDTO | null => {
 const validarPayload = (payload: CreateSesionDTO): string | null => {
   if (!Number.isInteger(payload.ID_Cita) || payload.ID_Cita <= 0) return 'ID_Cita es requerido y debe ser un número válido.';
   if (!payload.HoraDeInicio) return 'HoraDeInicio es requerida.';
-  if (!payload.HoraFinal) return 'HoraFinal es requerida.';
-  if (!payload.Observaciones) return 'Observaciones es requerido.';
   if (!payload.DiagnosticoDiferencial) return 'DiagnosticoDiferencial es requerido.';
-  if (!payload.HistorialDeEvolucion) return 'HistorialDeEvolucion es requerido.';
   if (!payload.Criterios_DeDiagnostico) return 'Criterios_DeDiagnostico es requerido.';
 
   return null;
@@ -134,7 +154,13 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 const getStatusFromError = (message: string) => {
   const lowerMessage = message.toLowerCase();
 
-  if (lowerMessage.includes('no autorizado')) return 401;
+  if (
+    lowerMessage.includes('token') ||
+    lowerMessage.includes('no autorizado') ||
+    lowerMessage.includes('acceso denegado')
+  ) {
+    return 401;
+  }
 
   if (
     lowerMessage.includes('no tiene permisos') ||
@@ -164,7 +190,7 @@ const resumenSesionParaAuditoria = (payload: CreateSesionDTO) => {
     ID_Cita: payload.ID_Cita,
     ID_Expediente: payload.ID_Expediente,
     HoraDeInicio: payload.HoraDeInicio,
-    HoraFinal: payload.HoraFinal,
+    HoraFinal: payload.HoraFinal || crearHoraActualLocal(),
     camposClinicosRegistrados: [
       'Observaciones',
       'DiagnosticoDiferencial',
@@ -185,21 +211,34 @@ const resumenSesionParaAuditoria = (payload: CreateSesionDTO) => {
 
 export const createSesion = async (req: Request, res: Response): Promise<void> => {
   try {
+    const usuario = obtenerUsuarioAutenticado(req);
+
+    if (!usuario) {
+      res.status(401).json({
+        error: 'Acceso denegado. No se proporcionó un token válido.',
+      });
+      return;
+    }
+
     const payload = normalizarBody(req.body);
 
     if (!payload) {
-      res.status(400).json({ error: 'Cuerpo de petición inválido.' });
+      res.status(400).json({
+        error: 'Cuerpo de petición inválido.',
+      });
       return;
     }
 
     const validationError = validarPayload(payload);
 
     if (validationError) {
-      res.status(400).json({ error: validationError });
+      res.status(400).json({
+        error: validationError,
+      });
       return;
     }
 
-    const result = await SesionService.create(payload, req.user);
+    const result = await SesionService.create(payload, usuario);
 
     await AuditoriaService.registrarDesdeRequest(req, {
       accion: 'SESION_CLINICA_CREADA',
@@ -225,12 +264,14 @@ export const createSesion = async (req: Request, res: Response): Promise<void> =
       codigoEstado: getStatusFromError(message),
       mensaje: message,
       datosDespues: {
-        ID_Cita: req.body?.ID_Cita,
-        ID_Expediente: req.body?.ID_Expediente,
+        ID_Cita: esObjeto(req.body) ? req.body.ID_Cita : null,
+        ID_Expediente: esObjeto(req.body) ? req.body.ID_Expediente : null,
       },
     });
 
-    res.status(getStatusFromError(message)).json({ error: message });
+    res.status(getStatusFromError(message)).json({
+      error: message,
+    });
   }
 };
 
@@ -238,6 +279,14 @@ export const searchSesion = async (req: Request, res: Response): Promise<void> =
   try {
     const pacienteId = Number(req.query.pacienteId);
     const psicologoId = Number(req.query.psicologoId);
+    const usuario = obtenerUsuarioAutenticado(req);
+
+    if (!usuario) {
+      res.status(401).json({
+        error: 'Acceso denegado. No se proporcionó un token válido.',
+      });
+      return;
+    }
 
     if (
       !req.query.pacienteId ||
@@ -245,11 +294,13 @@ export const searchSesion = async (req: Request, res: Response): Promise<void> =
       Number.isNaN(pacienteId) ||
       Number.isNaN(psicologoId)
     ) {
-      res.status(400).json({ error: 'Faltan IDs requeridos o el formato es inválido' });
+      res.status(400).json({
+        error: 'Faltan IDs requeridos o el formato es inválido',
+      });
       return;
     }
 
-    const sesion = await SesionService.findByParams(pacienteId, psicologoId, req.user);
+    const sesion = await SesionService.findByParams(pacienteId, psicologoId, usuario);
 
     if (sesion) {
       await AuditoriaService.registrarDesdeRequest(req, {
@@ -271,10 +322,15 @@ export const searchSesion = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    res.status(404).json({ error: 'Sesión no encontrada' });
+    res.status(404).json({
+      error: 'Sesión no encontrada',
+    });
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Error en búsqueda de sesión');
     console.error(error);
-    res.status(getStatusFromError(message)).json({ error: message });
+
+    res.status(getStatusFromError(message)).json({
+      error: message,
+    });
   }
 };
