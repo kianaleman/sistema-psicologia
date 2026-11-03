@@ -25,6 +25,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       },
     });
 
+    res.setHeader('Cache-Control', 'no-store');
     res.status(201).json(nuevoUsuario);
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Error al registrar usuario');
@@ -167,6 +168,7 @@ export const restablecerPasswordAdmin = async (req: Request, res: Response): Pro
       },
     });
 
+    res.setHeader('Cache-Control', 'no-store');
     res.json(result);
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Error al restablecer la contraseña del usuario');

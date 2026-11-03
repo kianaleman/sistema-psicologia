@@ -6,9 +6,10 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return error instanceof Error ? error.message : fallback;
 };
 
-export const getPsicologos = async (_req: Request, res: Response): Promise<void> => {
+export const getPsicologos = async (req: Request, res: Response): Promise<void> => {
   try {
-    const psicologos = await PsicologoService.getAll();
+    const psicologos = await PsicologoService.getAll(req.user);
+    res.setHeader('Cache-Control', 'no-store');
     res.json(psicologos);
   } catch (error: unknown) {
     res.status(500).json({
@@ -38,6 +39,7 @@ export const createPsicologo = async (req: Request, res: Response): Promise<void
       },
     });
 
+    res.setHeader('Cache-Control', 'no-store');
     res.status(201).json(result);
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Error al registrar el psicólogo');
@@ -49,7 +51,7 @@ export const createPsicologo = async (req: Request, res: Response): Promise<void
       resultado: 'FALLO',
       codigoEstado: 400,
       mensaje: message,
-      datosDespues: req.body,
+      datosDespues: { campos: Object.keys(req.body ?? {}).filter((campo) => ['Email', 'Nombre', 'Apellido'].includes(campo)) },
     });
 
     res.status(400).json({
@@ -79,7 +81,7 @@ export const updatePsicologo = async (req: Request, res: Response): Promise<void
       mensaje: 'Psicólogo actualizado correctamente.',
       datosDespues: {
         ID_Psicologo: id,
-        cambios: req.body,
+        campos: Object.keys(req.body ?? {}).filter((campo) => ['Email', 'Nombre', 'Apellido', 'No_Telefono', 'CodigoMinsa', 'Activo', 'direccion', 'especialidadIds'].includes(campo)),
       },
     });
 
@@ -95,7 +97,7 @@ export const updatePsicologo = async (req: Request, res: Response): Promise<void
       resultado: 'FALLO',
       codigoEstado: 400,
       mensaje: message,
-      datosDespues: req.body,
+      datosDespues: { ID_Psicologo: Number.isInteger(Number(req.params.id)) ? Number(req.params.id) : null },
     });
 
     res.status(400).json({

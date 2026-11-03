@@ -1,37 +1,52 @@
 import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcrypt';
+import { createInterface } from 'node:readline';
+import { Writable } from 'node:stream';
+import { pathToFileURL } from 'node:url';
+import { crearAdministradorInicial, validarAdminInicial } from './src/services/adminBootstrap.service.js';
 
-const prisma = new PrismaClient();
-
-async function main() {
-  console.log('Iniciando inyección de súper-usuario...');
-
-  // 1. Encriptamos la contraseña "Admin123!" de forma segura
-  const saltRounds = 10;
-  const hashedPassword = await bcrypt.hash('Admin123!', saltRounds);
-
-  // 2. Insertamos el usuario en la Base de Datos usando Prisma
-  // NOTA: Ajusta 'usuario' y los campos según el esquema de tu BD
-  const admin = await prisma.usuario.create({
-    data: {
-      Email: 'admin@resiliencia.com',
-      PasswordHash: hashedPassword,
-      Activo: true,
-      // Si tienes un sistema de roles, asegúrate de asignarle el ID del rol Administrador
-      // ID_Rol: 1 
-    },
+const leerPasswordOculta = (): Promise<string> => {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error('Use una terminal interactiva o inyecte BOOTSTRAP_ADMIN_PASSWORD desde un almacén de secretos.');
+  }
+  process.stdout.write('Contraseña temporal (entrada oculta): ');
+  const salidaOculta = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+  const lector = createInterface({ input: process.stdin, output: salidaOculta, terminal: true });
+  return new Promise((resolve, reject) => {
+    lector.once('SIGINT', () => {
+      lector.close();
+      reject(new Error('Operación cancelada.'));
+    });
+    lector.question('', (password) => {
+      lector.close();
+      process.stdout.write('\n');
+      resolve(password);
+    });
   });
+};
 
-  console.log('✅ ¡Administrador creado con éxito!');
-  console.log(`📧 Correo: ${admin.Email}`);
-  console.log(`🔑 Contraseña: Admin123!`);
+export async function main() {
+  const args = process.argv.slice(2);
+  if (args.length > 1) throw new Error('Indique solo el correo; no pase contraseñas por argumentos.');
+  const email = args[0] || process.env.BOOTSTRAP_ADMIN_EMAIL || '';
+  if (!email) throw new Error('Indique el correo como argumento o en BOOTSTRAP_ADMIN_EMAIL.');
+  const passwordTemporal = process.env.BOOTSTRAP_ADMIN_PASSWORD ?? await leerPasswordOculta();
+  delete process.env.BOOTSTRAP_ADMIN_PASSWORD;
+  const data = validarAdminInicial({ email, passwordTemporal });
+  const prisma = new PrismaClient();
+  try {
+    const result = await crearAdministradorInicial(prisma, data);
+    console.log(result.cuentaCreada
+      ? 'Administrador creado. Debe cambiar la contraseña en el primer acceso.'
+      : 'La cuenta ya existía. Rol asegurado; contraseña y estado conservados.');
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
-main()
-  .catch((e) => {
-    console.error('❌ Error al crear el usuario:', e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch(() => {
+    // No imprimir errores Prisma: pueden contener parámetros o detalles de conexión.
+    console.error('No se pudo preparar el administrador. Revise correo, entrada segura y conexión a la base.');
+    process.exitCode = 1;
   });
+}

@@ -1,19 +1,15 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
+import { CuentaService } from '../services/cuenta.service.js';
+import { ROLES, type RolSistema } from '../security/roles.js';
+
+export { ROLES, type RolSistema } from '../security/roles.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
 if (!JWT_SECRET) {
   throw new Error('Falta la variable de entorno JWT_SECRET');
 }
-
-export const ROLES = {
-  ADMINISTRADOR: 'Administrador',
-  PSICOLOGO: 'Psicologo',
-  RECEPCION: 'Recepcion',
-} as const;
-
-export type RolSistema = (typeof ROLES)[keyof typeof ROLES];
 
 export interface AuthUserPayload extends JwtPayload {
   idUsuario: number;
@@ -94,7 +90,7 @@ const construirUsuarioAutenticado = (payload: JwtPayload): AuthUserPayload => {
     : null;
 
   if (!Number.isInteger(idUsuario) || idUsuario <= 0) {
-    throw new Error('Token sin datos de usuario validos.');
+    throw new Error('Token sin datos de usuario válidos.');
   }
 
   const esAdmin = Boolean(
@@ -128,11 +124,7 @@ const construirUsuarioAutenticado = (payload: JwtPayload): AuthUserPayload => {
 const obtenerTokenDesdeHeader = (req: Request) => {
   const authHeader = req.headers.authorization || req.headers.Authorization;
 
-  if (typeof authHeader !== 'string') {
-    return '';
-  }
-
-  if (!authHeader.startsWith('Bearer ')) {
+  if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
     return '';
   }
 
@@ -153,24 +145,17 @@ export const verificarToken = (req: Request, res: Response, next: NextFunction):
     const payload = jwt.verify(token, JWT_SECRET);
 
     if (typeof payload === 'string') {
-      res.status(403).json({
-        error: 'Token inválido o expirado.',
-      });
+      res.status(403).json({ error: 'Token inválido o expirado.' });
       return;
     }
 
     const usuarioAutenticado = construirUsuarioAutenticado(payload);
-
     req.user = usuarioAutenticado;
     req.usuario = usuarioAutenticado;
-
     next();
   } catch (error) {
     console.error('Error al validar token:', error);
-
-    res.status(403).json({
-      error: 'Token inválido o expirado.',
-    });
+    res.status(403).json({ error: 'Token inválido o expirado.' });
   }
 };
 
@@ -179,9 +164,7 @@ export const permitirRoles = (...rolesPermitidos: RolSistema[]) => {
     const usuario = req.user || req.usuario;
 
     if (!usuario) {
-      res.status(401).json({
-        error: 'Acceso no autorizado.',
-      });
+      res.status(401).json({ error: 'Acceso no autorizado.' });
       return;
     }
 
@@ -190,9 +173,7 @@ export const permitirRoles = (...rolesPermitidos: RolSistema[]) => {
     });
 
     if (!tieneRolPermitido) {
-      res.status(403).json({
-        error: 'No tiene permisos para realizar esta acción.',
-      });
+      res.status(403).json({ error: 'No tiene permisos para realizar esta acción.' });
       return;
     }
 
@@ -234,3 +215,57 @@ export const requierePsicologoAsignado = (
 
   next();
 };
+
+// El JWT autentica; los permisos y el cambio obligatorio se leen de la cuenta vigente.
+export const verificarCuentaVigente = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  const usuario = req.user || req.usuario;
+
+  if (!usuario) {
+    res.status(401).json({ error: 'Acceso no autorizado.' });
+    return;
+  }
+
+  try {
+    const cuenta = await CuentaService.obtenerAcceso(usuario.idUsuario);
+
+    if (!cuenta || !cuenta.Activo) {
+      res.status(401).json({ error: 'La cuenta no está activa.' });
+      return;
+    }
+
+    const idPsicologo = cuenta.Psicologo?.ID_Psicologo ?? null;
+
+    const usuarioActualizado = construirUsuarioAutenticado({
+      ...usuario,
+      email: cuenta.Email,
+      Email: cuenta.Email,
+      roles: cuenta.Usuario_Rol.map(({ Rol }) => Rol.Nombre_Rol),
+      idPsicologo,
+      ID_Psicologo: idPsicologo,
+      requiereCambioPassword: cuenta.RequiereCambioPassword,
+      // Los indicadores anteriores del JWT no conservan permisos retirados.
+      esAdmin: false,
+      esPsicologo: false,
+      esRecepcion: false,
+    });
+
+    req.user = usuarioActualizado;
+    req.usuario = usuarioActualizado;
+    next();
+  } catch {
+    res.status(503).json({ error: 'No se pudo verificar el acceso de la cuenta.' });
+  }
+};
+
+export const protegerCuentaVigente = [
+  verificarToken,
+  verificarCuentaVigente,
+  bloquearSiRequiereCambioPassword,
+];
+
+export const autorizarAdministrador = permitirRoles(ROLES.ADMINISTRADOR);
+export const protegerAdministracion = [...protegerCuentaVigente, autorizarAdministrador];

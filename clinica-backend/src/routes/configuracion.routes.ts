@@ -5,7 +5,7 @@ import {
   updateCatalogoItem, 
   deleteCatalogoItem 
 } from '../controllers/configuracion.controller.js';
-import { verificarToken } from '../middlewares/auth.middleware.js';
+import { autorizarAdministrador, permitirRoles, protegerCuentaVigente, ROLES } from '../middlewares/auth.middleware.js';
 import { validateSchema } from '../middlewares/validator.middleware.js';
 import { 
   getCatalogoSchema, 
@@ -20,12 +20,13 @@ const router: Router = Router();
 // MIDDLEWARE DE SEGURIDAD GLOBAL
 // ==========================================
 // Todas estas rutas son de administración de sistema y están protegidas
-router.use(verificarToken);
+router.use(...protegerCuentaVigente);
 
 // ==========================================
 // RUTAS PROTEGIDAS Y VALIDADAS
 // ==========================================
-router.get('/:modelo', validateSchema(getCatalogoSchema), getCatalogoItems);
+router.get('/:modelo', permitirRoles(ROLES.ADMINISTRADOR, ROLES.PSICOLOGO, ROLES.RECEPCION), validateSchema(getCatalogoSchema), getCatalogoItems);
+router.use(autorizarAdministrador);
 router.post('/:modelo', validateSchema(createCatalogoSchema), createCatalogoItem);
 router.put('/:modelo/:id', validateSchema(updateCatalogoSchema), updateCatalogoItem);
 router.delete('/:modelo/:id', validateSchema(deleteCatalogoSchema), deleteCatalogoItem);

@@ -7,7 +7,7 @@ import {
   getCatalogosCitas,
   getHorariosOcupados 
 } from '../controllers/cita.controller.js';
-import { verificarToken } from '../middlewares/auth.middleware.js';
+import { permitirRoles, protegerCuentaVigente, ROLES } from '../middlewares/auth.middleware.js';
 import { validateSchema } from '../middlewares/validator.middleware.js';
 import { createCitaSchema, updateCitaSchema, cancelCitaSchema } from '../schemas/cita.schema.js';
 
@@ -18,7 +18,8 @@ const router: Router = Router();
 // MIDDLEWARE DE SEGURIDAD GLOBAL
 // ==========================================
 // Protegemos toda la gestión de citas y facturación
-router.use(verificarToken);
+router.use(...protegerCuentaVigente);
+router.use(permitirRoles(ROLES.ADMINISTRADOR, ROLES.PSICOLOGO, ROLES.RECEPCION));
 
 // ==========================================
 // RUTAS PROTEGIDAS Y VALIDADAS

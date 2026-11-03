@@ -29,6 +29,7 @@ const getStatusFromError = (message: string) => {
 export const getCitas = async (req: Request, res: Response): Promise<void> => {
   try {
     const citas = await CitaService.getAll(req.user);
+    res.setHeader('Cache-Control', 'no-store');
     res.json(citas);
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Error al obtener citas');

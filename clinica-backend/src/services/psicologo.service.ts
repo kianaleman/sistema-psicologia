@@ -1,8 +1,9 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
-
-const prisma = new PrismaClient();
+import type { AuthUserPayload } from '../middlewares/auth.middleware.js';
+import { prisma } from '../lib/prisma.js';
+import { ROLES } from '../security/roles.js';
 
 const getFechaHoraLocalSistema = () => {
   const fecha = new Date();
@@ -40,8 +41,6 @@ interface CreatePsicologoDTO extends PsicologoInput {
 }
 
 interface UpdatePsicologoDTO extends PsicologoInput {}
-
-const ROL_PSICOLOGO_ID = 2;
 
 const esObjeto = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null;
@@ -151,7 +150,7 @@ const normalizarEspecialidades = (ids: unknown) => {
 };
 
 const generarPasswordTemporal = () => {
-  return crypto.randomBytes(5).toString('hex');
+  return crypto.randomBytes(18).toString('base64url');
 };
 
 const construirPsicologoRespuesta = async (
@@ -200,7 +199,25 @@ const construirPsicologoRespuesta = async (
 };
 
 export const PsicologoService = {
-  getAll: async () => {
+  getAll: async (usuario?: AuthUserPayload) => {
+    if (!usuario) throw new Error('Acceso no autorizado.');
+
+    if (!usuario.roles.includes(ROLES.ADMINISTRADOR)) {
+      if (!usuario.roles.some((rol) => rol === ROLES.PSICOLOGO || rol === ROLES.RECEPCION)) {
+        throw new Error('No tiene permisos para consultar profesionales.');
+      }
+      return prisma.psicologo.findMany({
+        where: { Activo: true },
+        select: {
+          ID_Psicologo: true, Nombre: true, Apellido: true, CodigoMinsa: true, Activo: true,
+          Psicologo_EspecialidadPsicologo: { select: {
+            ID_Especialidad: true,
+            EspecialidadPsicologo: { select: { ID_Especialidad: true, Nombre_Especialidad: true } },
+          } },
+        },
+        orderBy: { Apellido: 'asc' },
+      });
+    }
     const psicologos = await prisma.psicologo.findMany({
       include: {
         Direccion: {
@@ -272,6 +289,12 @@ export const PsicologoService = {
         throw new Error('Este correo electrónico ya está registrado.');
       }
 
+      const rolPsicologo = await tx.rol.findFirst({
+        where: { Nombre_Rol: ROLES.PSICOLOGO },
+        select: { ID_Rol: true },
+      });
+      if (!rolPsicologo) throw new Error('Debe configurar el rol Psicologo antes de crear profesionales.');
+
       const nuevaDireccion = await tx.direccion.create({
         data: {
           Pais: 'Nicaragua',
@@ -322,7 +345,7 @@ export const PsicologoService = {
       await tx.usuario_Rol.create({
         data: {
           ID_Usuario: nuevoUsuario.ID_Usuario,
-          ID_Rol: ROL_PSICOLOGO_ID,
+          ID_Rol: rolPsicologo.ID_Rol,
         },
       });
 
@@ -418,6 +441,8 @@ export const PsicologoService = {
             },
             data: {
               Email: email,
+              ResetToken: null,
+              ResetTokenExpire: null,
             },
           });
         }

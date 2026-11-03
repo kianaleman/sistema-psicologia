@@ -1,7 +1,7 @@
-import { PrismaClient, type Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import type { AuthUserPayload } from '../middlewares/auth.middleware.js';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma.js';
+import { citaAgendaSelect, citaClinicaSelect, citaResumenSelect, puedeVerClinicaCita } from './cita.projection.js';
 
 const ESTADOS_CITA = {
   PENDIENTE: 1,
@@ -166,36 +166,28 @@ export const CitaService = {
 
     const citas = await prisma.cita.findMany({
       where,
-      include: {
-        Paciente: true,
-        Psicologo: true,
-        TipoDeCita: true,
-        EstadoCita: true,
-        Recibo: {
-          include: {
-            MetodoPago: true,
-            Divisa: true,
-            Banco: true,
-          },
-        },
-        Direccion: {
-          include: {
-            Municipio: {
-              include: {
-                Departamento: true,
-              },
-            },
-          },
-        },
-        MotivoCancelacion: true,
-        Sesion: true,
-      },
+      select: citaAgendaSelect,
       orderBy: [{ FechaCita: 'asc' }, { HoraCita: 'asc' }],
     });
 
+    const tieneCitasClinicas = citas.some((cita) => puedeVerClinicaCita(usuario, cita.ID_Psicologo));
+    const citasClinicas = !tieneCitasClinicas ? [] : await prisma.cita.findMany({
+      where: {
+        ...where,
+        ...(!usuario?.esAdmin ? { ID_Psicologo: usuario?.idPsicologo ?? -1 } : {}),
+      },
+      select: citaClinicaSelect,
+    });
+    const clinicaPorCita = new Map(citasClinicas
+      .filter((cita) => puedeVerClinicaCita(usuario, cita.ID_Psicologo))
+      .map((cita) => [cita.ID_Cita, cita]));
     const contadores: Record<number, number> = {};
 
-    const citasNumeradas = citas.map((cita) => {
+    const citasNumeradas = citas.map((citaAdministrativa) => {
+      const clinica = clinicaPorCita.get(citaAdministrativa.ID_Cita);
+      const cita = clinica && puedeVerClinicaCita(usuario, citaAdministrativa.ID_Psicologo)
+        ? { ...citaAdministrativa, MotivoConsulta: clinica.MotivoConsulta, Sesion: clinica.Sesion }
+        : citaAdministrativa;
       if (cita.ID_EstadoCita === ESTADOS_CITA.CANCELADA || cita.ID_EstadoCita === ESTADOS_CITA.NO_PROCESADA) {
         return {
           ...cita,
@@ -338,6 +330,10 @@ export const CitaService = {
           ID_Psicologo: psicologoPermitido,
           ID_Direccion: data.ID_Direccion,
         },
+        select: {
+          ...citaResumenSelect,
+          MotivoConsulta: puedeVerClinicaCita(usuario, psicologoPermitido),
+        },
       });
 
       const fechaHoraActual = new Date();
@@ -356,6 +352,7 @@ export const CitaService = {
           ID_Banco: data.ID_MetodoPago !== 1 ? data.ID_Banco ?? null : null,
           Numero_Referencia: data.ID_MetodoPago !== 1 ? data.Numero_Referencia ?? null : null,
         },
+        select: citaAgendaSelect.Recibo.select,
       });
 
       return {
@@ -370,6 +367,7 @@ export const CitaService = {
       where: {
         ID_Cita: id,
       },
+      include: { Sesion: { select: { ID_Sesion: true } } },
     });
 
     if (!result) {
@@ -377,6 +375,15 @@ export const CitaService = {
     }
 
     validarAccesoACitaExistente(result, usuario);
+
+    // Reasignar una consulta ya registrada otorgaría sus notas al nuevo
+    // profesional. Una corrección histórica requiere un flujo distinto.
+    if (result.Sesion && (
+      (data.ID_Psicologo !== undefined && data.ID_Psicologo !== result.ID_Psicologo)
+      || (data.ID_Paciente !== undefined && data.ID_Paciente !== result.ID_Paciente)
+    )) {
+      throw new Error('No tiene permisos para reasignar una cita con sesión clínica registrada.');
+    }
 
     if (data.ID_Psicologo !== undefined) {
       obtenerPsicologoPermitidoParaCita(data.ID_Psicologo, usuario);
@@ -404,7 +411,8 @@ export const CitaService = {
     const idPsicologo = data.ID_Psicologo ?? oldPsicologo;
     const fechaStr = data.FechaCita ?? fallbackFecha;
     const horaStr = data.HoraCita ?? fallbackHora;
-    const finalMotivo = data.MotivoConsulta !== undefined ? data.MotivoConsulta : oldMotivo;
+    const finalMotivo = puedeVerClinicaCita(usuario, result.ID_Psicologo) && data.MotivoConsulta !== undefined
+      ? data.MotivoConsulta : oldMotivo;
     const finalTipoCita = data.ID_TipoCita ?? oldTipoCita;
     const finalPaciente = data.ID_Paciente ?? oldPaciente;
     const finalDireccion = data.ID_Direccion ?? oldDireccion;
@@ -510,6 +518,7 @@ export const CitaService = {
         ID_MotivoCancelacion: Number(motivoId),
         NotasCancelacion: notas,
       },
+      select: citaResumenSelect,
     });
   },
 

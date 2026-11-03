@@ -70,7 +70,7 @@ Una plataforma diseñada para administrar **pacientes, citas y sesiones psicoló
 
 ```bash
 cd clinica-backend
-npm install
+pnpm install --frozen-lockfile
 ```
 
 Crear archivo **.env**:
@@ -82,8 +82,8 @@ DATABASE_URL="sqlserver://localhost:1433;database=ClinicaPsicologicaResilencia;i
 Generar Prisma y levantar el servidor:
 
 ```bash
-npx prisma generate
-npm run dev
+pnpm exec prisma generate
+pnpm run dev
 ```
 
 📌 **Backend disponible en:**  
@@ -128,6 +128,14 @@ http://localhost:5173
 - Cálculo automático de tiempos
 
 ---
+
+## Seguridad — Hito 1
+
+Los respaldos, la administración de profesionales/cuentas y la escritura de
+catálogos requieren Administrador y cambio obligatorio de contraseña completado.
+La agenda limita la información clínica por rol y profesional.
+
+Consulta [permisos, configuración, bootstrap seguro y pruebas](docs/hito-1-seguridad.md).
 
 ## 📄 **Licencia**
 Proyecto de uso **académico y educativo**.

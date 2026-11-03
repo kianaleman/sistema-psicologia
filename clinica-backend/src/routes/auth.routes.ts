@@ -12,9 +12,9 @@ import {
 } from '../controllers/auth.controller.js';
 import {
   bloquearSiRequiereCambioPassword,
-  permitirRoles,
-  ROLES,
   verificarToken,
+  verificarCuentaVigente,
+  autorizarAdministrador,
 } from '../middlewares/auth.middleware.js';
 import { validateSchema } from '../middlewares/validator.middleware.js';
 import {
@@ -36,17 +36,18 @@ router.use(verificarToken);
 
 router.post('/cambiar-password-default', validateSchema(cambiarPasswordSchema), cambiarPasswordForzado);
 
+router.use(verificarCuentaVigente);
 router.use(bloquearSiRequiereCambioPassword);
+router.use(autorizarAdministrador);
 
-router.post('/register', permitirRoles(ROLES.ADMINISTRADOR), validateSchema(registerSchema), register);
-router.get('/admin/roles', permitirRoles(ROLES.ADMINISTRADOR), listarRoles);
-router.get('/admin/usuarios-roles', permitirRoles(ROLES.ADMINISTRADOR), listarUsuariosRoles);
-router.patch('/admin/usuarios/:idUsuario/roles', permitirRoles(ROLES.ADMINISTRADOR), cambiarRolUsuario);
-router.patch('/admin/usuarios/:idUsuario/rol', permitirRoles(ROLES.ADMINISTRADOR), cambiarRolUsuario);
+router.post('/register', validateSchema(registerSchema), register);
+router.get('/admin/roles', listarRoles);
+router.get('/admin/usuarios-roles', listarUsuariosRoles);
+router.patch('/admin/usuarios/:idUsuario/roles', cambiarRolUsuario);
+router.patch('/admin/usuarios/:idUsuario/rol', cambiarRolUsuario);
 
 router.post(
   '/admin/reset-password/:idUsuario',
-  permitirRoles(ROLES.ADMINISTRADOR),
   validateSchema(adminResetPasswordSchema),
   restablecerPasswordAdmin
 );

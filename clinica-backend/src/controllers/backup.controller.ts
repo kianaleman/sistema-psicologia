@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { BackupService } from '../services/backup.service.js';
+import { AuditoriaService } from '../services/auditoria.service.js';
 
 const obtenerMensajeError = (error: unknown, mensajePorDefecto: string) => {
   if (error instanceof Error) return error.message;
@@ -24,6 +25,23 @@ const obtenerIdUsuario = (req: Request) => {
   return null;
 };
 
+const registrarOperacion = (
+  req: Request,
+  accion: string,
+  resultado: 'EXITO' | 'FALLO',
+  codigoEstado: number,
+  archivo?: string,
+) => AuditoriaService.registrarDesdeRequest(req, {
+  accion,
+  modulo: 'BACKUPS',
+  entidad: 'Backup',
+  resultado,
+  codigoEstado,
+  mensaje: resultado === 'EXITO' ? 'Operación de respaldo completada.' : 'La operación de respaldo no se completó.',
+  // Sin rutas absolutas, cuerpos de petición, credenciales ni errores del motor SQL.
+  datosDespues: archivo && /^[a-zA-Z0-9_.-]+\.bak$/.test(archivo) ? { archivo } : undefined,
+});
+
 export const BackupController = {
   generar: async (req: Request, res: Response): Promise<void> => {
     try {
@@ -31,15 +49,17 @@ export const BackupController = {
         idUsuario: obtenerIdUsuario(req),
       });
 
+      await registrarOperacion(req, 'BACKUP_GENERADO', 'EXITO', 201, backup.archivo);
+
       res.status(201).json({
         message: 'Backup generado correctamente.',
         backup,
       });
     } catch (error: unknown) {
-      console.error('Error al generar backup:', error);
+      await registrarOperacion(req, 'BACKUP_GENERADO', 'FALLO', 500);
 
       res.status(500).json({
-        error: obtenerMensajeError(error, 'No se pudo generar el backup de la base de datos.'),
+        error: 'No se pudo generar el backup de la base de datos.',
       });
     }
   },
@@ -73,6 +93,7 @@ export const BackupController = {
       const backup = await BackupService.obtenerBackupParaDescarga(archivo);
 
       res.download(backup.rutaAbsoluta, backup.archivo, (error) => {
+        void registrarOperacion(req, 'BACKUP_DESCARGADO', error ? 'FALLO' : 'EXITO', error ? 500 : 200, backup.archivo);
         if (error && !res.headersSent) {
           res.status(500).json({
             error: 'No se pudo descargar el archivo de backup.',
@@ -80,7 +101,7 @@ export const BackupController = {
         }
       });
     } catch (error: unknown) {
-      console.error('Error al descargar backup:', error);
+      await registrarOperacion(req, 'BACKUP_DESCARGADO', 'FALLO', 404);
 
       res.status(404).json({
         error: obtenerMensajeError(error, 'No se pudo descargar el backup solicitado.'),
@@ -99,12 +120,14 @@ export const BackupController = {
 
       const resultado = await BackupService.eliminarBackup(archivo);
 
+      await registrarOperacion(req, 'BACKUP_ELIMINADO', 'EXITO', 200, resultado.archivo);
+
       res.json({
         message: 'Backup eliminado correctamente.',
         resultado,
       });
     } catch (error: unknown) {
-      console.error('Error al eliminar backup:', error);
+      await registrarOperacion(req, 'BACKUP_ELIMINADO', 'FALLO', 400);
 
       res.status(400).json({
         error: obtenerMensajeError(error, 'No se pudo eliminar el backup.'),
