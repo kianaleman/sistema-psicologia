@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { api } from '../../services/api';
 import type { MotivoCancelacion } from '../../types';
 import { toast } from 'sonner';
@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (motivoId: number, notas: string) => void;
+  onConfirm: (motivoId: number, notas: string) => Promise<void>;
 }
 
 const Icons = {
@@ -85,7 +85,9 @@ export default function CancelarCitaModal({ isOpen, onClose, onConfirm }: Props)
   const [motivoSeleccionado, setMotivoSeleccionado] = useState('');
   const [notas, setNotas] = useState('');
   const [loading, setLoading] = useState(false);
-  const [cargandoMotivos, setCargandoMotivos] = useState(false);
+  const [cargandoMotivos, setCargandoMotivos] = useState(true);
+  const pendiente = useRef(false);
+  const [error, setError] = useState<string | null>(null);
 
   const motivoActual = motivos.find(
     (motivo) => motivo.ID_MotivoCancelacion.toString() === motivoSeleccionado
@@ -97,6 +99,8 @@ export default function CancelarCitaModal({ isOpen, onClose, onConfirm }: Props)
   };
 
   const handleClose = () => {
+    if (pendiente.current) return;
+    if ((notas || motivoSeleccionado) && !window.confirm('¿Descartar la cancelación pendiente?')) return;
     limpiarFormulario();
     onClose();
   };
@@ -106,7 +110,6 @@ export default function CancelarCitaModal({ isOpen, onClose, onConfirm }: Props)
 
     let activo = true;
 
-    setCargandoMotivos(true);
 
     api.general.motivosCancelacion()
       .then((data) => {
@@ -126,7 +129,7 @@ export default function CancelarCitaModal({ isOpen, onClose, onConfirm }: Props)
     };
   }, [isOpen]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!motivoSeleccionado) {
@@ -134,18 +137,26 @@ export default function CancelarCitaModal({ isOpen, onClose, onConfirm }: Props)
       return;
     }
 
+    if (pendiente.current) return;
+    pendiente.current = true;
     setLoading(true);
-    onConfirm(Number(motivoSeleccionado), notas.trim());
-    limpiarFormulario();
-    onClose();
-    setLoading(false);
+    setError(null);
+    try {
+      await onConfirm(Number(motivoSeleccionado), notas.trim());
+      limpiarFormulario();
+      onClose();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'No se pudo cancelar. Puede reintentar.');
+    } finally { pendiente.current = false; setLoading(false); }
+
   };
 
   if (!isOpen) return null;
 
   return (
-    <dialog className="modal modal-open bg-slate-950/50 backdrop-blur-sm">
+    <dialog onCancel={event => { event.preventDefault(); handleClose(); }} className="modal modal-open bg-slate-950/50 backdrop-blur-sm">
       <div className="modal-box grid h-[90vh] w-11/12 max-w-2xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-[2rem] bg-white p-0 text-slate-800 shadow-2xl">
+        {error && <p role="alert" className="p-3 text-red-700">{error} Las notas se conservan.</p>}
         <div className="relative overflow-hidden bg-slate-950 px-6 py-5 text-white">
           <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-rose-500/25 blur-3xl"></div>
           <div className="absolute -bottom-24 left-10 h-56 w-56 rounded-full bg-amber-400/15 blur-3xl"></div>

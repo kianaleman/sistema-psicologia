@@ -5,7 +5,7 @@ export const validateSchema = (schema: ZodObject) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
       // Zod evaluará el body, los parámetros de la URL y los query params
-      schema.parse({
+      res.locals.validated = schema.parse({
         body: req.body,
         query: req.query,
         params: req.params,

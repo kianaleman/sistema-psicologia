@@ -1,409 +1,159 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
 import type { AuthUserPayload } from '../middlewares/auth.middleware.js';
-
-const prisma = new PrismaClient();
-
-interface TratamientoDTO {
-  id?: number;
-  Frecuencia: string;
-  Tipo: 'farmaceutico' | 'terapeutico';
-  FechaInicio: string;
-  FechaFin?: string;
-  Farmaceutico?: {
-    ID_ViaAdministracion: number;
-    Nombre_Medicamento: string;
-    Dosis: string;
-  };
-  Terapeutico?: {
-    ID_Tipo_Terapia: number;
-    Objetivo: string;
-  };
+import type { CreateSesionDTO } from '../schemas/sesion.schema.js';
+import { sesionClinicaSelect } from './sesion.projection.js';
+export class ErrorClinico extends Error {
+    constructor(public status: number, message: string) { super(message); }
 }
-
-interface CreateSesionDTO {
-  ID_Cita: number;
-  ID_Expediente: number;
-  HoraDeInicio: string;
-  HoraFinal?: string;
-  Observaciones: string;
-  DiagnosticoDiferencial: string;
-  HistorialDeEvolucion: string;
-  Criterios_DeDiagnostico: string;
-  ExploracionesIds?: number[];
-  Tratamiento?: TratamientoDTO;
-}
-
-type CitaSesionPermiso = {
-  ID_Psicologo: number;
+const autorizar = (usuario: AuthUserPayload | undefined, profesional: number) => {
+    if (!usuario)
+        throw new ErrorClinico(401, 'Acceso no autorizado.');
+    if (usuario.esAdmin || (usuario.esPsicologo && usuario.idPsicologo === profesional))
+        return;
+    throw new ErrorClinico(403, 'No tiene permisos para esta consulta clínica.');
 };
-
-const normalizarTexto = (value: string) => {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase();
+// SQL TIME representa un reloj, no un instante. Usar Nicaragua y fecha base UTC.
+const horaClinica = (instante: Date) => {
+    const reloj = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'America/Managua', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    }).format(instante);
+    return new Date(`1970-01-01T${reloj}Z`);
 };
-
-const tieneRol = (usuario: AuthUserPayload, rolesValidos: string[]) => {
-  const rolesUsuario = usuario.roles.map(normalizarTexto);
-  const rolesValidosNormalizados = rolesValidos.map(normalizarTexto);
-
-  return rolesUsuario.some((rol) => rolesValidosNormalizados.includes(rol));
+const dia = (value: string) => new Date(`${value}T00:00:00.000Z`);
+type SesionGuardada = Prisma.SesionGetPayload<{
+    select: typeof sesionClinicaSelect;
+}>;
+const mismoContenido = (sesion: SesionGuardada, data: CreateSesionDTO) => {
+    const recetas = sesion.Tratamiento.map(t => ({
+        Frecuencia: t.Frecuencia, FechaInicio: t.FechaInicio.toISOString().slice(0, 10),
+        ...(t.FechaFin ? { FechaFin: t.FechaFin.toISOString().slice(0, 10) } : {}),
+        ...(t.Tratamiento_Terapeutico ? {
+            Tipo: 'terapeutico', Terapeutico: {
+                ID_Tipo_Terapia: t.Tratamiento_Terapeutico.ID_Tipo_Terapia, Objetivo: t.Tratamiento_Terapeutico.Objetivo,
+            },
+        } : { Tipo: 'farmaceutico', Farmaceutico: {
+                ID_ViaAdministracion: t.Tratamiento_Farmaceutico?.ID_ViaAdministracion,
+                Nombre_Medicamento: t.Tratamiento_Farmaceutico?.Nombre_Medicamento, Dosis: t.Tratamiento_Farmaceutico?.Dosis,
+            } }),
+    }));
+    // Ordenar claves y elementos: comparar contenido, sin depender del orden JSON.
+    const canonical = (value: unknown): string => {
+        if (Array.isArray(value))
+            return '[' + value.map(canonical).sort().join(',') + ']';
+        if (value && typeof value === 'object')
+            return JSON.stringify(Object.fromEntries(Object.entries(value).sort().map(([k, v]) => [k, canonical(v)])));
+        return JSON.stringify(value);
+    };
+    return sesion.HoraDeInicio?.getTime() === horaClinica(new Date(data.HoraDeInicio)).getTime()
+        && sesion.Observaciones === data.Observaciones
+        && sesion.DiagnosticoDiferencial === data.DiagnosticoDiferencial
+        && sesion.HistorialDeEvolucion === data.HistorialDeEvolucion
+        && sesion.Criterios_DeDiagnostico === data.Criterios_DeDiagnostico
+        && canonical(recetas) === canonical(data.Tratamientos)
+        && canonical(sesion.Sesion_ExploracionPsicologica.map(e => e.ID_ExploracionPsicologica)) === canonical(data.ExploracionesIds);
 };
-
-const esUsuarioAdmin = (usuario: AuthUserPayload) => {
-  return Boolean(
-    usuario.esAdmin ||
-    tieneRol(usuario, ['Administrador', 'Admin', 'ADMINISTRADOR', 'ADMIN'])
-  );
-};
-
-const esUsuarioPsicologo = (usuario: AuthUserPayload) => {
-  return Boolean(
-    usuario.esPsicologo ||
-    tieneRol(usuario, ['Psicologo', 'Psicólogo', 'PSICOLOGO'])
-  );
-};
-
-const validarUsuarioAutenticado = (usuario?: AuthUserPayload) => {
-  if (!usuario || !usuario.idUsuario) {
-    throw new Error('Acceso denegado. No se proporcionó un token válido.');
-  }
-
-  return usuario;
-};
-
-const validarPsicologoVinculado = (usuario: AuthUserPayload) => {
-  if (!usuario.idPsicologo) {
-    throw new Error('El usuario psicólogo no tiene un perfil de psicólogo vinculado.');
-  }
-
-  return usuario.idPsicologo;
-};
-
-const validarPuedeGestionarSesion = (
-  cita: CitaSesionPermiso,
-  usuario?: AuthUserPayload
-) => {
-  const usuarioActual = validarUsuarioAutenticado(usuario);
-
-  if (esUsuarioAdmin(usuarioActual)) {
-    return;
-  }
-
-  if (esUsuarioPsicologo(usuarioActual)) {
-    const idPsicologo = validarPsicologoVinculado(usuarioActual);
-
-    if (cita.ID_Psicologo !== idPsicologo) {
-      throw new Error('No tiene permisos para registrar sesiones de una cita asignada a otro psicólogo.');
-    }
-
-    return;
-  }
-
-  throw new Error('No tiene permisos para registrar sesiones clínicas.');
-};
-
-const validarId = (value: number, field: string) => {
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error(`${field} inválido.`);
-  }
-};
-
-const construirFechaDesdeHora = (hora: number, minuto: number, segundo = 0) => {
-  if (
-    !Number.isInteger(hora) ||
-    !Number.isInteger(minuto) ||
-    !Number.isInteger(segundo) ||
-    hora < 0 ||
-    hora > 23 ||
-    minuto < 0 ||
-    minuto > 59 ||
-    segundo < 0 ||
-    segundo > 59
-  ) {
-    return null;
-  }
-
-  return new Date(1970, 0, 1, hora, minuto, segundo, 0);
-};
-
-const obtenerHoraSistemaActual = () => {
-  const ahora = new Date();
-  const horaActual = construirFechaDesdeHora(
-    ahora.getHours(),
-    ahora.getMinutes(),
-    ahora.getSeconds()
-  );
-
-  return horaActual || new Date(1970, 0, 1, 0, 0, 0, 0);
-};
-
-const construirFecha = (value: string, field: string) => {
-  const rawValue = value?.trim();
-
-  if (!rawValue) {
-    throw new Error(`${field} es requerido.`);
-  }
-
-  const timeOnlyMatch = rawValue.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.\d{1,3})?(?:Z)?$/);
-
-  if (timeOnlyMatch) {
-    const hora = Number(timeOnlyMatch[1]);
-    const minuto = Number(timeOnlyMatch[2]);
-    const segundo = Number(timeOnlyMatch[3] || 0);
-    const fecha = construirFechaDesdeHora(hora, minuto, segundo);
-
-    if (!fecha) {
-      throw new Error(`${field} tiene un formato inválido.`);
-    }
-
-    return fecha;
-  }
-
-  const dateOnlyMatch = rawValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-
-  if (dateOnlyMatch) {
-    const year = Number(dateOnlyMatch[1]);
-    const month = Number(dateOnlyMatch[2]);
-    const day = Number(dateOnlyMatch[3]);
-
-    return new Date(year, month - 1, day, 12, 0, 0, 0);
-  }
-
-  const localDateTimeMatch = rawValue.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
-
-  if (localDateTimeMatch) {
-    const year = Number(localDateTimeMatch[1]);
-    const month = Number(localDateTimeMatch[2]);
-    const day = Number(localDateTimeMatch[3]);
-    const hour = Number(localDateTimeMatch[4]);
-    const minute = Number(localDateTimeMatch[5]);
-    const second = Number(localDateTimeMatch[6] || 0);
-
-    return new Date(year, month - 1, day, hour, minute, second, 0);
-  }
-
-  const fecha = new Date(rawValue);
-
-  if (!Number.isNaN(fecha.getTime())) {
-    return fecha;
-  }
-
-  throw new Error(`${field} tiene un formato inválido. Valor recibido: ${rawValue}`);
-};
-
-const normalizarExploraciones = (ids?: number[]) => {
-  return (ids || [])
-    .map((id) => Number(id))
-    .filter((id) => Number.isInteger(id) && id > 0);
-};
-
-const construirNumeroExpediente = (pacienteId: number) => {
-  const timestamp = Date.now();
-
-  return `EXP-${pacienteId}-${timestamp}`;
-};
-
-export const SesionService = {
-  create: async (data: CreateSesionDTO, usuario?: AuthUserPayload) => {
-    validarId(data.ID_Cita, 'ID_Cita');
-
-    return await prisma.$transaction(async (tx) => {
-      const citaActual = await tx.cita.findUnique({
-        where: {
-          ID_Cita: data.ID_Cita,
-        },
+const guardar = (data: CreateSesionDTO, usuario?: AuthUserPayload) => prisma.$transaction(async (tx) => {
+    const cita = await tx.cita.findUnique({
+        where: { ID_Cita: data.ID_Cita },
         select: {
-          ID_Cita: true,
-          ID_Paciente: true,
-          ID_Psicologo: true,
-          Sesion: {
-            select: {
-              ID_Sesion: true,
-            },
-          },
+            ID_Cita: true, ID_Paciente: true, ID_Psicologo: true, ID_EstadoCita: true,
+            Paciente: { select: { Activo: true } }, Psicologo: { select: { Activo: true } },
+            Sesion: { select: sesionClinicaSelect },
         },
-      });
-
-      if (!citaActual) {
-        throw new Error('La cita proporcionada no existe.');
-      }
-
-      validarPuedeGestionarSesion(citaActual, usuario);
-
-      if (citaActual.Sesion) {
-        throw new Error('Esta cita ya tiene una sesión registrada.');
-      }
-
-      let expedienteId: number | null = null;
-
-      if (Number.isInteger(data.ID_Expediente) && data.ID_Expediente > 0) {
-        const expedientePorId = await tx.expediente.findFirst({
-          where: {
-            ID_Expediente: data.ID_Expediente,
-            ID_Paciente: citaActual.ID_Paciente,
-          },
-          select: {
-            ID_Expediente: true,
-          },
-        });
-
-        if (expedientePorId) {
-          expedienteId = expedientePorId.ID_Expediente;
-        }
-      }
-
-      if (!expedienteId) {
-        const expedienteExistente = await tx.expediente.findFirst({
-          where: {
-            ID_Paciente: citaActual.ID_Paciente,
-          },
-          orderBy: {
-            ID_Expediente: 'asc',
-          },
-          select: {
-            ID_Expediente: true,
-          },
-        });
-
-        if (expedienteExistente) {
-          expedienteId = expedienteExistente.ID_Expediente;
-        }
-      }
-
-      if (!expedienteId) {
-        const nuevoExpediente = await tx.expediente.create({
-          data: {
-            No_Expediente: construirNumeroExpediente(citaActual.ID_Paciente),
-            FechaIngreso: new Date(),
-            ID_Paciente: citaActual.ID_Paciente,
-          },
-          select: {
-            ID_Expediente: true,
-          },
-        });
-
-        expedienteId = nuevoExpediente.ID_Expediente;
-      }
-
-      const nuevaSesion = await tx.sesion.create({
-        data: {
-          ID_Cita: data.ID_Cita,
-          ID_Expediente: expedienteId,
-          HoraDeInicio: construirFecha(data.HoraDeInicio, 'HoraDeInicio'),
-          HoraFinal: obtenerHoraSistemaActual(),
-          Observaciones: data.Observaciones,
-          DiagnosticoDiferencial: data.DiagnosticoDiferencial,
-          HistorialDeEvolucion: data.HistorialDeEvolucion,
-          Criterios_DeDiagnostico: data.Criterios_DeDiagnostico,
-        },
-      });
-
-      if (data.Tratamiento) {
-        const tratamiento = data.Tratamiento;
-
-        const tratamientoBase = await tx.tratamiento.create({
-          data: {
-            ID_Sesion: nuevaSesion.ID_Sesion,
-            FechaInicio: construirFecha(tratamiento.FechaInicio, 'FechaInicio del tratamiento'),
-            Frecuencia: tratamiento.Frecuencia || 'Según indicación',
-            ID_Psicologo_Firma: citaActual.ID_Psicologo,
-          },
-        });
-
-        if (tratamiento.Tipo === 'farmaceutico' && tratamiento.Farmaceutico) {
-          validarId(tratamiento.Farmaceutico.ID_ViaAdministracion, 'ID_ViaAdministracion');
-
-          await tx.tratamiento_Farmaceutico.create({
-            data: {
-              ID_Tratamiento_Farmaceutico: tratamientoBase.ID_Tratamiento,
-              ID_ViaAdministracion: tratamiento.Farmaceutico.ID_ViaAdministracion,
-              Nombre_Medicamento: tratamiento.Farmaceutico.Nombre_Medicamento,
-              Dosis: tratamiento.Farmaceutico.Dosis,
-            },
-          });
-        }
-
-        if (tratamiento.Tipo === 'terapeutico' && tratamiento.Terapeutico) {
-          validarId(tratamiento.Terapeutico.ID_Tipo_Terapia, 'ID_Tipo_Terapia');
-
-          await tx.tratamiento_Terapeutico.create({
-            data: {
-              ID_TratamientoTerapeutico: tratamientoBase.ID_Tratamiento,
-              ID_Tipo_Terapia: tratamiento.Terapeutico.ID_Tipo_Terapia,
-              Objetivo: tratamiento.Terapeutico.Objetivo,
-            },
-          });
-        }
-      }
-
-      const exploracionesIds = normalizarExploraciones(data.ExploracionesIds);
-
-      if (exploracionesIds.length > 0) {
-        await tx.sesion_ExploracionPsicologica.createMany({
-          data: exploracionesIds.map((id) => ({
-            ID_Sesion: nuevaSesion.ID_Sesion,
-            ID_ExploracionPsicologica: id,
-          })),
-        });
-      }
-
-      await tx.cita.update({
-        where: {
-          ID_Cita: data.ID_Cita,
-        },
-        data: {
-          ID_EstadoCita: 2,
-        },
-      });
-
-      return nuevaSesion;
     });
-  },
-
-  findByParams: async (
-    pacienteId: number,
-    psicologoId: number,
-    usuario?: AuthUserPayload
-  ) => {
-    const usuarioActual = validarUsuarioAutenticado(usuario);
-
-    if (!esUsuarioAdmin(usuarioActual) && !esUsuarioPsicologo(usuarioActual)) {
-      throw new Error('No tiene permisos para consultar sesiones clínicas.');
+    if (!cita)
+        throw new ErrorClinico(404, 'Cita no encontrada.');
+    autorizar(usuario, cita.ID_Psicologo);
+    if (cita.ID_Paciente !== data.ID_Paciente || cita.ID_Psicologo !== data.ID_Psicologo) {
+        throw new ErrorClinico(409, 'La cita cambió de paciente o profesional. Revise la agenda antes de guardar.');
     }
-
-    let idPsicologoConsulta = psicologoId;
-
-    if (esUsuarioPsicologo(usuarioActual) && !esUsuarioAdmin(usuarioActual)) {
-      const idPsicologo = validarPsicologoVinculado(usuarioActual);
-
-      if (psicologoId !== idPsicologo) {
-        throw new Error('No tiene permisos para consultar sesiones de otro psicólogo.');
-      }
-
-      idPsicologoConsulta = idPsicologo;
+    if (data.ID_Expediente !== undefined) {
+        const expediente = await tx.expediente.findUnique({ where: { ID_Expediente: data.ID_Expediente }, select: { ID_Paciente: true } });
+        if (!expediente || expediente.ID_Paciente !== cita.ID_Paciente)
+            throw new ErrorClinico(409, 'El expediente no corresponde al paciente de la cita.');
     }
-
-    const cita = await prisma.cita.findFirst({
-      where: {
-        ID_Paciente: pacienteId,
-        ID_Psicologo: idPsicologoConsulta,
-        ID_EstadoCita: 2,
-      },
-      orderBy: {
-        FechaCita: 'desc',
-      },
-      include: {
-        Sesion: {
-          include: {
-            Expediente: true,
-          },
-        },
-      },
+    if (cita.Sesion) {
+        if (cita.ID_EstadoCita !== 2 || cita.Sesion.Expediente?.ID_Paciente !== data.ID_Paciente
+            || (data.ID_Expediente !== undefined && data.ID_Expediente !== cita.Sesion.ID_Expediente)
+            || !mismoContenido(cita.Sesion, data))
+            throw new ErrorClinico(409, 'La cita ya tiene una consulta con datos distintos. No se sobrescribió.');
+        return { sesion: cita.Sesion, creada: false };
+    }
+    if (cita.ID_EstadoCita !== 1)
+        throw new ErrorClinico(409, 'La cita no está pendiente y no admite atención.');
+    if (!cita.Paciente.Activo || !cita.Psicologo.Activo)
+        throw new ErrorClinico(409, 'El paciente o el profesional ya no está activo.');
+    if (new Date(data.HoraDeInicio).getTime() > Date.now() + 60000)
+        throw new ErrorClinico(400, 'La hora de inicio no puede estar en el futuro.');
+    for (const t of data.Tratamientos) {
+        const existe = t.Tipo === 'terapeutico'
+            ? await tx.tipoDe_Terapia.findUnique({ where: { ID_Tipo_Terapia: t.Terapeutico.ID_Tipo_Terapia } })
+            : await tx.viaAdministracion.findUnique({ where: { ID_ViaAdministracion: t.Farmaceutico.ID_ViaAdministracion } });
+        if (!existe)
+            throw new ErrorClinico(400, 'Un tipo de terapia o vía de administración no existe.');
+    }
+    if (data.ExploracionesIds.length) {
+        const cantidad = await tx.exploracionPsicologica.count({ where: { ID_ExploracionPsicologica: { in: data.ExploracionesIds } } });
+        if (cantidad !== data.ExploracionesIds.length)
+            throw new ErrorClinico(400, 'Una exploración psicológica no existe.');
+    }
+    // Bloqueo de la cita y transición protegida dentro de la misma transacción.
+    const cambio = await tx.cita.updateMany({
+        where: { ID_Cita: data.ID_Cita, ID_Paciente: data.ID_Paciente, ID_Psicologo: data.ID_Psicologo, ID_EstadoCita: 1, Sesion: null },
+        data: { ID_EstadoCita: 2 },
     });
-
-    return cita ? cita.Sesion : null;
-  },
+    if (cambio.count !== 1)
+        throw new ErrorClinico(409, 'La cita cambió durante el guardado. Puede reintentar.');
+    const expediente = await tx.expediente.upsert({
+        where: { ID_Paciente: data.ID_Paciente }, update: {},
+        create: { ID_Paciente: data.ID_Paciente, No_Expediente: `EXP-${data.ID_Paciente}-${Date.now()}`, FechaIngreso: new Date() },
+    });
+    const sesion = await tx.sesion.create({ data: {
+            ID_Cita: data.ID_Cita, ID_Expediente: expediente.ID_Expediente,
+            HoraDeInicio: horaClinica(new Date(data.HoraDeInicio)), HoraFinal: horaClinica(new Date()),
+            Observaciones: data.Observaciones, DiagnosticoDiferencial: data.DiagnosticoDiferencial,
+            HistorialDeEvolucion: data.HistorialDeEvolucion, Criterios_DeDiagnostico: data.Criterios_DeDiagnostico,
+        } });
+    for (const t of data.Tratamientos) {
+        await tx.tratamiento.create({ data: {
+                ID_Sesion: sesion.ID_Sesion, ID_Psicologo_Firma: data.ID_Psicologo,
+                Frecuencia: t.Frecuencia, FechaInicio: dia(t.FechaInicio), FechaFin: t.FechaFin ? dia(t.FechaFin) : null,
+                ...(t.Tipo === 'terapeutico' ? { Tratamiento_Terapeutico: { create: t.Terapeutico } }
+                    : { Tratamiento_Farmaceutico: { create: t.Farmaceutico } }),
+            } });
+    }
+    if (data.ExploracionesIds.length)
+        await tx.sesion_ExploracionPsicologica.createMany({ data: data.ExploracionesIds.map(id => ({
+                ID_Sesion: sesion.ID_Sesion, ID_ExploracionPsicologica: id,
+            })) });
+    const completa = await tx.sesion.findUniqueOrThrow({ where: { ID_Sesion: sesion.ID_Sesion }, select: sesionClinicaSelect });
+    return { sesion: completa, creada: true };
+}, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10000, timeout: 20000 });
+export const SesionService = {
+    create: async (data: CreateSesionDTO, usuario?: AuthUserPayload) => {
+        for (let intento = 0; intento < 3; intento++) {
+            try {
+                return await guardar(data, usuario);
+            }
+            catch (error) {
+                const code = (error as {
+                    code?: string;
+                }).code;
+                if (code !== 'P2034' && code !== 'P2002')
+                    throw error;
+                if (intento === 2)
+                    throw new ErrorClinico(409, 'Hay otra operación sobre la cita. Reintente sin descartar sus notas.');
+                await new Promise(resolve => setTimeout(resolve, 50 * (intento + 1)));
+            }
+        }
+        throw new ErrorClinico(409, 'No se pudo confirmar el guardado.');
+    },
+    findByParams: async (pacienteId: number, psicologoId: number, usuario?: AuthUserPayload) => {
+        autorizar(usuario, psicologoId);
+        return prisma.sesion.findFirst({
+            where: { Cita: { ID_Paciente: pacienteId, ID_Psicologo: psicologoId }, Expediente: { ID_Paciente: pacienteId } },
+            orderBy: { ID_Sesion: 'desc' }, select: sesionClinicaSelect,
+        });
+    },
 };

@@ -1,0 +1,226 @@
+{
+  "hito": 2,
+  "fecha": "2026-11-03",
+  "rama": "kelvin",
+  "commit_base": "65f19c2",
+  "estado": "cierre_frontend_validado_backend_y_sql_con_evidencia_anterior",
+  "verificacion_anterior": {
+    "hito": 2,
+    "fecha": "2026-11-02",
+    "rama": "kelvin",
+    "commit_base": "65f19c2",
+    "estado": "criterios_validados_en_SQL_Server_2022",
+    "entorno": {
+      "node": "24.22.1",
+      "pnpm": "10.16.1",
+      "prisma": "6.19.3",
+      "sql_server": "SQLEXPRESS 16.0.1000.6",
+      "base_aislada": "Hito2Test_20261102_9b71",
+      "datos": "exclusivamente_sinteticos"
+    },
+    "pruebas": {
+      "backend_api_y_regresiones": {
+        "tests": 132,
+        "pass": 132,
+        "fail": 0,
+        "skipped": 0
+      },
+      "sql_server_real": {
+        "tests": 29,
+        "pass": 29,
+        "fail": 0,
+        "skipped": 0
+      },
+      "frontend_react_y_pdf": {
+        "tests": 13,
+        "pass": 13,
+        "fail": 0,
+        "skipped": 0
+      },
+      "total_correctas": 174,
+      "hito_1_antes_y_despues": 116
+    },
+    "comprobaciones": {
+      "backend_typecheck": "correcto",
+      "backend_build": "correcto",
+      "frontend_typecheck": "correcto",
+      "frontend_build": "correcto",
+      "backend_lint": "sin_script_o_configuracion_preexistente",
+      "node_check_suites": "correcto",
+      "locks_frozen_offline": "correcto_en_ambos_modulos",
+      "pdf": "bytes_y_render_Poppler_inspeccionados"
+    },
+    "lint": {
+      "antes": [
+        {
+          "archivo": "clinica-frontend/src/components/citas/CancelarCitaModal.tsx",
+          "linea": 109,
+          "regla": "react-hooks/set-state-in-effect",
+          "severidad": 2
+        },
+        {
+          "archivo": "clinica-frontend/src/components/citas/SesionModal.tsx",
+          "linea": 222,
+          "regla": "react-hooks/exhaustive-deps",
+          "severidad": 1
+        },
+        {
+          "archivo": "clinica-frontend/src/components/tests/TestAplicarModal.tsx",
+          "linea": 32,
+          "regla": "react-hooks/set-state-in-effect",
+          "severidad": 2
+        },
+        {
+          "archivo": "clinica-frontend/src/components/tests/TestHistorialPaciente.tsx",
+          "linea": 67,
+          "regla": "react-hooks/exhaustive-deps",
+          "severidad": 1
+        },
+        {
+          "archivo": "clinica-frontend/src/components/tests/TestHistorialPaciente.tsx",
+          "linea": 69,
+          "regla": "@typescript-eslint/no-unused-vars",
+          "severidad": 2
+        }
+      ],
+      "despues": [
+        {
+          "archivo": "clinica-frontend/src/components/tests/TestAplicarModal.tsx",
+          "linea": 32,
+          "regla": "react-hooks/set-state-in-effect",
+          "severidad": 2
+        },
+        {
+          "archivo": "clinica-frontend/src/components/tests/TestHistorialPaciente.tsx",
+          "linea": 67,
+          "regla": "react-hooks/exhaustive-deps",
+          "severidad": 1
+        },
+        {
+          "archivo": "clinica-frontend/src/components/tests/TestHistorialPaciente.tsx",
+          "linea": 69,
+          "regla": "@typescript-eslint/no-unused-vars",
+          "severidad": 2
+        }
+      ],
+      "incidencias_nuevas": 0,
+      "errores_pendientes": 2,
+      "advertencias_pendientes": 1
+    },
+    "limitaciones": [
+      "SQLDEV 17.0.1000.7: P1001 al abrir conexiones adicionales; concurrencia no certificada en esa instancia.",
+      "Borradores solo en memoria durante la sesion autenticada; recargar la pestana elimina esa memoria.",
+      "No se modificaron ni repararon datos clinicos reales.",
+      "Persisten F15 y los errores de lint preexistentes indicados en el informe."
+    ],
+    "migracion_requerida": false,
+    "commit_realizado": false,
+    "push_realizado": false
+  },
+  "cierre": {
+    "fecha": "2026-11-03",
+    "alcance": "Correccion exclusiva de fechas en pruebas y actualizacion de documentacion; sin cambios adicionales en validaciones o codigo del sistema.",
+    "correccion": {
+      "archivo": "clinica-frontend/tests/clinica.test.mjs",
+      "inicio_tratamientos": "2026-11-01",
+      "fechas_finales": [
+        "2026-12-01",
+        "2026-12-02",
+        "2026-12-03"
+      ],
+      "reloj_opcional": "HITO2_TEST_NOW: solo Date con mock.timers; se restaura despues de cada prueba.",
+      "regresion_nueva": "El formulario rechaza 2026-10-31 como fin de un tratamiento que empieza el 2026-11-01, conserva el dato y permite corregirlo."
+    },
+    "comprobaciones": {
+      "frontend_reloj_real": {
+        "comando": "npm test",
+        "codigo_salida": 0,
+        "tests": 14,
+        "pass": 14,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      },
+      "frontend_reloj_2027": {
+        "comando": "HITO2_TEST_NOW=2027-07-15T15:00:00.000Z npm test",
+        "reloj": "2027-07-15T15:00:00.000Z",
+        "codigo_salida": 0,
+        "tests": 14,
+        "pass": 14,
+        "fail": 0,
+        "skipped": 0,
+        "cancelled": 0
+      },
+      "typecheck": {
+        "comando": "npm run typecheck",
+        "codigo_salida": 0,
+        "resultado": "correcto"
+      },
+      "build": {
+        "comando": "npm run build",
+        "codigo_salida": 0,
+        "resultado": "correcto",
+        "advertencias": "Se conservan los avisos anteriores de bundle, CSS y datos de compatibilidad."
+      },
+      "lint": {
+        "comando": "npm run lint -- --format json",
+        "codigo_salida": 1,
+        "incidencias_nuevas": 0,
+        "errores_preexistentes": 2,
+        "advertencias_preexistentes": 1,
+        "incidencias": [
+          {
+            "archivo": "clinica-frontend/src/components/tests/TestAplicarModal.tsx",
+            "linea": 32,
+            "regla": "react-hooks/set-state-in-effect",
+            "severidad": 2
+          },
+          {
+            "archivo": "clinica-frontend/src/components/tests/TestHistorialPaciente.tsx",
+            "linea": 67,
+            "regla": "react-hooks/exhaustive-deps",
+            "severidad": 1
+          },
+          {
+            "archivo": "clinica-frontend/src/components/tests/TestHistorialPaciente.tsx",
+            "linea": 69,
+            "regla": "@typescript-eslint/no-unused-vars",
+            "severidad": 2
+          }
+        ]
+      },
+      "diff_check": {
+        "comando": "git diff --check",
+        "codigo_salida": 0
+      },
+      "node_check": {
+        "comando": "node --check clinica-frontend/tests/clinica.test.mjs",
+        "codigo_salida": 0
+      }
+    },
+    "backend_y_sql": {
+      "reejecutados_en_este_cierre": false,
+      "fecha_evidencia_anterior": "2026-11-02",
+      "backend_api_y_regresiones": 132,
+      "sql_server_real": 29,
+      "referencia": "verificacion_anterior: resultados conservados, no representan nuevas ejecuciones del 2026-11-03."
+    },
+    "otros_resultados_anteriores_no_reejecutados": [
+      "Typecheck/build backend",
+      "Lockfiles frozen/offline",
+      "Render e inspeccion visual de PDF con Poppler"
+    ],
+    "pendientes_conservados": [
+      "F15: desajuste previo build/start del backend.",
+      "2 errores y 1 advertencia de lint preexistentes.",
+      "SQLDEV 17.0.1000.7: fallo P1001 de conexiones adicionales; no certificado en esa instancia."
+    ],
+    "commit_autorizado": {
+      "mensaje": "feat(clinica): completar registro transaccional de consultas (hito 2)",
+      "alcance": "Solo los 39 archivos del inventario del Hito 2, incluida la correccion de pruebas y documentacion.",
+      "env_y_credenciales_excluidos": true,
+      "push_autorizado": false,
+      "identificacion": "Este documento forma parte del commit de cierre; consultar el historial Git para su hash."
+    }
+  }
+}

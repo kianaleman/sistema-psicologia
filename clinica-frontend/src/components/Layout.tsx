@@ -1,3 +1,4 @@
+import { limpiarBorradoresSesion } from '../services/borradoresSesion';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import { Toaster, toast } from 'sonner';
 import type { ReactNode } from 'react';
@@ -304,6 +305,7 @@ export default function Layout() {
   const puedeVerTutores = esAdmin || esRecepcion || esPsicologo;
 
   const handleLogout = () => {
+    limpiarBorradoresSesion();
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
     toast.info('Sesión cerrada correctamente');

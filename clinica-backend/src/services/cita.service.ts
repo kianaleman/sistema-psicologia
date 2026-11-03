@@ -36,6 +36,13 @@ interface CreateCitaDTO {
 
 interface UpdateCitaDTO extends Partial<CreateCitaDTO> {}
 
+const traducirConflictoCita = (error: unknown): never => {
+  if ((error as { code?: string }).code === 'P2025') {
+    throw new Error('La cita cambió o ya tiene una sesión. Actualice la agenda antes de reintentar.');
+  }
+  throw error;
+};
+
 const validarUsuarioAutenticado = (usuario?: AuthUserPayload) => {
   if (!usuario) {
     throw new Error('Acceso no autorizado.');
@@ -379,6 +386,8 @@ export const CitaService = {
     // Reasignar una consulta ya registrada otorgaría sus notas al nuevo
     // profesional. Una corrección histórica requiere un flujo distinto.
     if (result.Sesion && (
+      (data.ID_EstadoCita !== undefined && data.ID_EstadoCita !== ESTADOS_CITA.REALIZADA)
+      ||
       (data.ID_Psicologo !== undefined && data.ID_Psicologo !== result.ID_Psicologo)
       || (data.ID_Paciente !== undefined && data.ID_Paciente !== result.ID_Paciente)
     )) {
@@ -442,6 +451,11 @@ export const CitaService = {
       await tx.cita.update({
         where: {
           ID_Cita: id,
+          ID_Paciente: oldPaciente,
+          ID_Psicologo: oldPsicologo,
+          ID_EstadoCita: oldEstado,
+          // Si se registró una sesión desde la lectura inicial, no reescribirla.
+          ...(result.Sesion ? {} : { Sesion: null }),
         },
         data: {
           FechaCita: fechaSoloDia,
@@ -481,7 +495,7 @@ export const CitaService = {
           });
         }
       }
-    });
+    }).catch(traducirConflictoCita);
 
     return {
       message: 'Cita actualizada correctamente',
@@ -512,6 +526,8 @@ export const CitaService = {
     return await prisma.cita.update({
       where: {
         ID_Cita: id,
+        ID_EstadoCita: ESTADOS_CITA.PENDIENTE,
+        Sesion: null,
       },
       data: {
         ID_EstadoCita: ESTADOS_CITA.CANCELADA,
@@ -519,7 +535,7 @@ export const CitaService = {
         NotasCancelacion: notas,
       },
       select: citaResumenSelect,
-    });
+    }).catch(traducirConflictoCita);
   },
 
   procesarInasistencias: async () => {

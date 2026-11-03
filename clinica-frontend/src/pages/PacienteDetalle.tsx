@@ -1,3 +1,4 @@
+import { prepararPDFExpediente } from '../services/expedientePaciente';
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -139,47 +140,10 @@ type RelacionTutorVista = {
   Tutor?: TutorVista;
 };
 
-type TratamientoVista = {
-  Frecuencia?: string;
-  FechaInicio?: string;
-  Tratamiento_Farmaceutico?: {
-    Nombre_Medicamento?: string;
-    Dosis?: string;
-  } | null;
-  Tratamiento_Terapeutico?: {
-    Objetivo?: string | null;
-  } | null;
-};
+type TratamientoVista = NonNullable<SesionDetalleData['Tratamiento']>[number];
 
 type SesionVista = SesionDetalleData & {
   Tratamiento?: TratamientoVista[];
-};
-
-type ExpedientePDFResumen = {
-  ID_Expediente?: number;
-  No_Expediente?: string;
-};
-
-type ExpedienteCompletoConNumero = ExpedienteCompleto & {
-  expediente?: ExpedientePDFResumen | null;
-  Expediente?: ExpedientePDFResumen | null;
-};
-
-type PacienteConExpedientePDF = PacienteDetalleData & {
-  Expediente?: ExpedientePDFResumen | null;
-  expediente?: ExpedientePDFResumen | null;
-  expedientes?: ExpedientePDFResumen[];
-};
-
-type SesionPDFDetalle = SesionVista & {
-  ID_Cita?: number;
-  FechaCita?: string;
-  HoraCita?: string;
-  Cita?: CitaDetalleData | null;
-  Expediente?: ExpedientePDFResumen | null;
-  Psicologo?: CitaDetalleData['Psicologo'];
-  TipoDeCita?: CitaDetalleData['TipoDeCita'];
-  MotivoConsulta?: string | null;
 };
 
 type InfoItemProps = {
@@ -201,7 +165,7 @@ function InfoItem({ label, value, mono = false }: InfoItemProps) {
 
 export default function PacienteDetalle() {
   const { id } = useParams();
-  const { expediente, loading, helpers } = usePacienteDetalle(id);
+  const { expediente, loading, error, helpers } = usePacienteDetalle(id);
   const [tab, setTab] = useState<'info' | 'citas' | 'sesiones' | 'tests'>('info');
 
   if (loading) {
@@ -222,7 +186,7 @@ export default function PacienteDetalle() {
           <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-rose-600 shadow-sm">
             <Icons.Empty />
           </div>
-          <p className="text-lg font-black">No se encontró el expediente del paciente.</p>
+          <p className="text-lg font-black">{error || 'No se encontró el expediente del paciente.'}</p>
         </div>
 
         <Link to="/pacientes" className="btn rounded-xl border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
@@ -277,36 +241,8 @@ export default function PacienteDetalle() {
 
   const handleDescargarExpediente = () => {
     try {
-      const expedienteConNumero = expediente as ExpedienteCompletoConNumero;
-      const pacienteConExpediente = paciente as PacienteConExpedientePDF;
-
-      const expedientePaciente =
-        pacienteConExpediente.Expediente ||
-        pacienteConExpediente.expediente ||
-        pacienteConExpediente.expedientes?.[0] ||
-        expedienteConNumero.expediente ||
-        expedienteConNumero.Expediente ||
-        null;
-
-      const citasPorId = new Map(citas.map((cita) => [cita.ID_Cita, cita]));
-
-      const pacientePDF = {
-        ...paciente,
-        Expediente: expedientePaciente,
-      } as Parameters<typeof generarPDFExpediente>[0];
-
-      const historialPDF = sesiones.map((sesion) => {
-        const sesionPDF = sesion as SesionPDFDetalle;
-        const citaSesion = sesionPDF.Cita || citasPorId.get(Number(sesionPDF.ID_Cita)) || null;
-
-        return {
-          ...sesionPDF,
-          Cita: citaSesion,
-          Expediente: sesionPDF.Expediente || expedientePaciente,
-        };
-      }) as Parameters<typeof generarPDFExpediente>[1];
-
-      generarPDFExpediente(pacientePDF, historialPDF);
+      const documento = prepararPDFExpediente(expediente, Number(id));
+      generarPDFExpediente(documento.paciente, documento.sesiones);
       toast.success('Expediente generado correctamente');
     } catch (error: unknown) {
       console.error('Error al generar expediente:', error);
@@ -714,18 +650,19 @@ export default function PacienteDetalle() {
                               {tratamientos.map((t: TratamientoVista, i: number) => (
                                 <div key={`${s.ID_Sesion}-tratamiento-${i}`} className="rounded-2xl border border-slate-100 bg-white p-4 text-sm text-slate-600">
                                   <p><span className="font-bold text-slate-700">Fecha inicio:</span> {helpers.formatearFecha(t.FechaInicio)}</p>
+                                  <p><span className="font-bold text-slate-700">Fecha fin:</span> {helpers.formatearFecha(t.FechaFin)}</p>
                                   <p><span className="font-bold text-slate-700">Frecuencia:</span> {t.Frecuencia || 'N/A'}</p>
 
                                   {t.Tratamiento_Farmaceutico && (
                                     <p>
                                       <span className="font-bold text-slate-700">Medicamento:</span> {t.Tratamiento_Farmaceutico.Nombre_Medicamento || 'N/A'}
-                                      {t.Tratamiento_Farmaceutico.Dosis ? ` - ${t.Tratamiento_Farmaceutico.Dosis}` : ''}
+                                      {t.Tratamiento_Farmaceutico.Dosis ? ` - ${t.Tratamiento_Farmaceutico.Dosis}` : ''} · {t.Tratamiento_Farmaceutico.ViaAdministracion?.Nombre_De_Presentacion}
                                     </p>
                                   )}
 
                                   {t.Tratamiento_Terapeutico && (
                                     <p>
-                                      <span className="font-bold text-slate-700">Objetivo terapéutico:</span> {t.Tratamiento_Terapeutico.Objetivo || 'N/A'}
+                                      <span className="font-bold text-slate-700">Objetivo terapéutico:</span> {t.Tratamiento_Terapeutico.Objetivo || 'N/A'} · {t.Tratamiento_Terapeutico.TipoDe_Terapia?.Nombre_De_Terapia}
                                     </p>
                                   )}
                                 </div>

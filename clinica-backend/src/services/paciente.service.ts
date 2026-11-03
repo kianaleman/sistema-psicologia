@@ -1,7 +1,8 @@
-import { PrismaClient, type Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
+import { expedienteSelect, sesionClinicaSelect } from './sesion.projection.js';
 import type { AuthUserPayload } from '../middlewares/auth.middleware.js';
 
-const prisma = new PrismaClient();
 
 interface CreatePacienteDTO {
   nombre: string;
@@ -92,7 +93,7 @@ const construirWhereCitasPaciente = (
     ID_Paciente: pacienteId,
   };
 
-  if (usuario.esPsicologo) {
+  if (usuario.esPsicologo && !usuario.esAdmin) {
     where.ID_Psicologo = validarPsicologoVinculado(usuario);
   }
 
@@ -168,18 +169,11 @@ const construirNumeroExpediente = (pacienteId: number) => {
   return `EXP-${pacienteId}-${Date.now()}`;
 };
 
-const expedienteSelect = {
-  ID_Expediente: true,
-  No_Expediente: true,
-  FechaIngreso: true,
-  ID_Paciente: true,
-} satisfies Prisma.ExpedienteSelect;
-
 const citaBaseSelect = {
   ID_Cita: true,
+  ID_Paciente: true,
   FechaCita: true,
   HoraCita: true,
-  MotivoConsulta: true,
   ID_EstadoCita: true,
   ID_Psicologo: true,
   EstadoCita: {
@@ -194,42 +188,13 @@ const citaBaseSelect = {
   },
   Psicologo: {
     select: {
+      ID_Psicologo: true,
+      CodigoMinsa: true,
       Nombre: true,
       Apellido: true,
     },
   },
 } satisfies Prisma.CitaSelect;
-
-const sesionSelect = {
-  ID_Sesion: true,
-  ID_Expediente: true,
-  HoraDeInicio: true,
-  HoraFinal: true,
-  Observaciones: true,
-  DiagnosticoDiferencial: true,
-  HistorialDeEvolucion: true,
-  Criterios_DeDiagnostico: true,
-  Expediente: {
-    select: expedienteSelect,
-  },
-  Tratamiento: {
-    select: {
-      Frecuencia: true,
-      FechaInicio: true,
-      Tratamiento_Farmaceutico: {
-        select: {
-          Nombre_Medicamento: true,
-          Dosis: true,
-        },
-      },
-      Tratamiento_Terapeutico: {
-        select: {
-          Objetivo: true,
-        },
-      },
-    },
-  },
-} satisfies Prisma.SesionSelect;
 
 export const PacienteService = {
   getAll: async (usuario?: AuthUserPayload) => {
@@ -270,8 +235,9 @@ export const PacienteService = {
     const citaSelect: Prisma.CitaSelect = puedeVerSesiones
       ? {
           ...citaBaseSelect,
+          MotivoConsulta: true,
           Sesion: {
-            select: sesionSelect,
+            select: sesionClinicaSelect,
           },
         }
       : citaBaseSelect;
@@ -335,7 +301,7 @@ export const PacienteService = {
 
     if (!paciente) return null;
 
-    let expediente = await prisma.expediente.findFirst({
+    const expediente = await prisma.expediente.findFirst({
       where: {
         ID_Paciente: id,
       },
@@ -344,17 +310,6 @@ export const PacienteService = {
       },
       select: expedienteSelect,
     });
-
-    if (!expediente) {
-      expediente = await prisma.expediente.create({
-        data: {
-          No_Expediente: construirNumeroExpediente(id),
-          FechaIngreso: new Date(),
-          ID_Paciente: id,
-        },
-        select: expedienteSelect,
-      });
-    }
 
     const { Cita: citasConSesion, ...pacienteSinCitas } = paciente;
 
@@ -376,14 +331,20 @@ export const PacienteService = {
 
             const { Sesion, ...datosCita } = citaSesion;
 
+            // La selección clínica solo se incluye en esta rama de permisos.
+            const detalle = Sesion as unknown as Prisma.SesionGetPayload<{ select: typeof sesionClinicaSelect }>;
+            if (!detalle.Expediente || detalle.Expediente.ID_Paciente !== id
+              || detalle.ID_Expediente !== expediente?.ID_Expediente) {
+              throw new Error('El historial contiene relaciones clínicas incompatibles. Requiere revisión antes de consultar o exportar.');
+            }
             return {
-              ...(Sesion as Record<string, unknown>),
-              Expediente: (Sesion as { Expediente?: unknown }).Expediente || expediente,
-              ID_Expediente: (Sesion as { ID_Expediente?: number }).ID_Expediente || expediente.ID_Expediente,
+              ...detalle,
               Psicologo: datosCita.Psicologo,
               FechaCita: datosCita.FechaCita,
               HoraCita: datosCita.HoraCita,
               ID_Cita: datosCita.ID_Cita,
+              ID_Paciente: id,
+              ID_Psicologo: datosCita.ID_Psicologo,
             };
           })
       : [];
@@ -602,105 +563,6 @@ export const PacienteService = {
   },
 
   getHistorialPaciente: async (id: number, usuario?: AuthUserPayload) => {
-    const usuarioActual = validarPuedeVerDatosBasicos(usuario);
-    const puedeVerSesiones = validarPuedeVerSesionesClinicas(usuarioActual);
-    const whereCitas = construirWhereCitasPaciente(id, usuarioActual);
-
-    const citasConSesion = await prisma.cita.findMany({
-      where: {
-        ...whereCitas,
-        ID_EstadoCita: 2,
-      },
-      include: {
-        Psicologo: true,
-        ...(puedeVerSesiones
-          ? {
-              Sesion: {
-                include: {
-                  Expediente: true,
-                  Tratamiento: {
-                    include: {
-                      Tratamiento_Farmaceutico: {
-                        include: {
-                          ViaAdministracion: true,
-                        },
-                      },
-                      Tratamiento_Terapeutico: {
-                        include: {
-                          TipoDe_Terapia: true,
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            }
-          : {}),
-      },
-      orderBy: {
-        FechaCita: 'desc',
-      },
-    });
-
-    const citas = citasConSesion.map((cita) => {
-      const { Sesion, ...datosCita } = cita as typeof cita & {
-        Sesion?: unknown;
-      };
-
-      return datosCita;
-    });
-
-    const sesiones = puedeVerSesiones
-      ? citasConSesion
-          .filter((cita) => Boolean((cita as { Sesion?: unknown }).Sesion))
-          .map((cita) => {
-            const citaSesion = cita as typeof cita & {
-              Sesion: NonNullable<unknown>;
-            };
-
-            const { Sesion, ...datosCita } = citaSesion;
-
-            return {
-              ...(Sesion as Record<string, unknown>),
-              Psicologo: datosCita.Psicologo,
-              FechaCita: datosCita.FechaCita,
-              HoraCita: datosCita.HoraCita,
-              ID_Cita: datosCita.ID_Cita,
-            };
-          })
-      : [];
-
-    let expediente = await prisma.expediente.findFirst({
-      where: {
-        ID_Paciente: id,
-      },
-      orderBy: {
-        ID_Expediente: 'asc',
-      },
-      select: expedienteSelect,
-    });
-
-    if (!expediente) {
-      expediente = await prisma.expediente.create({
-        data: {
-          No_Expediente: construirNumeroExpediente(id),
-          FechaIngreso: new Date(),
-          ID_Paciente: id,
-        },
-        select: expedienteSelect,
-      });
-    }
-
-    const sesionesConExpediente = sesiones.map((sesion) => ({
-      ...sesion,
-      Expediente: (sesion as { Expediente?: unknown }).Expediente || expediente,
-      ID_Expediente: (sesion as { ID_Expediente?: number }).ID_Expediente || expediente.ID_Expediente,
-    }));
-
-    return {
-      expediente,
-      citas,
-      sesiones: sesionesConExpediente,
-    };
+    return PacienteService.getExpediente(id, usuario);
   },
 };

@@ -1,6 +1,4 @@
 import { useState, useCallback } from "react";
-import { toast } from "sonner";
-import { api } from "../services/api";
 import { useCitas } from "../hooks/useCitas";
 import { usePacientes } from "../hooks/usePacientes";
 import type {
@@ -143,33 +141,14 @@ export default function Citas() {
 
   const confirmarCancelacion = async (motivoId: number, nota: string) => {
     if (idCancelar) {
-      await acciones.cancelarCita(idCancelar, motivoId, nota);
+      const confirmada = await acciones.cancelarCita(idCancelar, motivoId, nota);
+      if (!confirmada) throw new Error('No se pudo cancelar la cita. Puede reintentar.');
       setIdCancelar(null);
     }
   };
 
-  const obtenerMensajeError = (error: unknown) => {
-    if (error instanceof Error && error.message.trim()) {
-      return error.message;
-    }
-
-    return "Error al finalizar la sesión.";
-  };
-
   const handleFinalizarSesion = async (data: CreateSesionDTO) => {
-    try {
-      await api.sesiones.create(data);
-
-      toast.success("Sesión guardada correctamente");
-      setModalOpen(null);
-      setSelectedCita(null);
-
-      setFiltro("periodo", filtros.periodo);
-    } catch (error: unknown) {
-      const mensaje = obtenerMensajeError(error);
-      toast.error(mensaje);
-      throw error;
-    }
+    await acciones.guardarSesion(data);
   };
 
   const formatearHora = (h: string) => {
@@ -663,6 +642,7 @@ export default function Citas() {
       />
 
       <CancelarCitaModal
+        key={idCancelar ?? "cerrado"}
         isOpen={!!idCancelar}
         onClose={() => setIdCancelar(null)}
         onConfirm={confirmarCancelacion}

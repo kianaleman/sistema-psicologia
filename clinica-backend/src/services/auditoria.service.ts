@@ -1,8 +1,8 @@
-import { PrismaClient, type Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
 import type { Request } from 'express';
 import type { AuthUserPayload } from '../middlewares/auth.middleware.js';
 
-const prisma = new PrismaClient();
 
 type ResultadoAuditoria = 'EXITO' | 'FALLO';
 

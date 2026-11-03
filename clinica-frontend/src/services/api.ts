@@ -1,3 +1,5 @@
+import type { ExpedienteCompleto } from '../hooks/usePacienteDetalle';
+import { limpiarBorradoresSesion } from './borradoresSesion';
 import type {
   Paciente,
   CreatePacienteDTO,
@@ -11,6 +13,7 @@ import type {
   Parentesco,
   MotivoCancelacion,
   CreateSesionDTO,
+  SesionGuardadaResponse,
   Stats,
   CrearAplicacionTestDTO,
   CrearAplicacionTestResponse,
@@ -38,6 +41,7 @@ export class ApiError extends Error {
 }
 
 const limpiarSesion = () => {
+  limpiarBorradoresSesion();
   localStorage.removeItem('token');
   localStorage.removeItem('usuario');
 };
@@ -85,7 +89,7 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     throw new ApiError(mensaje, errorData, response.status);
   }
 
-  
+
 
   return response.json();
 }
@@ -264,7 +268,7 @@ export const api = {
 
   pacientes: {
     getAll: () => request<Paciente[]>('/pacientes'),
-    getOne: (id: string | number) => request<unknown>(`/pacientes/${id}/expediente`),
+    getOne: (id: string | number, signal?: AbortSignal) => request<ExpedienteCompleto>(`/pacientes/${id}/expediente`, { signal }),
     create: (data: CreatePacienteDTO) => request<Paciente>('/pacientes', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -277,7 +281,7 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ Activo: estado }),
     }),
-    getHistorial: (id: number) => request<unknown[]>(`/pacientes/${id}/historial`),
+    getHistorial: (id: number, signal?: AbortSignal) => request<ExpedienteCompleto>(`/pacientes/${id}/historial`, { signal }),
   },
 
   tutores: {
@@ -314,7 +318,7 @@ export const api = {
   },
 
   sesiones: {
-    create: (data: CreateSesionDTO) => request<unknown>('/sesiones', { method: 'POST', body: JSON.stringify(data) }),
+    create: (data: CreateSesionDTO) => request<SesionGuardadaResponse>('/sesiones', { method: 'POST', body: JSON.stringify(data) }),
   },
 
   facturas: {

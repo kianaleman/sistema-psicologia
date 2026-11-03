@@ -1,3 +1,4 @@
+import { limpiarBorradoresSesion } from '../services/borradoresSesion';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -15,6 +16,7 @@ export function useLogin() {
     try {
       setLoading(true);
 
+      limpiarBorradoresSesion();
       localStorage.removeItem('token');
       localStorage.removeItem('usuario');
 

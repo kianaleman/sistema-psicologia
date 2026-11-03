@@ -19,6 +19,8 @@ const getStatusFromError = (message: string) => {
     return 403;
   }
 
+  if (lowerMessage.includes('la cita cambió')) return 409;
+
   if (message === 'El psicólogo ya tiene una cita agendada en este horario.') {
     return 409;
   }

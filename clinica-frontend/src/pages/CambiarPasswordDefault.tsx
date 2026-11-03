@@ -1,3 +1,4 @@
+import { limpiarBorradoresSesion } from '../services/borradoresSesion';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -47,6 +48,7 @@ export default function CambiarPasswordDefault() {
   };
 
   const handleCancelarSesion = () => {
+    limpiarBorradoresSesion();
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
     navigate('/', { replace: true });

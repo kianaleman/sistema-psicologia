@@ -9,6 +9,8 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 const getStatusFromError = (message: string) => {
   const lowerMessage = message.toLowerCase();
 
+  if (lowerMessage.includes('relaciones clínicas incompatibles')) return 409;
+
   if (lowerMessage.includes('no autorizado')) return 401;
 
   if (
@@ -60,6 +62,7 @@ export const getExpediente = async (req: Request, res: Response): Promise<void> 
       },
     });
 
+    res.setHeader('Cache-Control', 'no-store');
     res.json(expediente);
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Error al obtener expediente');
@@ -175,6 +178,8 @@ export const getHistorialPaciente = async (req: Request, res: Response): Promise
       },
     });
 
+    if (!historial) { res.status(404).json({ error: 'Paciente no encontrado' }); return; }
+    res.setHeader('Cache-Control', 'no-store');
     res.json(historial);
   } catch (error: unknown) {
     const message = getErrorMessage(error, 'Error buscando historial clínico');

@@ -1,98 +1,9 @@
-import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { api } from '../../services/api';
+import { usePacienteDetalle } from '../../hooks/usePacienteDetalle';
+import { prepararPDFReceta } from '../../services/expedientePaciente';
 import { generarPDFReceta } from '../../services/pdfGenerator';
-import type { Cita } from '../../types';
-
-interface HistorialModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  cita: Cita | null;
-}
-
-type ExpedienteVista = {
-  ID_Expediente?: number;
-  No_Expediente?: string | null;
-};
-
-type PsicologoVista = {
-  ID_Psicologo?: number;
-  Nombre?: string;
-  Apellido?: string;
-  CodigoMinsa?: string;
-};
-
-type TipoTerapiaVista = {
-  Nombre_De_Terapia?: string;
-  NombreDeTerapia?: string;
-};
-
-type TratamientoFarmaceuticoVista = {
-  Nombre_Medicamento?: string;
-  NombreMedicamento?: string;
-  Dosis?: string;
-};
-
-type TratamientoTerapeuticoVista = {
-  Objetivo?: string;
-  TipoDeTerapia?: TipoTerapiaVista;
-};
-
-type TratamientoVista = {
-  ID_Tratamiento?: number;
-  Frecuencia?: string;
-  Tratamiento_Farmaceutico?: TratamientoFarmaceuticoVista | null;
-  TratamientoFarmaceutico?: TratamientoFarmaceuticoVista | null;
-  Tratamiento_Terapeutico?: TratamientoTerapeuticoVista | null;
-  TratamientoTerapeutico?: TratamientoTerapeuticoVista | null;
-};
-
-type SesionHistorial = {
-  ID_Sesion?: number;
-  ID_Cita?: number;
-  ID_Expediente?: number;
-  HoraDeInicio?: string | null;
-  HoraFinal?: string | null;
-  Observaciones?: string | null;
-  DiagnosticoDiferencial?: string | null;
-  HistorialDeEvolucion?: string | null;
-  HistorialDevolucion?: string | null;
-  Criterios_DeDiagnostico?: string | null;
-  CriteriosDeDiagnostico?: string | null;
-  FechaReal?: string | null;
-  Expediente?: ExpedienteVista | null;
-  Psicologo?: PsicologoVista | null;
-  Tratamiento?: TratamientoVista[];
-  Cita?: {
-    FechaCita?: string | null;
-    Psicologo?: PsicologoVista | null;
-  } | null;
-};
-
-type PacienteExpedienteVista = {
-  ID_Paciente?: number;
-  Nombre?: string;
-  Apellido?: string;
-  Expediente?: ExpedienteVista | ExpedienteVista[] | null;
-};
-
-type CitaExpedienteVista = Cita & {
-  Sesion?: SesionHistorial | null;
-};
-
-type ExpedienteCompletoResponse = {
-  paciente?: PacienteExpedienteVista;
-  expediente?: ExpedienteVista | null;
-  Expediente?: ExpedienteVista | null;
-  expedientes?: ExpedienteVista[];
-  sesiones?: SesionHistorial[];
-  citas?: CitaExpedienteVista[];
-};
-
-
-type SesionParaPDF = Parameters<typeof generarPDFReceta>[0];
-type TratamientoParaPDF = NonNullable<SesionParaPDF['Tratamiento']>[number];
-
+import type { Cita, TratamientoClinico } from '../../types';
+interface HistorialModalProps { isOpen: boolean; onClose: () => void; cita: Cita | null }
 const Icons = {
   Empty: () => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-12 h-12 mb-2 opacity-50">
@@ -101,332 +12,22 @@ const Icons = {
   ),
 };
 
-const isObject = (value: unknown): value is Record<string, unknown> => {
-  return typeof value === 'object' && value !== null;
-};
 
-const obtenerPacienteId = (cita: Cita | null) => {
-  return cita?.Paciente?.ID_Paciente || cita?.ID_Paciente || null;
-};
-
-const obtenerNombrePaciente = (cita: Cita | null, expediente?: ExpedienteCompletoResponse | null) => {
-  const nombre = cita?.Paciente?.Nombre || expediente?.paciente?.Nombre || 'Paciente';
-  const apellido = cita?.Paciente?.Apellido || expediente?.paciente?.Apellido || '';
-
-  return `${nombre} ${apellido}`.trim();
-};
-
-const obtenerSesionesDesdeRespuesta = (data: unknown): SesionHistorial[] => {
-  if (Array.isArray(data)) return data as SesionHistorial[];
-
-  if (isObject(data) && Array.isArray(data.sesiones)) {
-    return data.sesiones as SesionHistorial[];
-  }
-
-  return [];
-};
-
-const obtenerNoExpedienteDesdePaciente = (paciente?: PacienteExpedienteVista) => {
-  const expediente = paciente?.Expediente;
-
-  if (Array.isArray(expediente)) {
-    return expediente.find((item) => item.No_Expediente)?.No_Expediente || null;
-  }
-
-  return expediente?.No_Expediente || null;
-};
-
-const obtenerNoExpedienteDesdeSesiones = (sesiones: SesionHistorial[]) => {
-  return sesiones.find((sesion) => sesion.Expediente?.No_Expediente)?.Expediente?.No_Expediente || null;
-};
-
-const obtenerNoExpedienteDesdeCitas = (citas?: CitaExpedienteVista[]) => {
-  return citas
-    ?.find((citaItem) => citaItem.Sesion?.Expediente?.No_Expediente)
-    ?.Sesion?.Expediente?.No_Expediente || null;
-};
-
-const obtenerFallbackIdExpediente = (sesiones: SesionHistorial[]) => {
-  const idExpediente = sesiones.find((sesion) => sesion.ID_Expediente)?.ID_Expediente;
-
-  return idExpediente ? `ID ${idExpediente}` : null;
-};
-
-const obtenerNoExpediente = (
-  expedienteCompleto: ExpedienteCompletoResponse | null,
-  sesiones: SesionHistorial[],
-) => {
-  return expedienteCompleto?.expediente?.No_Expediente ||
-    expedienteCompleto?.Expediente?.No_Expediente ||
-    expedienteCompleto?.expedientes?.find((item) => item.No_Expediente)?.No_Expediente ||
-    obtenerNoExpedienteDesdePaciente(expedienteCompleto?.paciente) ||
-    obtenerNoExpedienteDesdeSesiones(sesiones) ||
-    obtenerNoExpedienteDesdeCitas(expedienteCompleto?.citas) ||
-    obtenerFallbackIdExpediente(sesiones) ||
-    null;
-};
-
-const esFechaBaseSinValorClinico = (fecha: Date) => {
-  return fecha.getFullYear() <= 1970;
-};
-
-const formatearFecha = (fecha?: string | null) => {
-  if (!fecha) return 'Fecha no registrada';
-
-  try {
-    const fechaDate = new Date(fecha);
-
-    if (!Number.isNaN(fechaDate.getTime())) {
-      if (esFechaBaseSinValorClinico(fechaDate)) {
-        return 'Fecha no registrada';
-      }
-
-      return fechaDate.toLocaleDateString('es-ES', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      });
-    }
-
-    const parts = fecha.toString().split('T')[0].split('-');
-
-    if (parts.length === 3) {
-      const fechaManual = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-
-      if (esFechaBaseSinValorClinico(fechaManual)) {
-        return 'Fecha no registrada';
-      }
-
-      return fechaManual.toLocaleDateString('es-ES', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      });
-    }
-
-    return fecha;
-  } catch {
-    return fecha;
-  }
-};
-
-const obtenerCitaDeSesion = (
-  sesion: SesionHistorial,
-  expedienteCompleto: ExpedienteCompletoResponse | null,
-) => {
-  if (sesion.Cita?.FechaCita) return sesion.Cita;
-
-  return expedienteCompleto?.citas?.find((citaItem) => citaItem.ID_Cita === sesion.ID_Cita) || null;
-};
-
-const obtenerFechaSesion = (
-  sesion: SesionHistorial,
-  expedienteCompleto: ExpedienteCompletoResponse | null,
-) => {
-  // No usar HoraDeInicio como fecha clinica.
-  // En SQL Server/Prisma un campo Time puede serializarse como 1970-01-01T...
-  const citaSesion = obtenerCitaDeSesion(sesion, expedienteCompleto);
-
-  return citaSesion?.FechaCita ||
-    sesion.Cita?.FechaCita ||
-    sesion.FechaReal ||
-    null;
-};
-
-const obtenerPsicologoSesion = (sesion: SesionHistorial) => {
-  return sesion.Psicologo || sesion.Cita?.Psicologo || null;
-};
-
-const obtenerCriterios = (sesion: SesionHistorial) => {
-  return sesion.Criterios_DeDiagnostico ||
-    sesion.CriteriosDeDiagnostico ||
-    'No especificados';
-};
-
-const obtenerEvolucion = (sesion: SesionHistorial) => {
-  return sesion.HistorialDeEvolucion ||
-    sesion.HistorialDevolucion ||
-    'No hay evolución registrada.';
-};
-
-const obtenerTratamientoFarmaceutico = (tratamiento: TratamientoVista) => {
-  return tratamiento.Tratamiento_Farmaceutico || tratamiento.TratamientoFarmaceutico || null;
-};
-
-const obtenerTratamientoTerapeutico = (tratamiento: TratamientoVista) => {
-  return tratamiento.Tratamiento_Terapeutico || tratamiento.TratamientoTerapeutico || null;
-};
-
-const obtenerNombreTratamiento = (tratamiento: TratamientoVista) => {
-  const farmaceutico = obtenerTratamientoFarmaceutico(tratamiento);
-  const terapeutico = obtenerTratamientoTerapeutico(tratamiento);
-
-  return farmaceutico?.Nombre_Medicamento ||
-    farmaceutico?.NombreMedicamento ||
-    terapeutico?.Objetivo ||
-    'Tratamiento sin nombre';
-};
-
-const obtenerDetalleTratamiento = (tratamiento: TratamientoVista) => {
-  const farmaceutico = obtenerTratamientoFarmaceutico(tratamiento);
-  const terapeutico = obtenerTratamientoTerapeutico(tratamiento);
-
-  if (farmaceutico) {
-    return `Dosis: ${farmaceutico.Dosis || 'N/A'}`;
-  }
-
-  if (terapeutico) {
-    return `Terapia: ${
-      terapeutico.TipoDeTerapia?.Nombre_De_Terapia ||
-      terapeutico.TipoDeTerapia?.NombreDeTerapia ||
-      'Terapia General'
-    }`;
-  }
-
-  return 'Sin detalle';
-};
-
-
-const normalizarTratamientoParaPDF = (tratamiento: TratamientoVista): TratamientoParaPDF => {
-  const farmaceutico = obtenerTratamientoFarmaceutico(tratamiento);
-  const terapeutico = obtenerTratamientoTerapeutico(tratamiento);
-
-  return {
-    ...(tratamiento.Frecuencia ? { Frecuencia: tratamiento.Frecuencia } : {}),
-    ...(farmaceutico
-      ? {
-          Tratamiento_Farmaceutico: {
-            ...(farmaceutico.Nombre_Medicamento ? { Nombre_Medicamento: farmaceutico.Nombre_Medicamento } : {}),
-            ...(farmaceutico.NombreMedicamento ? { NombreMedicamento: farmaceutico.NombreMedicamento } : {}),
-            ...(farmaceutico.Dosis ? { Dosis: farmaceutico.Dosis } : {}),
-          },
-        }
-      : {}),
-    ...(terapeutico
-      ? {
-          Tratamiento_Terapeutico: {
-            ...(terapeutico.Objetivo ? { Objetivo: terapeutico.Objetivo } : {}),
-            ...(terapeutico.TipoDeTerapia
-              ? {
-                  TipoDeTerapia: {
-                    ...(terapeutico.TipoDeTerapia.Nombre_De_Terapia
-                      ? { Nombre_De_Terapia: terapeutico.TipoDeTerapia.Nombre_De_Terapia }
-                      : {}),
-                    ...(terapeutico.TipoDeTerapia.NombreDeTerapia
-                      ? { NombreDeTerapia: terapeutico.TipoDeTerapia.NombreDeTerapia }
-                      : {}),
-                  },
-                }
-              : {}),
-          },
-        }
-      : {}),
-  };
-};
-
-const normalizarSesionParaPDF = (
-  sesion: SesionHistorial,
-  expedienteCompleto: ExpedienteCompletoResponse | null,
-): SesionParaPDF => {
-  const citaSesion = obtenerCitaDeSesion(sesion, expedienteCompleto);
-  const psicologo = obtenerPsicologoSesion(sesion) || citaSesion?.Psicologo || null;
-  const fechaCita = citaSesion?.FechaCita || sesion.Cita?.FechaCita || sesion.FechaReal || undefined;
-  const tratamientos = Array.isArray(sesion.Tratamiento)
-    ? sesion.Tratamiento.map(normalizarTratamientoParaPDF)
-    : [];
-
-  return {
-    ...(sesion.ID_Sesion ? { ID_Sesion: sesion.ID_Sesion } : {}),
-    ...(fechaCita || psicologo
-      ? {
-          Cita: {
-            ...(fechaCita ? { FechaCita: fechaCita } : {}),
-            ...(psicologo
-              ? {
-                  Psicologo: {
-                    ...(psicologo.Nombre ? { Nombre: psicologo.Nombre } : {}),
-                    ...(psicologo.Apellido ? { Apellido: psicologo.Apellido } : {}),
-                    ...(psicologo.CodigoMinsa ? { CodigoMinsa: psicologo.CodigoMinsa } : {}),
-                  },
-                }
-              : {}),
-          },
-        }
-      : {}),
-    ...(sesion.FechaReal ? { FechaReal: sesion.FechaReal } : {}),
-    ...(sesion.HoraDeInicio ? { HoraDeInicio: sesion.HoraDeInicio } : {}),
-    ...(sesion.DiagnosticoDiferencial ? { DiagnosticoDiferencial: sesion.DiagnosticoDiferencial } : {}),
-    ...(sesion.Observaciones ? { Observaciones: sesion.Observaciones } : {}),
-    ...(obtenerEvolucion(sesion) ? { HistorialDeEvolucion: obtenerEvolucion(sesion) } : {}),
-    ...(obtenerCriterios(sesion) ? { Criterios_DeDiagnostico: obtenerCriterios(sesion) } : {}),
-    ...(tratamientos.length > 0 ? { Tratamiento: tratamientos } : {}),
-  };
-};
-
-export default function HistorialModal({
-  isOpen,
-  onClose,
-  cita,
-}: HistorialModalProps) {
-  const [historial, setHistorial] = useState<SesionHistorial[]>([]);
-  const [expedienteCompleto, setExpedienteCompleto] = useState<ExpedienteCompletoResponse | null>(null);
-  const [numeroExpediente, setNumeroExpediente] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-
-  useEffect(() => {
-    const cargarExpediente = async () => {
-      const pacienteId = obtenerPacienteId(cita);
-
-      if (!pacienteId) {
-        toast.error('No se recibió el ID del paciente para cargar el expediente.');
-        setHistorial([]);
-        setNumeroExpediente(null);
-        return;
-      }
-
-      try {
-        setLoading(true);
-
-        const expedienteData = await api.pacientes.getOne(pacienteId);
-        const expedienteResponse = expedienteData as ExpedienteCompletoResponse;
-        let sesiones = obtenerSesionesDesdeRespuesta(expedienteResponse);
-
-        if (sesiones.length === 0) {
-          const historialData = await api.pacientes.getHistorial(pacienteId);
-          sesiones = obtenerSesionesDesdeRespuesta(historialData);
-        }
-
-        setExpedienteCompleto(expedienteResponse);
-        setHistorial(sesiones);
-        setNumeroExpediente(obtenerNoExpediente(expedienteResponse, sesiones));
-      } catch (error: unknown) {
-        const message = error instanceof Error
-          ? error.message
-          : 'Error al cargar historial. Verifique la conexión al backend.';
-
-        toast.error(message);
-        console.error('Error cargando historial:', error);
-        setExpedienteCompleto(null);
-        setHistorial([]);
-        setNumeroExpediente(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (isOpen) {
-      cargarExpediente();
-    } else {
-      setHistorial([]);
-      setExpedienteCompleto(null);
-      setNumeroExpediente(null);
-    }
-  }, [isOpen, cita]);
-
+const obtenerNombreTratamiento = (t: TratamientoClinico) => t.Tratamiento_Farmaceutico?.Nombre_Medicamento || t.Tratamiento_Terapeutico?.Objetivo || 'Tratamiento';
+const obtenerDetalleTratamiento = (t: TratamientoClinico) => t.Tratamiento_Farmaceutico
+  ? `Dosis: ${t.Tratamiento_Farmaceutico.Dosis} · Vía: ${t.Tratamiento_Farmaceutico.ViaAdministracion?.Nombre_De_Presentacion || 'Sin vía'}`
+  : `Terapia: ${t.Tratamiento_Terapeutico?.TipoDe_Terapia?.Nombre_De_Terapia || 'Sin tipo'}`;
+export default function HistorialModal(props: HistorialModalProps) {
+  if (!props.isOpen || !props.cita) return null;
+  return <HistorialPaciente key={props.cita.ID_Paciente} {...props} />;
+}
+function HistorialPaciente({ isOpen, onClose, cita }: HistorialModalProps) {
+  const pacienteId = cita?.ID_Paciente;
+  const { expediente, loading, error, helpers } = usePacienteDetalle(isOpen && pacienteId ? String(pacienteId) : undefined);
   if (!isOpen) return null;
-
-  const nombrePaciente = obtenerNombrePaciente(cita, expedienteCompleto);
-
+  const historial = expediente?.sesiones ?? [];
+  const nombrePaciente = expediente ? `${expediente.paciente.Nombre} ${expediente.paciente.Apellido}` : 'Cargando paciente…';
+  const numeroExpediente = expediente?.expediente?.No_Expediente;
   return (
     <dialog className="modal modal-open bg-black/50 backdrop-blur-sm">
       <div className="modal-box w-11/12 max-w-4xl bg-white text-slate-800 p-0 overflow-hidden rounded-2xl shadow-2xl">
@@ -459,10 +60,10 @@ export default function HistorialModal({
             <div className="text-center py-20">
               <span className="loading loading-spinner loading-lg text-primary"></span>
             </div>
-          ) : historial.length > 0 ? (
+          ) : error ? (<p role="alert" className="p-8 text-red-700">{error}</p>) : historial.length > 0 ? (
             <div className="space-y-4">
               {historial.map((sesion, index) => {
-                const psicologo = obtenerPsicologoSesion(sesion);
+                const psicologo = sesion.Psicologo;
                 const tratamientos = Array.isArray(sesion.Tratamiento) ? sesion.Tratamiento : [];
 
                 return (
@@ -481,7 +82,7 @@ export default function HistorialModal({
                         <span className="text-lg font-medium truncate">Sesión Clínica</span>
 
                         <span className="text-xs font-normal text-slate-500 uppercase tracking-wider ml-2 truncate">
-                          {formatearFecha(obtenerFechaSesion(sesion, expedienteCompleto))}
+                          {helpers.formatearFecha(sesion.FechaCita)}
                         </span>
                       </div>
 
@@ -489,7 +90,14 @@ export default function HistorialModal({
                         <button
                           type="button"
                           className="btn btn-xs btn-outline btn-success gap-1 z-10"
-                          onClick={() => generarPDFReceta(normalizarSesionParaPDF(sesion, expedienteCompleto), nombrePaciente)}
+                          disabled={loading || !!error || !expediente}
+                          onClick={() => {
+                            if (!expediente) return;
+                            try {
+                              const pdf = prepararPDFReceta(expediente, pacienteId!, sesion.ID_Sesion);
+                              generarPDFReceta(pdf.sesion, pdf.nombrePaciente);
+                            } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo generar el PDF'); }
+                          }}
                         >
                           Imprimir receta
                         </button>
@@ -510,7 +118,7 @@ export default function HistorialModal({
                             {sesion.DiagnosticoDiferencial || 'Sin diagnóstico registrado'}
                           </p>
                           <p className="text-xs text-slate-500 mt-2">
-                            Criterios: {obtenerCriterios(sesion)}
+                            Criterios: {sesion.Criterios_DeDiagnostico || 'Sin criterios'}
                           </p>
                         </div>
 
@@ -529,7 +137,7 @@ export default function HistorialModal({
                               Historial de Evolución
                             </h4>
                             <p className="text-amber-900 italic text-sm bg-amber-50 p-3 rounded-lg border border-amber-100 whitespace-pre-wrap">
-                              {obtenerEvolucion(sesion)}
+                              {sesion.HistorialDeEvolucion || 'Sin evolución registrada'}
                             </p>
                           </div>
                         </div>
@@ -548,7 +156,7 @@ export default function HistorialModal({
                                 <span className="font-bold text-sm text-slate-800">
                                   {obtenerNombreTratamiento(tratamiento)}
                                   <span className="badge badge-sm ml-2">
-                                    {tratamiento.Frecuencia || 'Sin frecuencia'}
+                                    {tratamiento.Frecuencia || 'Sin frecuencia'} · {tratamiento.FechaInicio?.slice(0, 10)} – {tratamiento.FechaFin?.slice(0, 10) || 'Sin fecha final'}
                                   </span>
                                 </span>
 

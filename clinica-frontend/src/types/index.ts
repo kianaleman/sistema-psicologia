@@ -163,7 +163,7 @@ export interface CreatePacienteDTO {
   activo?: boolean;
   esAdulto: boolean;
   paisId: number; // Requerido por el backend
-  
+
   // La dirección principal ahora exige el municipioId
   direccion: DireccionDTO;
 
@@ -238,17 +238,17 @@ export interface Cita {
   Recibo?: ReciboCita | ReciboCita[]; // Para mostrar en UI, aunque en la BD es una tabla intermedia con Cita
 
   // Relaciones anidadas devueltas por Prisma (include)
-  Paciente?: { 
-      ID_Paciente: number; 
-      Nombre: string; 
-      Apellido: string; 
-      PacienteAdulto?: { No_Cedula: string }; 
+  Paciente?: {
+      ID_Paciente: number;
+      Nombre: string;
+      Apellido: string;
+      PacienteAdulto?: { No_Cedula: string };
       Paciente_Menor?: { PartidaDeNacimiento: string };
   };
-  Psicologo?: { 
-      ID_Psicologo: number; 
-      Nombre: string; 
-      Apellido: string; 
+  Psicologo?: {
+      ID_Psicologo: number;
+      Nombre: string;
+      Apellido: string;
       CodigoMinsa: string;
   };
   TipoDeCita?: { Nombre_DeCita: string };
@@ -257,6 +257,14 @@ export interface Cita {
   MotivoCancelacion?: MotivoCancelacion;
 }
 
+export type SesionGuardadaResponse = Omit<Sesion, 'Expediente'> & {
+  ID_Cita: number;
+  ID_Expediente: number;
+  Expediente: ExpedienteResumen;
+  Tratamiento: TratamientoClinico[];
+  creada: boolean;
+};
+
 // DTO estricto mapeado con Zod para el CitaFormModal
 export interface CreateCitaDTO {
   ID_Paciente: number;
@@ -264,8 +272,8 @@ export interface CreateCitaDTO {
   ID_TipoCita: number;
   ID_EstadoCita: number;
   ID_Direccion: number; // Tomará el ID de la clínica o el del paciente
-  FechaCita: string; 
-  HoraCita: string;  
+  FechaCita: string;
+  HoraCita: string;
   MotivoConsulta?: string;
 
   // 👇 DATOS FINANCIEROS (NUEVOS) 👇
@@ -304,7 +312,7 @@ export interface Recibo {
   Observacion?: string;
   ID_Banco?: number;
   Numero_Referencia?: string;
-  
+
   Cita?: Cita;
   MetodoPago?: MetodoPago;
   Banco?: Banco;
@@ -315,23 +323,27 @@ export interface Recibo {
 // ==========================================
 // DTO para la UI de tratamientos dentro de la sesión
 // Sub-interfaz para ordenar el Tratamiento
-export interface TratamientoDTO {
-  id: number; // ID local para manejar la UI, no se envía al backend
+export type TratamientoDTO = {
   Frecuencia: string;
-  Tipo: 'farmaceutico' | 'terapeutico';
   FechaInicio: string;
   FechaFin?: string;
-  // Puede incluir medicina
-  Farmaceutico?: {
-    ID_ViaAdministracion: number;
-    Nombre_Medicamento: string;
-    Dosis: string;
-  };
-  // Puede incluir terapia
-  Terapeutico?: {
-    ID_Tipo_Terapia: number;
-    Objetivo: string;
-  };
+} & ({ Tipo: 'terapeutico'; Terapeutico: { ID_Tipo_Terapia: number; Objetivo: string } }
+  | { Tipo: 'farmaceutico'; Farmaceutico: { ID_ViaAdministracion: number; Nombre_Medicamento: string; Dosis: string } });
+
+export interface TratamientoClinico {
+  ID_Tratamiento: number;
+  Frecuencia: string;
+  FechaInicio: string;
+  FechaFin: string | null;
+  ID_Psicologo_Firma: number | null;
+  Tratamiento_Terapeutico: { ID_Tipo_Terapia: number; Objetivo: string | null; TipoDe_Terapia: { Nombre_De_Terapia: string } | null } | null;
+  Tratamiento_Farmaceutico: { ID_ViaAdministracion: number; Nombre_Medicamento: string; Dosis: string; ViaAdministracion: { Nombre_De_Presentacion: string } | null } | null;
+}
+export interface ExpedienteResumen {
+  ID_Expediente: number;
+  ID_Paciente: number;
+  No_Expediente: string | null;
+  FechaIngreso: string | null;
 }
 
 export interface Sesion {
@@ -344,27 +356,29 @@ export interface Sesion {
   HistorialDeEvolucion: string;
   Criterios_DeDiagnostico: string;
   ID_Expediente?: number;
-  
+
   Cita?: Cita;
   Expediente?: { No_Expediente: string };
+  Sesion_ExploracionPsicologica?: { ID_ExploracionPsicologica: number; ExploracionPsicologica: { Nombre_De_ExploracionPsicologica: string | null } }[];
 }
 
 // DTO estricto mapeado con Zod para registrar nueva sesión
 export interface CreateSesionDTO {
   ID_Cita: number;
-  ID_Expediente: number;
+  ID_Paciente: number;
+  ID_Psicologo: number;
+  ID_Expediente?: number;
   HoraDeInicio: string;
-  HoraFinal: string;
   Observaciones: string;
   DiagnosticoDiferencial: string;
   HistorialDeEvolucion: string;
   Criterios_DeDiagnostico: string;
-  
+
   // Arreglo de IDs de las exploraciones seleccionadas (checkboxes)
-  ExploracionesIds?: number[]; 
-  
+  ExploracionesIds?: number[];
+
   // Objeto anidado para recetar en la misma transacción
-  Tratamiento?: TratamientoDTO; 
+  Tratamientos: TratamientoDTO[];
 }
 
 // ==========================================

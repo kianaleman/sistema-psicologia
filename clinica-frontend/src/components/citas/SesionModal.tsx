@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { 
   Cita, 
   ViaAdministracion, 
@@ -11,19 +11,9 @@ import type {
   Banco,
 } from "../../types";
 import { toast } from "sonner";
+import { useBorradorSesion } from '../../hooks/useBorradorSesion';
+import { borradoresSesion, crearPayloadSesion, tratamientoVacio, hayTratamientoPendiente } from '../../services/borradoresSesion';
 import TestHistorialPaciente from "../tests/TestHistorialPaciente";
-
-// 1. Definimos el estado local del formulario de tratamiento SOLO para la UI
-interface TratamientoLocal {
-  id: number;
-  tipo: "farmacologico" | "terapeutico";
-  frecuencia: string;
-  medicamento: string;
-  dosis: string;
-  viaAdminId: string;
-  objetivo: string;
-  tipoTerapiaId: string;
-}
 
 interface CitaConSesion extends Cita {
   Sesion?: { ID_Sesion?: number | null } | null;
@@ -80,17 +70,6 @@ const Icons = {
   ),
 };
 
-const initialTratamiento: TratamientoLocal = {
-  id: 0,
-  tipo: "terapeutico",
-  frecuencia: "",
-  medicamento: "",
-  dosis: "",
-  viaAdminId: "",
-  objetivo: "",
-  tipoTerapiaId: "",
-};
-
 const crearFechaInput = (fecha: Date) => {
   const year = fecha.getFullYear();
   const month = String(fecha.getMonth() + 1).padStart(2, "0");
@@ -128,27 +107,23 @@ const crearSeguimientoInicial = (cita: Cita | null, catalogos: CatalogosSesion):
   };
 };
 
-export default function SesionModal({
-  isOpen,
-  onClose,
-  onSubmit,
-  onAgendarSeguimiento,
-  onCheckDisponibilidad,
-  cita,
-  catalogos,
-}: Props) {
-  const [datosSesion, setDatosSesion] = useState({
-    observaciones: "",
-    diagnostico: "",
-    historial: "",
-    criterios: "DSM-5",
-  });
-  const [listaTratamientos, setListaTratamientos] = useState<TratamientoLocal[]>([]);
-  const [selectedExploraciones, setSelectedExploraciones] = useState<Set<number>>(new Set());
-  const [formTratamiento, setFormTratamiento] = useState<TratamientoLocal>(initialTratamiento);
-  const [horaInicioSistema, setHoraInicioSistema] = useState<string | null>(null);
-  const [guardando, setGuardando] = useState(false);
-  const [mostrarConfirmacionFechaFutura, setMostrarConfirmacionFechaFutura] = useState(false);
+export default function SesionModal(props: Props) {
+  if (!props.isOpen || !props.cita) return null;
+  return <FormularioSesion key={`${props.cita.ID_Paciente}:${props.cita.ID_Cita}:${props.cita.ID_Psicologo}`} {...props} cita={props.cita} />;
+}
+
+function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onCheckDisponibilidad, cita, catalogos }: Props & { cita: Cita }) {
+  const fechaCita = new Date(String(cita.FechaCita).slice(0, 10) + 'T00:00:00');
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const { borrador, setter, clave } = useBorradorSesion(cita, fechaCita > hoy ? null : new Date().toISOString());
+  const { datosSesion, listaTratamientos, selectedExploraciones, formTratamiento, horaInicioSistema, guardando, errorGuardado } = borrador;
+  const setDatosSesion = setter('datosSesion');
+  const setListaTratamientos = setter('listaTratamientos');
+  const setSelectedExploraciones = setter('selectedExploraciones');
+  const setFormTratamiento = setter('formTratamiento');
+  const setHoraInicioSistema = setter('horaInicioSistema');
+  const setGuardando = setter('guardando');
+  const mostrarConfirmacionFechaFutura = horaInicioSistema === null;
   const [mostrarSeguimiento, setMostrarSeguimiento] = useState(false);
   const [seguimientoForm, setSeguimientoForm] = useState<SeguimientoForm>(() => crearSeguimientoInicial(null, catalogos));
   const [horariosOcupados, setHorariosOcupados] = useState<string[]>([]);
@@ -164,62 +139,6 @@ export default function SesionModal({
 
     return fechaCita;
   };
-
-  const esCitaDeFechaFutura = (fecha?: string | Date | null) => {
-    const fechaCita = obtenerFechaCita(fecha);
-
-    if (!fechaCita) return false;
-
-    const inicioHoy = new Date();
-    inicioHoy.setHours(0, 0, 0, 0);
-
-    const inicioCita = new Date(fechaCita);
-    inicioCita.setHours(0, 0, 0, 0);
-
-    return inicioCita.getTime() > inicioHoy.getTime();
-  };
-
-  const inicializarSesion = useCallback((citaId: number) => {
-    const storageKey = `sesion_inicio_${citaId}`;
-    const horaGuardada = sessionStorage.getItem(storageKey);
-    const horaInicio = horaGuardada || new Date().toISOString();
-
-    if (!horaGuardada) {
-      sessionStorage.setItem(storageKey, horaInicio);
-    }
-
-    setHoraInicioSistema(horaInicio);
-    setDatosSesion({
-      observaciones: "",
-      diagnostico: "",
-      historial: "",
-      criterios: "DSM-5",
-    });
-    setListaTratamientos([]);
-    setSelectedExploraciones(new Set());
-    setFormTratamiento(initialTratamiento);
-    setGuardando(false);
-    setMostrarSeguimiento(false);
-    setSeguimientoForm(crearSeguimientoInicial(cita, catalogos));
-    setHorariosOcupados([]);
-    setAgendandoSeguimiento(false);
-    setSeguimientoAgendado(false);
-  }, [cita, catalogos]);
-
-  useEffect(() => {
-    if (!isOpen || !cita?.ID_Cita) return;
-
-    setGuardando(false);
-
-    if (esCitaDeFechaFutura(cita.FechaCita)) {
-      setHoraInicioSistema(null);
-      setMostrarConfirmacionFechaFutura(true);
-      return;
-    }
-
-    setMostrarConfirmacionFechaFutura(false);
-    inicializarSesion(cita.ID_Cita);
-  }, [isOpen, cita?.ID_Cita, cita?.FechaCita, inicializarSesion]);
 
   useEffect(() => {
     if (!mostrarSeguimiento || !seguimientoForm.fecha || !cita?.ID_Psicologo || !onCheckDisponibilidad) {
@@ -285,14 +204,13 @@ export default function SesionModal({
   const citaConSesion = cita as CitaConSesion | null;
   const idSesionAsociada = citaConSesion?.Sesion?.ID_Sesion || null;
 
-  const limpiarInicioSesion = () => {
-    if (cita?.ID_Cita) {
-      sessionStorage.removeItem(`sesion_inicio_${cita.ID_Cita}`);
-    }
-  };
-
   const handleClose = () => {
-    limpiarInicioSesion();
+    if (borradoresSesion.obtener(clave, horaInicioSistema).guardando) return;
+    const hayCambios = datosSesion.observaciones || datosSesion.diagnostico || datosSesion.historial
+      || datosSesion.criterios !== 'DSM-5' || listaTratamientos.length || selectedExploraciones.size
+      || hayTratamientoPendiente(formTratamiento);
+    if (hayCambios && !window.confirm('¿Descartar los cambios de esta consulta?')) return;
+    borradoresSesion.eliminar(clave);
     onClose();
   };
 
@@ -322,24 +240,14 @@ export default function SesionModal({
     });
   };
 
-  const handleConfirmarFechaFutura = () => {
-    if (!cita?.ID_Cita) return;
-
-    setMostrarConfirmacionFechaFutura(false);
-    inicializarSesion(cita.ID_Cita);
-  };
-
-  const handleCancelarFechaFutura = () => {
-    limpiarInicioSesion();
-    setMostrarConfirmacionFechaFutura(false);
-    onClose();
-  };
+  const handleConfirmarFechaFutura = () => setHoraInicioSistema(new Date().toISOString());
+  const handleCancelarFechaFutura = handleClose;
 
   if (!isOpen || !cita) return null;
 
   if (mostrarConfirmacionFechaFutura) {
     return (
-      <dialog className="modal modal-open bg-black/50 backdrop-blur-sm">
+      <dialog onCancel={(event) => { event.preventDefault(); handleClose(); }} className="modal modal-open bg-black/50 backdrop-blur-sm">
         <div className="modal-box max-w-lg bg-white text-slate-800 rounded-2xl shadow-2xl">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0">
@@ -405,59 +313,24 @@ export default function SesionModal({
       return;
     }
 
-    const horaFinalSistema = new Date().toISOString();
-
-    const tratamientosFormateados: NonNullable<CreateSesionDTO["Tratamiento"]>[] = listaTratamientos.map((tratamiento) => {
-      if (tratamiento.tipo === "farmacologico") {
-        return {
-          id: tratamiento.id,
-          Frecuencia: tratamiento.frecuencia,
-          Tipo: "farmaceutico",
-          FechaInicio: horaInicioSistema,
-          Farmaceutico: {
-            ID_ViaAdministracion: Number(tratamiento.viaAdminId),
-            Nombre_Medicamento: tratamiento.medicamento,
-            Dosis: tratamiento.dosis,
-          },
-        };
-      }
-
-      return {
-        id: tratamiento.id,
-        Frecuencia: tratamiento.frecuencia,
-        Tipo: "terapeutico",
-        FechaInicio: horaInicioSistema,
-        Terapeutico: {
-          ID_Tipo_Terapia: Number(tratamiento.tipoTerapiaId),
-          Objetivo: tratamiento.objetivo,
-        },
-      };
-    });
-
-    const tratamientoPrincipal = tratamientosFormateados[0];
-
-    const payload: CreateSesionDTO = {
-      ID_Cita: cita.ID_Cita,
-      ID_Expediente: 0,
-      HoraDeInicio: horaInicioSistema,
-      HoraFinal: horaFinalSistema,
-      Observaciones: datosSesion.observaciones.trim(),
-      DiagnosticoDiferencial: datosSesion.diagnostico.trim(),
-      HistorialDeEvolucion: datosSesion.historial.trim(),
-      Criterios_DeDiagnostico: datosSesion.criterios.trim(),
-      ExploracionesIds: Array.from(selectedExploraciones),
-      ...(tratamientoPrincipal ? { Tratamiento: tratamientoPrincipal } : {}),
-    };
-
+    if (!datosSesion.criterios.trim()) return toast.error('Los criterios son obligatorios');
+    if (borradoresSesion.obtener(clave, horaInicioSistema).guardando) return;
+    if (hayTratamientoPendiente(formTratamiento)) {
+      toast.error('Agrega la indicación pendiente al plan antes de guardar.'); return;
+    }
+    const payload = crearPayloadSesion(cita, borrador);
+    setGuardando(true);
+    borradoresSesion.actualizar(clave, { errorGuardado: null });
     try {
-      setGuardando(true);
       await onSubmit(payload);
-      limpiarInicioSesion();
+      borradoresSesion.eliminar(clave);
+      onClose();
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Error al guardar la sesión";
+      const message = error instanceof Error ? error.message : 'No se pudo guardar. Puede reintentar.';
+      borradoresSesion.actualizar(clave, { errorGuardado: message });
       toast.error(message);
     } finally {
-      setGuardando(false);
+      borradoresSesion.actualizar(clave, { guardando: false });
     }
   };
 
@@ -465,18 +338,20 @@ export default function SesionModal({
     if (!formTratamiento.frecuencia) return toast.error("Indica la frecuencia");
     
     if (formTratamiento.tipo === "farmacologico") {
-      if (!formTratamiento.medicamento || !formTratamiento.viaAdminId)
+      if (!formTratamiento.medicamento.trim() || !formTratamiento.dosis.trim() || !formTratamiento.viaAdminId)
         return toast.error("Completa datos del fármaco");
     } else {
       if (!formTratamiento.objetivo || !formTratamiento.tipoTerapiaId)
         return toast.error("Completa datos de terapia");
     }
 
-    setListaTratamientos([
-      ...listaTratamientos,
-      { ...formTratamiento, id: Date.now() },
+    if (!formTratamiento.fechaInicio || (formTratamiento.fechaFin && formTratamiento.fechaFin < formTratamiento.fechaInicio)) {
+      return toast.error('Revisa las fechas de la indicación');
+    }
+    setListaTratamientos(prev => [
+      ...prev, { ...formTratamiento, id: Math.max(0, ...prev.map(t => t.id)) + 1 },
     ]); 
-    setFormTratamiento(initialTratamiento);
+    setFormTratamiento(tratamientoVacio());
   };
 
   const eliminarTratamiento = (id: number) => {
@@ -555,7 +430,7 @@ export default function SesionModal({
   };
 
   return (
-    <dialog className="modal modal-open bg-black/50 backdrop-blur-sm">
+    <dialog onCancel={(event) => { event.preventDefault(); handleClose(); }} className="modal modal-open bg-black/50 backdrop-blur-sm">
       <div className="modal-box w-11/12 max-w-5xl bg-white text-slate-800 p-0 rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
         <div className="bg-slate-800 text-white px-8 py-4 flex justify-between items-center flex-shrink-0">
           <div className="flex flex-col">
@@ -570,7 +445,7 @@ export default function SesionModal({
           <button className="btn btn-circle btn-ghost text-slate-200" onClick={handleClose} disabled={guardando}>✕</button>
         </div>
 
-        <div className="p-8 overflow-y-auto flex-1 space-y-8 bg-slate-50">
+        <fieldset disabled={guardando} className="contents"><div className="p-8 overflow-y-auto flex-1 space-y-8 bg-slate-50">
           
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
             <h4 className="font-bold text-slate-700 text-xs uppercase mb-3 flex items-center gap-2">
@@ -605,6 +480,7 @@ export default function SesionModal({
               <textarea
                 className="textarea textarea-bordered bg-white h-32 focus:border-primary"
                 placeholder="Notas generales..."
+                aria-label="Observaciones clínicas"
                 value={datosSesion.observaciones}
                 onChange={(e) => setDatosSesion({ ...datosSesion, observaciones: e.target.value })}
               />
@@ -618,6 +494,7 @@ export default function SesionModal({
               <textarea
                 className="textarea textarea-bordered bg-white h-32 focus:border-red-500"
                 placeholder="Diagnóstico principal (Obligatorio)..."
+                aria-label="Diagnóstico diferencial"
                 value={datosSesion.diagnostico}
                 onChange={(e) => setDatosSesion({ ...datosSesion, diagnostico: e.target.value })}
               />
@@ -628,6 +505,7 @@ export default function SesionModal({
               <textarea
                 className="textarea textarea-bordered bg-white h-32 focus:border-amber-500"
                 placeholder="Detalles evolutivos..."
+                aria-label="Evolución clínica"
                 value={datosSesion.historial}
                 onChange={(e) => setDatosSesion({ ...datosSesion, historial: e.target.value })}
               />
@@ -644,7 +522,8 @@ export default function SesionModal({
                 <label className="label-text text-xs text-slate-500 font-bold">Tipo</label>
                 <select
                   className="select select-bordered select-sm w-full bg-white"
-                  value={formTratamiento.tipo}
+                  aria-label="Tipo de tratamiento"
+                      value={formTratamiento.tipo}
                   onChange={(e) => setFormTratamiento({ ...formTratamiento, tipo: e.target.value as "farmacologico" | "terapeutico" })}
                 >
                   <option value="terapeutico">Terapia</option>
@@ -659,6 +538,7 @@ export default function SesionModal({
                     <input
                       className="input input-bordered input-sm w-full bg-white"
                       placeholder="Ej: Sertralina"
+                      aria-label="Medicamento"
                       value={formTratamiento.medicamento}
                       onChange={(e) => setFormTratamiento({ ...formTratamiento, medicamento: e.target.value })}
                     />
@@ -668,6 +548,7 @@ export default function SesionModal({
                     <input
                       className="input input-bordered input-sm w-full bg-white"
                       placeholder="Ej: 50mg"
+                      aria-label="Dosis"
                       value={formTratamiento.dosis}
                       onChange={(e) => setFormTratamiento({ ...formTratamiento, dosis: e.target.value })}
                     />
@@ -676,6 +557,7 @@ export default function SesionModal({
                     <label className="label-text text-xs text-slate-500 font-bold">Vía Admin.</label>
                     <select
                       className="select select-bordered select-sm w-full bg-white"
+                      aria-label="Vía de administración"
                       value={formTratamiento.viaAdminId}
                       onChange={(e) => setFormTratamiento({ ...formTratamiento, viaAdminId: e.target.value })}
                     >
@@ -699,6 +581,7 @@ export default function SesionModal({
                     <input
                       className="input input-bordered input-sm w-full bg-white"
                       placeholder="Ej: Reducir ansiedad"
+                      aria-label="Objetivo terapéutico"
                       value={formTratamiento.objetivo}
                       onChange={(e) => setFormTratamiento({ ...formTratamiento, objetivo: e.target.value })}
                     />
@@ -707,6 +590,7 @@ export default function SesionModal({
                     <label className="label-text text-xs text-slate-500 font-bold">Tipo Terapia</label>
                     <select
                       className="select select-bordered select-sm w-full bg-white"
+                      aria-label="Tipo de terapia"
                       value={formTratamiento.tipoTerapiaId}
                       onChange={(e) => setFormTratamiento({ ...formTratamiento, tipoTerapiaId: e.target.value })}
                     >
@@ -730,11 +614,18 @@ export default function SesionModal({
                 <input
                   className="input input-bordered input-sm w-full bg-white"
                   placeholder="Ej: Cada 8h"
-                  value={formTratamiento.frecuencia}
+                  aria-label="Frecuencia"
+                      value={formTratamiento.frecuencia}
                   onChange={(e) => setFormTratamiento({ ...formTratamiento, frecuencia: e.target.value })}
                 />
               </div>
 
+              <div className="col-span-6">
+                <label className="label-text text-xs">Fecha de inicio<input aria-label="Fecha de inicio del tratamiento" type="date" className="input input-bordered input-sm w-full" value={formTratamiento.fechaInicio} onChange={e => setFormTratamiento({ ...formTratamiento, fechaInicio: e.target.value })} /></label>
+              </div>
+              <div className="col-span-6">
+                <label className="label-text text-xs">Fecha de fin (opcional)<input aria-label="Fecha de fin del tratamiento" type="date" className="input input-bordered input-sm w-full" value={formTratamiento.fechaFin} min={formTratamiento.fechaInicio} onChange={e => setFormTratamiento({ ...formTratamiento, fechaFin: e.target.value })} /></label>
+              </div>
               <div className="col-span-12 flex justify-end mt-2">
                 <button
                   type="button"
@@ -976,6 +867,8 @@ export default function SesionModal({
           </div>
         </div>
 
+        </fieldset>
+        {errorGuardado && <p role="alert" className="p-4 text-red-700">{errorGuardado} El borrador se conserva para reintentar.</p>}
         <div className="bg-white p-4 border-t border-slate-200 flex justify-between items-center flex-shrink-0">
           <div className="text-xs text-slate-500">
             <span className="font-semibold text-slate-700">Inicio:</span>{" "}

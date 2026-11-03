@@ -1,5 +1,5 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { jsPDF } from 'jspdf';
+import { autoTable } from 'jspdf-autotable';
 
 const COLORS = {
   primary: [37, 99, 235],
@@ -36,12 +36,14 @@ interface TratamientoFarmaceuticoPDF {
 }
 
 interface TratamientoTerapeuticoPDF {
-  Objetivo?: string;
+  Objetivo?: string | null;
   TipoDeTerapia?: TipoDeTerapiaPDF | null;
   TipoDe_Terapia?: TipoDeTerapiaPDF | null;
 }
 
 interface TratamientoPDF {
+  FechaInicio?: string;
+  FechaFin?: string | null;
   Frecuencia?: string;
   TratamientoFarmaceutico?: TratamientoFarmaceuticoPDF | null;
   Tratamiento_Farmaceutico?: TratamientoFarmaceuticoPDF | null;
@@ -86,6 +88,7 @@ interface SesionPDF {
   HistorialDeEvolucion?: string;
   Criterios_DeDiagnostico?: string;
   Tratamiento?: TratamientoPDF[];
+  Sesion_ExploracionPsicologica?: { ExploracionPsicologica?: { Nombre_De_ExploracionPsicologica?: string | null } }[];
 }
 
 interface PacienteAdultoPDF {
@@ -134,7 +137,7 @@ interface DireccionPDF {
 
 interface ExpedientePacientePDF {
   ID_Expediente?: number;
-  No_Expediente?: string;
+  No_Expediente?: string | null;
 }
 
 interface PacientePDF {
@@ -304,7 +307,7 @@ const getTratamientoTerapeutico = (tratamiento: TratamientoPDF) => {
 // ==========================================
 // 1. RECETA MÉDICA - FORMATO A5
 // ==========================================
-export const generarPDFReceta = (sesion: SesionPDF, pacienteNombre: string) => {
+export const generarPDFReceta = (sesion: SesionPDF, pacienteNombre: string, guardar = true) => {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -348,11 +351,14 @@ export const generarPDFReceta = (sesion: SesionPDF, pacienteNombre: string) => {
   doc.setTextColor(0);
   doc.setFont('helvetica', 'bold');
   doc.text(pacienteNombre.toUpperCase(), 15, yPos);
+  doc.setFontSize(8);
+  doc.text(`Expediente: ${sesion.Expediente?.No_Expediente || 'Sin número'}`, 15, yPos + 5);
 
   const fechaStr = formatearFecha(getFechaSesion(sesion), {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
+    timeZone: 'UTC',
   });
 
   doc.text(fechaStr, width - 50, yPos);
@@ -371,15 +377,15 @@ export const generarPDFReceta = (sesion: SesionPDF, pacienteNombre: string) => {
         'Terapia';
 
     const detalle = esFarmaco
-      ? `Dosis: ${farmaco?.Dosis || 'N/A'}`
+      ? `Dosis: ${farmaco?.Dosis || 'N/A'}\nVía: ${farmaco?.ViaAdministracion?.Nombre_De_Presentacion || 'N/A'}`
       : `Objetivo: ${terapia?.Objetivo || 'Mejora clínica'}`;
 
-    return [nombre, detalle, tratamiento.Frecuencia || 'N/A'];
+    return [nombre, `${detalle}\nInicio: ${tratamiento.FechaInicio?.slice(0, 10) || 'N/A'}\nFin: ${tratamiento.FechaFin?.slice(0, 10) || 'Sin fecha final'}`, tratamiento.Frecuencia || 'N/A'];
   }) || [['-', 'No se registraron indicaciones', '-']];
 
   autoTable(doc, {
     startY: yPos,
-    margin: { left: 15, right: 15 },
+    margin: { left: 15, right: 15, bottom: 45 },
     head: [['Indicación', 'Detalle / Dosis', 'Frecuencia']],
     body: cuerpoTratamiento,
     theme: 'striped',
@@ -408,7 +414,8 @@ export const generarPDFReceta = (sesion: SesionPDF, pacienteNombre: string) => {
   doc.text(`Dr. ${sesion.Cita?.Psicologo?.Apellido || 'Especialista'}`, width - 40, pageHeight - 21, { align: 'center' });
   doc.text(`Cod: ${sesion.Cita?.Psicologo?.CodigoMinsa || 'S/E'}`, width - 40, pageHeight - 17, { align: 'center' });
 
-  doc.save(`Receta_${pacienteNombre.replace(/\s+/g, '_')}.pdf`);
+  if (guardar) doc.save(`Receta_${pacienteNombre.replace(/\s+/g, '_')}.pdf`);
+  return doc;
 };
 
 // ==========================================
@@ -612,7 +619,7 @@ export const generarPDFReporteFinanciero = (
 // ==========================================
 // 4. EXPEDIENTE CLÍNICO
 // ==========================================
-export const generarPDFExpediente = (paciente: PacientePDF, historial: SesionPDF[]) => {
+export const generarPDFExpediente = (paciente: PacientePDF, historial: SesionPDF[], guardar = true) => {
   const doc = new jsPDF() as JsPDFWithAutoTable;
   const width = doc.internal.pageSize.width;
 
@@ -686,13 +693,14 @@ export const generarPDFExpediente = (paciente: PacientePDF, historial: SesionPDF
       ['Ocupación:', ocupacion, 'Estado Civil:', estadoCivil],
       ['Teléfono:', telPac, 'Dirección:', direccion],
     ],
+    margin: { left: 15, right: 15 },
     theme: 'plain',
     styles: { fontSize: 10, cellPadding: 3, textColor: [0, 0, 0] },
     columnStyles: {
       0: { fontStyle: 'bold', cellWidth: 35 },
-      1: { cellWidth: 60 },
+      1: { cellWidth: 55 },
       2: { fontStyle: 'bold', cellWidth: 35 },
-      3: { cellWidth: 60 },
+      3: { cellWidth: 55 },
     },
   });
 
@@ -732,13 +740,11 @@ export const generarPDFExpediente = (paciente: PacientePDF, historial: SesionPDF
       const tratamientos = sesion.Tratamiento?.map((tratamiento) => {
         const farmaco = getTratamientoFarmaceutico(tratamiento);
         const terapia = getTratamientoTerapeutico(tratamiento);
-
-        return farmaco
-          ? farmaco.Nombre_Medicamento || farmaco.NombreMedicamento || 'Medicamento'
-          : terapia?.TipoDe_Terapia?.Nombre_De_Terapia ||
-              terapia?.TipoDeTerapia?.NombreDeTerapia ||
-              'Terapia';
-      }).join(', ') || 'N/A';
+        const indicacion = farmaco
+          ? `${farmaco.Nombre_Medicamento || 'Medicamento'}; Dosis: ${farmaco.Dosis || 'N/A'}; Vía: ${farmaco.ViaAdministracion?.Nombre_De_Presentacion || 'N/A'}`
+          : `${terapia?.TipoDe_Terapia?.Nombre_De_Terapia || 'Terapia'}; Objetivo: ${terapia?.Objetivo || 'N/A'}`;
+        return `${indicacion}; Frecuencia: ${tratamiento.Frecuencia || 'N/A'}; Inicio: ${tratamiento.FechaInicio?.slice(0, 10) || 'N/A'}; Fin: ${tratamiento.FechaFin?.slice(0, 10) || 'Sin fecha final'}`;
+      }).join('\n') || 'N/A';
 
       autoTable(doc, {
         startY: yPos,
@@ -748,6 +754,8 @@ export const generarPDFExpediente = (paciente: PacientePDF, historial: SesionPDF
           [{ content: `MOTIVO DE CONSULTA: ${motivo}`, styles: { fontStyle: 'bold' } }],
           [{ content: `DIAGNÓSTICO DIFERENCIAL: ${sesion.DiagnosticoDiferencial || 'N/A'}`, styles: { fillColor: [240, 248, 255] } }],
           [`OBSERVACIONES CLÍNICAS: \n${sesion.Observaciones || 'Sin observaciones.'}`],
+          [`EXPLORACIONES: ${sesion.Sesion_ExploracionPsicologica?.map(e => e.ExploracionPsicologica?.Nombre_De_ExploracionPsicologica).join(', ') || 'Sin registro'}`],
+          [`CRITERIOS DE DIAGNÓSTICO: ${sesion.Criterios_DeDiagnostico || 'N/A'}`],
           [`EVOLUCIÓN DEL PACIENTE: \n${sesion.HistorialDeEvolucion || 'Sin registro.'}`],
           [`TRATAMIENTOS Y RECOMENDACIONES: ${tratamientos}`],
         ],
@@ -770,5 +778,6 @@ export const generarPDFExpediente = (paciente: PacientePDF, historial: SesionPDF
     doc.text(`Página ${i} de ${totalPages}`, width - 35, 285);
   }
 
-  doc.save(`Expediente_${paciente.Nombre || 'Paciente'}_${paciente.Apellido || ''}.pdf`);
+  if (guardar) doc.save(`Expediente_${paciente.Nombre || 'Paciente'}_${paciente.Apellido || ''}.pdf`);
+  return doc;
 };

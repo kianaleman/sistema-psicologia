@@ -1,0 +1,218 @@
+{
+  "hito": 2,
+  "fecha": "2026-11-03",
+  "git": {
+    "rama": "kelvin",
+    "head": "65f19c2468a578b15f7fabe508a2283884766cd4",
+    "commit_base": "65f19c2",
+    "modificados": 29,
+    "nuevos": 10,
+    "staged": 0,
+    "commit_realizado": false,
+    "push_realizado": false,
+    "momento": "Inventario previo al commit de cierre del 2026-11-03; estados de archivos comparados con 65f19c2."
+  },
+  "total_archivos": 39,
+  "archivos": [
+    {
+      "ruta": "clinica-backend/package.json",
+      "estado": "modificado",
+      "proposito": "Scripts de pruebas de API y SQL aislado."
+    },
+    {
+      "ruta": "clinica-backend/src/controllers/cita.controller.ts",
+      "estado": "modificado",
+      "proposito": "HTTP 409 ante conflicto concurrente de cita."
+    },
+    {
+      "ruta": "clinica-backend/src/controllers/paciente.controller.ts",
+      "estado": "modificado",
+      "proposito": "Respuestas sin caché y rechazo de referencias clínicas incompatibles."
+    },
+    {
+      "ruta": "clinica-backend/src/controllers/sesion.controller.ts",
+      "estado": "modificado",
+      "proposito": "Consumir DTO validado, respuesta idempotente y errores sin contenido clínico."
+    },
+    {
+      "ruta": "clinica-backend/src/middlewares/validator.middleware.ts",
+      "estado": "modificado",
+      "proposito": "Conservar resultado parseado en res.locals.validated."
+    },
+    {
+      "ruta": "clinica-backend/src/routes/general.routes.ts",
+      "estado": "modificado",
+      "proposito": "Cuenta vigente y permisos en historial clínico general."
+    },
+    {
+      "ruta": "clinica-backend/src/routes/paciente.routes.ts",
+      "estado": "modificado",
+      "proposito": "Cuenta vigente y roles reconocidos en rutas intervenidas."
+    },
+    {
+      "ruta": "clinica-backend/src/routes/sesion.routes.ts",
+      "estado": "modificado",
+      "proposito": "Cuenta vigente, contraseña temporal y autorización clínica."
+    },
+    {
+      "ruta": "clinica-backend/src/schemas/sesion.schema.ts",
+      "estado": "modificado",
+      "proposito": "Contrato explícito de sesión y colección discriminada de tratamientos."
+    },
+    {
+      "ruta": "clinica-backend/src/services/auditoria.service.ts",
+      "estado": "modificado",
+      "proposito": "Reutilizar cliente Prisma compartido en el recorrido clínico."
+    },
+    {
+      "ruta": "clinica-backend/src/services/cita.service.ts",
+      "estado": "modificado",
+      "proposito": "Condiciones SQL de integridad histórica y conflictos concurrentes."
+    },
+    {
+      "ruta": "clinica-backend/src/services/general.service.ts",
+      "estado": "modificado",
+      "proposito": "Tratamientos completos y comprobación de atribución del historial."
+    },
+    {
+      "ruta": "clinica-backend/src/services/paciente.service.ts",
+      "estado": "modificado",
+      "proposito": "Sobre de expediente/historial completo, proyecciones por rol y validación de relaciones."
+    },
+    {
+      "ruta": "clinica-backend/src/services/sesion.projection.ts",
+      "estado": "nuevo",
+      "proposito": "Lista positiva compartida de campos clínicos y metadatos."
+    },
+    {
+      "ruta": "clinica-backend/src/services/sesion.service.ts",
+      "estado": "modificado",
+      "proposito": "Persistencia transaccional, autorización, reintentos e idempotencia por cita."
+    },
+    {
+      "ruta": "clinica-backend/tests/sesiones.sql.test.mjs",
+      "estado": "nuevo",
+      "proposito": "Persistencia y rollback reales, concurrencia y referencias con SQL Server aislado."
+    },
+    {
+      "ruta": "clinica-backend/tests/sesiones.test.mjs",
+      "estado": "nuevo",
+      "proposito": "Pruebas HTTP reales de contrato, JWT, cuenta vigente y autorización."
+    },
+    {
+      "ruta": "clinica-frontend/package-lock.json",
+      "estado": "modificado",
+      "proposito": "Lock npm actualizado para dependencias de pruebas."
+    },
+    {
+      "ruta": "clinica-frontend/package.json",
+      "estado": "modificado",
+      "proposito": "Scripts y dependencias de desarrollo para pruebas React con node:test."
+    },
+    {
+      "ruta": "clinica-frontend/pnpm-lock.yaml",
+      "estado": "modificado",
+      "proposito": "Lock pnpm sincronizado con las dependencias de pruebas."
+    },
+    {
+      "ruta": "clinica-frontend/src/components/Layout.tsx",
+      "estado": "modificado",
+      "proposito": "Limpiar borradores al cerrar sesión autenticada."
+    },
+    {
+      "ruta": "clinica-frontend/src/components/citas/CancelarCitaModal.tsx",
+      "estado": "modificado",
+      "proposito": "Esperar persistencia y conservar datos ante error."
+    },
+    {
+      "ruta": "clinica-frontend/src/components/citas/HistorialModal.tsx",
+      "estado": "modificado",
+      "proposito": "Usar carga vigente del paciente y guardas compartidas para PDF."
+    },
+    {
+      "ruta": "clinica-frontend/src/components/citas/SesionModal.tsx",
+      "estado": "modificado",
+      "proposito": "Borrador, colección completa, fechas, confirmación y bloqueo de envíos."
+    },
+    {
+      "ruta": "clinica-frontend/src/hooks/useBorradorSesion.ts",
+      "estado": "nuevo",
+      "proposito": "Suscripción al borrador clínico en memoria."
+    },
+    {
+      "ruta": "clinica-frontend/src/hooks/useLogin.ts",
+      "estado": "modificado",
+      "proposito": "Separar borradores de sesiones autenticadas distintas."
+    },
+    {
+      "ruta": "clinica-frontend/src/hooks/usePacienteDetalle.ts",
+      "estado": "modificado",
+      "proposito": "Cancelar/descartar respuestas tardías y conservar metadatos del expediente."
+    },
+    {
+      "ruta": "clinica-frontend/src/pages/CambiarPasswordDefault.tsx",
+      "estado": "modificado",
+      "proposito": "Limpiar borradores en salida de cuenta temporal."
+    },
+    {
+      "ruta": "clinica-frontend/src/pages/Citas.tsx",
+      "estado": "modificado",
+      "proposito": "Cadena real de promesas para guardar/cancelar y actualización de agenda."
+    },
+    {
+      "ruta": "clinica-frontend/src/pages/PacienteDetalle.tsx",
+      "estado": "modificado",
+      "proposito": "Exportación coherente y tratamientos completos."
+    },
+    {
+      "ruta": "clinica-frontend/src/services/api.ts",
+      "estado": "modificado",
+      "proposito": "Contratos tipados, AbortSignal y limpieza por fin de autenticación."
+    },
+    {
+      "ruta": "clinica-frontend/src/services/borradoresSesion.ts",
+      "estado": "nuevo",
+      "proposito": "Almacén en memoria por paciente/cita y constructor del payload real."
+    },
+    {
+      "ruta": "clinica-frontend/src/services/expedientePaciente.ts",
+      "estado": "nuevo",
+      "proposito": "Validar pertenencia antes de mostrar/exportar sesiones y expediente."
+    },
+    {
+      "ruta": "clinica-frontend/src/services/pdfGenerator.ts",
+      "estado": "modificado",
+      "proposito": "Conservar tratamientos, criterios, exploraciones, fechas y número de expediente."
+    },
+    {
+      "ruta": "clinica-frontend/src/types/index.ts",
+      "estado": "modificado",
+      "proposito": "Tipos explícitos de escritura y lectura clínica."
+    },
+    {
+      "ruta": "clinica-frontend/tests/clinica.test.mjs",
+      "estado": "nuevo",
+      "proposito": "Pruebas React/PDF y regresion de fechas explicitas, validacion conservada y ejecucion con reloj de 2027."
+    },
+    {
+      "ruta": "docs/archivos-afectados-hito-2.json",
+      "estado": "nuevo",
+      "proposito": "Inventario versionable y estado de Git de la entrega."
+    },
+    {
+      "ruta": "docs/hito-2-sesiones.md",
+      "estado": "nuevo",
+      "proposito": "Contratos, criterios, limitaciones, configuración y verificación manual."
+    },
+    {
+      "ruta": "docs/hito-2-verificacion.json",
+      "estado": "nuevo",
+      "proposito": "Resultados del cierre frontend 2026-11-03 separados de la evidencia anterior de backend y SQL del 2026-11-02."
+    }
+  ],
+  "commit_de_cierre": {
+    "mensaje": "feat(clinica): completar registro transaccional de consultas (hito 2)",
+    "hash": "Consultar el historial Git del commit que incorpora este inventario.",
+    "push": false
+  }
+}

@@ -1,7 +1,9 @@
-import { PrismaClient, type Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
+import { sesionClinicaSelect } from './sesion.projection.js';
 import type { AuthUserPayload } from '../middlewares/auth.middleware.js';
 
-const prisma = new PrismaClient();
+
 
 const validarUsuarioAutenticado = (usuario?: AuthUserPayload) => {
   if (!usuario) {
@@ -255,11 +257,7 @@ export const GeneralService = {
         TipoDeCita: true,
         Paciente: true,
         Psicologo: true,
-        Sesion: {
-          include: {
-            Expediente: true,
-          },
-        },
+        Sesion: { select: sesionClinicaSelect },
       },
       orderBy: {
         ID_Cita: 'desc',
@@ -268,16 +266,21 @@ export const GeneralService = {
 
     return citasCompletadas
       .filter((cita) => cita.Sesion !== null)
-      .map((cita) => ({
-        ...cita.Sesion,
-        Paciente: cita.Paciente,
-        Psicologo: cita.Psicologo,
-        FechaReal: cita.FechaCita,
-        DatosCita: {
-          Motivo: cita.MotivoConsulta || 'Sin registro',
-          Tipo: cita.TipoDeCita?.Nombre_DeCita || 'N/A',
-        },
-      }));
+      .map((cita) => {
+        if (cita.Sesion?.Expediente?.ID_Paciente !== cita.ID_Paciente) {
+          throw new Error('El historial contiene relaciones clínicas incompatibles. Requiere revisión antes de consultar o exportar.');
+        }
+        return {
+          ...cita.Sesion,
+          Paciente: cita.Paciente,
+          Psicologo: cita.Psicologo,
+          FechaReal: cita.FechaCita,
+          DatosCita: {
+            Motivo: cita.MotivoConsulta || 'Sin registro',
+            Tipo: cita.TipoDeCita?.Nombre_DeCita || 'N/A',
+          },
+        };
+      });
   },
 
   getGraficosData: async (

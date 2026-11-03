@@ -1,42 +1,31 @@
 import { z } from 'zod';
-
-const horaSchema = z.string().optional();
-
-export const createSesionSchema = z.object({
-  body: z.object({
-    ID_Cita: z.coerce.number().int().positive({
-      message: 'ID_Cita debe ser un número válido',
-    }),
-    ID_Expediente: z.coerce.number().int().nonnegative().optional().default(0),
-    HoraDeInicio: horaSchema,
-    HoraFinal: horaSchema,
-    Observaciones: z.string().optional().default(''),
-    DiagnosticoDiferencial: z.string({
-      message: 'El diagnóstico diferencial es obligatorio',
-    }).min(1, 'El diagnóstico no puede estar vacío'),
-    HistorialDeEvolucion: z.string().optional().default(''),
-    Criterios_DeDiagnostico: z.string({
-      message: 'Los criterios de diagnóstico son obligatorios',
-    }).min(1, 'Los criterios no pueden estar vacíos'),
-    ExploracionesIds: z.array(z.coerce.number().int().positive()).optional().default([]),
-    Tratamiento: z.unknown().optional(),
-  }),
+const id = z.coerce.number().int().positive();
+const texto = (max: number) => z.string().trim().min(1).max(max);
+const fecha = z.iso.date();
+const tratamientoBase = { Frecuencia: texto(100), FechaInicio: fecha, FechaFin: fecha.optional() };
+export const tratamientoSchema = z.discriminatedUnion('Tipo', [
+    z.object({ ...tratamientoBase, Tipo: z.literal('terapeutico'),
+        Terapeutico: z.object({ ID_Tipo_Terapia: id, Objetivo: texto(20000) }).strict(),
+    }).strict(),
+    z.object({ ...tratamientoBase, Tipo: z.literal('farmaceutico'),
+        Farmaceutico: z.object({ ID_ViaAdministracion: id, Nombre_Medicamento: texto(255), Dosis: texto(255) }).strict(),
+    }).strict(),
+]).refine(t => !t.FechaFin || t.FechaFin >= t.FechaInicio, {
+    message: 'FechaFin no puede ser anterior a FechaInicio', path: ['FechaFin'],
 });
-
-export const searchSesionSchema = z.object({
-  query: z.object({
-    q: z.string().optional(),
-    pacienteId: z.string().regex(/^\d+$/, {
-      message: 'El ID de paciente debe ser numérico',
-    }).optional(),
-    psicologoId: z.string().regex(/^\d+$/, {
-      message: 'El ID de psicólogo debe ser numérico',
-    }).optional(),
-    ID_Cita: z.string().regex(/^\d+$/, {
-      message: 'El ID de cita debe ser numérico',
-    }).optional(),
-    ID_Expediente: z.string().regex(/^\d+$/, {
-      message: 'El ID de expediente debe ser numérico',
-    }).optional(),
-  }).optional(),
-});
+export const sesionBodySchema = z.object({
+    ID_Cita: id, ID_Paciente: id, ID_Psicologo: id,
+    // Omisión: resolver por la cita. No enviar el cero del contrato anterior.
+    ID_Expediente: id.optional(),
+    HoraDeInicio: z.iso.datetime({ offset: true }),
+    Observaciones: z.string().trim().max(50000).default(''),
+    DiagnosticoDiferencial: texto(50000),
+    HistorialDeEvolucion: z.string().trim().max(50000).default(''),
+    Criterios_DeDiagnostico: texto(50000),
+    ExploracionesIds: z.array(id).max(100).default([]).transform(ids => [...new Set(ids)]),
+    Tratamientos: z.array(tratamientoSchema).max(100).default([]),
+}).strict();
+export type CreateSesionDTO = z.infer<typeof sesionBodySchema>;
+export type TratamientoDTO = z.infer<typeof tratamientoSchema>;
+export const createSesionSchema = z.object({ body: sesionBodySchema });
+export const searchSesionSchema = z.object({ query: z.object({ pacienteId: id, psicologoId: id }).strict() });

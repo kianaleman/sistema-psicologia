@@ -6,7 +6,7 @@ import {
   getExpediente,
   getHistorialPaciente 
 } from '../controllers/paciente.controller.js';
-import { verificarToken } from '../middlewares/auth.middleware.js';
+import { protegerCuentaVigente, permitirRoles, ROLES } from '../middlewares/auth.middleware.js';
 import { validateSchema } from '../middlewares/validator.middleware.js';
 import { createPacienteSchema, updatePacienteSchema, getByIdSchema } from '../schemas/paciente.schema.js';
 
@@ -15,7 +15,7 @@ const router: Router = Router();
 // ==========================================
 // MIDDLEWARE DE SEGURIDAD GLOBAL
 // ==========================================
-router.use(verificarToken);
+router.use(...protegerCuentaVigente, permitirRoles(ROLES.ADMINISTRADOR, ROLES.PSICOLOGO, ROLES.RECEPCION));
 
 // ==========================================
 // RUTAS PROTEGIDAS Y VALIDADAS

@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '../services/api';
-import { toast } from 'sonner';
+import { validarExpedientePaciente } from '../services/expedientePaciente';
 import type {
   Paciente,
   Cita,
@@ -15,6 +15,8 @@ import type {
   PacienteAdultoDetalle,
   PacienteMenorDetalle,
   RelacionTutor,
+  ExpedienteResumen,
+  TratamientoClinico,
 } from '../types';
 
 // =====================================================
@@ -57,72 +59,47 @@ type CitaExpediente = Cita & {
   };
 };
 
-type TratamientoResumen = {
-  Frecuencia?: string;
-  FechaInicio?: string;
-  Tratamiento_Farmaceutico?: {
-    Nombre_Medicamento?: string;
-    Dosis?: string;
-  } | null;
-  Tratamiento_Terapeutico?: {
-    Objetivo?: string | null;
-  } | null;
-};
-
 type SesionExpediente = Sesion & {
+  ID_Paciente: number;
+  ID_Psicologo: number;
   FechaCita?: string;
   HoraCita?: string;
   Psicologo?: PsicologoResumen;
-  Tratamiento?: TratamientoResumen[];
+  Tratamiento?: TratamientoClinico[];
 };
 
 // Interfaz extendida para la respuesta del expediente.
 // Usa los tipos globales de src/types/index.ts y solo agrega relaciones anidadas.
 export interface ExpedienteCompleto {
+  expediente: ExpedienteResumen | null;
   paciente: PacienteDetalle;
   citas: CitaExpediente[];
   sesiones: SesionExpediente[];
 }
 
 export function usePacienteDetalle(id: string | undefined) {
-  const [expediente, setExpediente] = useState<ExpedienteCompleto | null>(null);
-  const [loading, setLoading] = useState<boolean>(Boolean(id));
+  const [resultado, setResultado] = useState<{ id: string; data: ExpedienteCompleto | null; error: string | null } | null>(null);
+  const [objetivo, setObjetivo] = useState(id);
+  if (objetivo !== id) { setObjetivo(id); setResultado(null); }
+  const [revision, setRevision] = useState(0);
   const [tab, setTab] = useState<'info' | 'citas' | 'sesiones'>('info');
-
-  const loadExpediente = useCallback(async (pacienteId: string) => {
-    try {
-      setLoading(true);
-
-      const data = await api.pacientes.getOne(pacienteId) as ExpedienteCompleto;
-
-      setExpediente({
-        paciente: data.paciente,
-        citas: Array.isArray(data.citas) ? data.citas : [],
-        sesiones: Array.isArray(data.sesiones) ? data.sesiones : [],
-      });
-    } catch (error: unknown) {
-      console.error(error);
-
-      const msg = error instanceof Error
-        ? error.message
-        : 'Error al cargar el expediente.';
-
-      toast.error(msg);
-      setExpediente(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    if (!id) {
-      setExpediente(null);
-      setLoading(false);
-      return;
-    }
-
-    loadExpediente(id);
-  }, [id, loadExpediente]);
+    if (!id) return;
+    const controller = new AbortController();
+    let vigente = true;
+    api.pacientes.getOne(id, controller.signal).then(data => {
+      validarExpedientePaciente(data, Number(id));
+      if (vigente) setResultado({ id, data, error: null });
+    }).catch((error: unknown) => {
+      if (vigente) setResultado({ id, data: null, error: error instanceof Error ? error.message : 'No se pudo cargar el expediente.' });
+    });
+    return () => { vigente = false; controller.abort(); };
+  }, [id, revision]);
+  // Ocultar el resultado anterior en el primer render de B, antes de su efecto.
+  const actual = resultado?.id === id ? resultado : null;
+  const expediente = actual?.data ?? null;
+  const loading = Boolean(id) && actual === null;
+  const error = actual?.error ?? null;
 
   // --- HELPERS DE FORMATO ---
 
@@ -197,6 +174,7 @@ export function usePacienteDetalle(id: string | undefined) {
   return {
     expediente,
     loading,
+    error,
     tab,
     setTab,
     helpers: {
@@ -205,7 +183,8 @@ export function usePacienteDetalle(id: string | undefined) {
       getEstadoColor,
     },
     recargar: () => {
-      if (id) loadExpediente(id);
+      setResultado(null);
+      setRevision(value => value + 1);
     },
   };
 }
