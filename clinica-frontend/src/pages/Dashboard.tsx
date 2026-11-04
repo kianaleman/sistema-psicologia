@@ -338,7 +338,7 @@ export default function Dashboard() {
       </section>
 
       <section className="grid grid-cols-1 gap-8 xl:grid-cols-12">
-        <div className="space-y-8 xl:col-span-8">
+        <div className="min-w-0 space-y-8 xl:col-span-8">
           <div className="overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-sm">
             <div className="flex flex-col gap-4 border-b border-slate-100 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-center gap-3">
@@ -400,9 +400,9 @@ export default function Dashboard() {
                 </div>
               )}
 
-              <div className="h-80 w-full">
+              <div className="h-80 w-full min-w-0">
                 {dataGraficos.ingresos.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height={320} minWidth={0}>
                     <BarChart data={dataGraficos.ingresos} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                       <XAxis dataKey="fecha" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} dy={10} />
@@ -433,10 +433,10 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="relative h-56 w-full">
+              <div className="relative h-56 w-full min-w-0">
                 {dataGraficos.generos.length > 0 ? (
                   <>
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height={224} minWidth={0}>
                       <PieChart>
                         <Pie data={dataGraficos.generos} cx="45%" cy="50%" innerRadius={58} outerRadius={82} paddingAngle={5} dataKey="value">
                           {dataGraficos.generos.map((entry, index) => (

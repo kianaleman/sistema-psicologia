@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useCitas } from "../hooks/useCitas";
 import { usePacientes } from "../hooks/usePacientes";
 import type {
@@ -187,12 +187,7 @@ export default function Citas() {
     return "border-slate-200 bg-slate-100 text-slate-600";
   };
 
-  const checkDisponibilidad = useCallback(
-    async (id: number, fecha: string) => {
-      return await acciones.obtenerHorariosOcupados(id, fecha);
-    },
-    [acciones],
-  );
+  const checkDisponibilidad = acciones.obtenerHorariosOcupados;
 
   const renderDireccion = (
     dir:

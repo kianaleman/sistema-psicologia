@@ -86,7 +86,10 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
         ? errorData.message
         : 'Error en la petición al servidor';
 
-    throw new ApiError(mensaje, errorData, response.status);
+    const detalles = Array.isArray(errorData.detalles) ? errorData.detalles
+      .filter((detalle): detalle is { mensaje: string } => typeof detalle === 'object' && detalle !== null && typeof (detalle as { mensaje?: unknown }).mensaje === 'string')
+      .map(detalle => detalle.mensaje) : [];
+    throw new ApiError(detalles.length ? [...new Set(detalles)].join(' ') : mensaje, errorData, response.status);
   }
 
 

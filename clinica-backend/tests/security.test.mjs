@@ -499,3 +499,74 @@ test('regresión comprimida del aviso: un frame pequeño con bytes posteriores n
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal((await request('GET', '/__pruebas/vivo')).status, 200);
 });
+
+// Ajuste posterior al Hito 2: validación de calendario antes de datos de citas.
+const { CitaService } = await import('../src/services/cita.service.ts');
+const { esFechaCalendario } = await import('../src/lib/fechaCalendario.ts');
+const fechasInvalidas = ['', '2026-10-', '20026-10-04', '2026-02-30', '2026-02-29', '0000-01-01', '10000-01-01', '2026-13-01', '2026-10-04T00:00:00Z'];
+for (const fecha of fechasInvalidas) {
+  test(`disponibilidad rechaza fecha inválida ${JSON.stringify(fecha)} antes de cita.findMany`, async () => {
+    const response = await request('GET', '/api/citas/horarios-ocupados?psicologoId=10&fecha=' + encodeURIComponent(fecha), 'recepcion');
+    assert.equal(response.status, 400);
+    assert.equal(state.queries.length, 0);
+    assert.doesNotMatch(JSON.stringify(response.data), /Prisma|findMany|[A-Z]:\\|src[\\/]/i);
+  });
+  test(`crear/editar cita rechaza fecha inválida ${JSON.stringify(fecha)} sin persistencia`, async () => {
+    assert.equal((await request('POST', '/api/citas', 'recepcion', { ...newAppointment, FechaCita: fecha })).status, 400);
+    assert.equal((await request('PUT', '/api/citas/1', 'recepcion', { FechaCita: fecha })).status, 400);
+    assert.equal(state.queries.length, 0);
+    assert.deepEqual(state.operations, []);
+  });
+}
+for (const fecha of ['0001-01-01', '2000-02-29', '2028-02-29', '2099-11-03', '9999-12-31']) {
+  test('disponibilidad conserva fecha de calendario válida ' + fecha, async () => {
+    assert.equal(esFechaCalendario(fecha), true);
+    const response = await request('GET', '/api/citas/horarios-ocupados?psicologoId=10&fecha=' + fecha, 'recepcion');
+    assert.equal(response.status, 200);
+    assert.equal(state.queries[0].where.FechaCita.toISOString(), fecha + 'T00:00:00.000Z');
+  });
+}
+test('el servicio rechaza fechas inválidas incluso sin pasar por la ruta', async () => {
+  const user = { idUsuario: 1, roles: ['Administrador'], esAdmin: true };
+  await assert.rejects(CitaService.getHorariosOcupados(10, '20026-10-04', user), /fecha real/);
+  await assert.rejects(CitaService.create({ ...newAppointment, FechaCita: '2026-02-30' }, user), /fecha real/);
+  await assert.rejects(CitaService.update(1, { FechaCita: '2026-10-' }, user), /fecha real/);
+  assert.equal(prisma.paciente.findUnique.mock.callCount(), 0);
+  assert.equal(prisma.cita.findUnique.mock.callCount(), 0);
+  assert.equal(state.queries.length, 0);
+});
+for (const hora of ['24:00', '08:60', '8:30', '']) test('hora inválida rechazada ' + hora, async () => {
+  assert.equal((await request('POST', '/api/citas', 'recepcion', { ...newAppointment, HoraCita: hora })).status, 400);
+  assert.equal(state.queries.length, 0);
+});
+test('fecha pasada produce un error de negocio comprensible, sin detalles internos', async () => {
+  const response = await request('POST', '/api/citas', 'recepcion', { ...newAppointment, FechaCita: '2000-01-01' });
+  assert.equal(response.status, 400);
+  assert.match(response.data.error, /pasado.*futuras/);
+  assert.doesNotMatch(JSON.stringify(response.data), /Prisma|[A-Z]:\\|src[\\/]/i);
+  assert.deepEqual(state.operations, []);
+});
+test('errores de Prisma en disponibilidad o creación no salen en JSON ni auditoría', async () => {
+  const internal = 'Invalid prisma.cita.findMany() at C:\\backend\\src\\services: SELECT consulta PRIVADO';
+  mock.method(CitaService, 'getHorariosOcupados', async () => { throw Object.assign(new Error(internal), { code: 'P2009' }); });
+  mock.method(CitaService, 'create', async () => { throw new Error(internal); });
+  for (const response of [await request('GET', '/api/citas/horarios-ocupados?psicologoId=10&fecha=2099-11-03', 'recepcion'), await request('POST', '/api/citas', 'recepcion', newAppointment)]) {
+    assert.equal(response.status, 500);
+    assert.doesNotMatch(JSON.stringify(response.data), /Prisma|findMany|backend|SELECT|PRIVADO|[A-Z]:\\/i);
+  }
+  assert.doesNotMatch(JSON.stringify(state.audit), /SELECT|PRIVADO|C:\\/);
+});
+test('400 de pago indica banco/referencia faltantes antes de persistir', async () => {
+  const response = await request('POST', '/api/citas', 'recepcion', { ...newAppointment, ID_MetodoPago: 2 });
+  assert.equal(response.status, 400);
+  assert.match(JSON.stringify(response.data), /banco|referencia/i);
+  assert.deepEqual(state.operations, []);
+});
+
+test('parámetros de cita no admiten cero ni valores fuera de SQL INT', async () => {
+  for (const id of ['0', '2147483648', '999999999999999999999999']) {
+    assert.equal((await request('PUT', '/api/citas/' + id, 'recepcion', { FechaCita: '2099-11-03' })).status, 400);
+  }
+  assert.equal(prisma.cita.findUnique.mock.callCount(), 0);
+  assert.deepEqual(state.operations, []);
+});

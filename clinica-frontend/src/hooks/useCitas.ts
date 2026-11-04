@@ -1,3 +1,4 @@
+import { esFechaCalendario } from '../utils/fechaCalendario';
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { api } from '../services/api';
@@ -157,12 +158,10 @@ export const useCitas = () => {
   };
 
   const obtenerHorariosOcupados = useCallback(async (psicologoId: number, fecha: string) => {
-    try {
-      return await api.citas.getHorariosOcupados(psicologoId, fecha);
-    } catch (err) {
-      console.error("Error al obtener disponibilidad:", err);
-      return []; // Retornamos array vacío si falla para no romper la UI
+    if (!esFechaCalendario(fecha) || !Number.isInteger(psicologoId) || psicologoId < 1 || psicologoId > 2147483647) {
+      throw new Error('Selecciona un profesional y una fecha válida antes de consultar disponibilidad.');
     }
+    return api.citas.getHorariosOcupados(psicologoId, fecha);
   }, []);
 
   // --- FILTRADO ---

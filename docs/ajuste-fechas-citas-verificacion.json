@@ -1,0 +1,151 @@
+{
+  "fecha": "2026-11-03",
+  "rama": "kelvin",
+  "commit_padre": "2f6ee6a9977dc948e24643328e0626f9fb6d03c8",
+  "alcance": "Ajuste posterior al Hito 2: fechas de citas, disponibilidad, fechas de tratamientos y medición de gráficas",
+  "criterios": {
+    "fecha_estricta_y_real_antes_de_prisma": "verificado",
+    "rango_sql_date_0001_9999": "verificado_en_SQL_Server",
+    "citas_futuras_y_calendario_sin_desplazamiento": "verificado_en_SQL_Server",
+    "errores_publicos_sin_rutas_ni_prisma": "verificado_por_API",
+    "disponibilidad_fallida_reintentable_y_sin_falsos_libres": "verificado",
+    "descartar_respuestas_anteriores_de_fecha_y_profesional": "verificado",
+    "fechas_tratamiento_responsivas_y_errores_con_datos_conservados": "verificado_en_React_y_Chrome",
+    "recharts_sin_avisos_negativos_al_medir_ocultar_y_redimensionar": "verificado_en_React_y_Chrome",
+    "regresiones_hitos_1_y_2": "aprobadas",
+    "causa_exacta_de_los_dos_POST_400_historicos": "sin_cuerpos_de_respuesta_originales_para_atribuirla"
+  },
+  "pruebas": {
+    "backend": {
+      "comando": "pnpm test",
+      "persistencia": "simulada; HTTP, autenticación, autorización, validación, controladores y servicios reales",
+      "codigo_salida": 0,
+      "tests": 164,
+      "pass": 164,
+      "fail": 0,
+      "skipped": 0,
+      "regresiones_anteriores": 132
+    },
+    "sql_server": {
+      "comando": "pnpm test:sql",
+      "persistencia": "real, exclusivamente datos sintéticos",
+      "instancia": "SQLEXPRESS 16.0.1000.6",
+      "base_aislada": "Hito2Test_20261102_9b71",
+      "codigo_salida": 0,
+      "tests": 33,
+      "pass": 33,
+      "fail": 0,
+      "skipped": 0,
+      "regresiones_anteriores": 29,
+      "casos_nuevos": [
+        "Consulta de disponibilidad 0001-01-01",
+        "Consulta de disponibilidad 2028-02-29",
+        "Consulta de disponibilidad 9999-12-31",
+        "Creación futura con recibo y edición conservando día y hora"
+      ]
+    },
+    "frontend": {
+      "comando": "npm test",
+      "entorno": "React DOM y jsdom, componentes/hooks reales y API simulada",
+      "codigo_salida": 0,
+      "tests": 37,
+      "pass": 37,
+      "fail": 0,
+      "skipped": 0,
+      "regresiones_anteriores": 14
+    },
+    "frontend_2027": {
+      "comando": "HITO2_TEST_NOW=2027-07-15T15:00:00.000Z npm test",
+      "reloj": "2027-07-15T15:00:00.000Z",
+      "codigo_salida": 0,
+      "tests": 37,
+      "pass": 37,
+      "fail": 0,
+      "skipped": 0,
+      "repeticion_de_la_misma_suite": true
+    },
+    "total_distintas_aprobadas": 234,
+    "browser": {
+      "navegador": "Chrome instalado, headless, con Playwright",
+      "componentes": ["SesionModal", "Dashboard"],
+      "css": "build real",
+      "api": "sintética, HTTP local; solicitudes externas bloqueadas",
+      "anchos_viewport": [1280, 390],
+      "campos_escritorio_px": { "ancho": 417, "alto": 44, "disposicion": "dos columnas" },
+      "campos_movil_px": { "ancho": 183.5, "alto": 44, "disposicion": "una columna" },
+      "capturas_inspeccionadas": true,
+      "graficas_redimensionadas_y_ocultadas": true,
+      "avisos_dimensiones_negativas": 0,
+      "errores_javascript": 0
+    }
+  },
+  "comprobaciones": {
+    "backend_typecheck": { "comando": "pnpm run typecheck", "codigo_salida": 0 },
+    "backend_build": { "comando": "pnpm run build", "codigo_salida": 0 },
+    "backend_lint": "sin script ni configuración preexistentes",
+    "frontend_typecheck": { "comando": "npm run typecheck", "codigo_salida": 0 },
+    "frontend_build": {
+      "comando": "npm run build",
+      "codigo_salida": 0,
+      "avisos_anteriores": ["Tamaño del bundle", "CSS @property", "Browserslist/Baseline desactualizados"]
+    },
+    "frontend_lint": {
+      "comando": "npm run lint -- --format json",
+      "codigo_salida": 1,
+      "incidencias_antes_y_despues_identicas": true,
+      "comparacion": ["archivo", "línea", "columna", "regla", "severidad", "mensaje"],
+      "incidencias_nuevas": 0,
+      "errores_preexistentes": 2,
+      "advertencias_preexistentes": 1,
+      "pendientes": [
+        { "archivo": "clinica-frontend/src/components/tests/TestAplicarModal.tsx", "linea": 32, "regla": "react-hooks/set-state-in-effect", "severidad": 2 },
+        { "archivo": "clinica-frontend/src/components/tests/TestHistorialPaciente.tsx", "linea": 67, "regla": "react-hooks/exhaustive-deps", "severidad": 1 },
+        { "archivo": "clinica-frontend/src/components/tests/TestHistorialPaciente.tsx", "linea": 69, "regla": "@typescript-eslint/no-unused-vars", "severidad": 2 }
+      ]
+    },
+    "node_check_tres_suites_modificadas": { "codigo_salida": 0 },
+    "git_diff_check": { "codigo_salida": 0 }
+  },
+  "configuracion": {
+    "cambios_esquema": false,
+    "migracion": false,
+    "dependencias_o_locks_modificados": false,
+    "variables_nuevas": false,
+    "recharts_realmente_instalado": "3.4.1"
+  },
+  "pendientes_conservados": [
+    "F15: desajuste previo de build/start del backend.",
+    "2 errores y 1 advertencia de lint preexistentes.",
+    "SQLDEV 2025 con fallo previo P1001 no revalidado; las 33 pruebas reales son de SQL Server 2022 aislado.",
+    "Sin cuerpos de las dos respuestas POST 400 originales no se atribuye su causa exacta.",
+    "Render con Poppler no repetido; regresiones de contenido/atribución de PDF sí ejecutadas."
+  ],
+  "archivos": [
+    "clinica-backend/src/controllers/cita.controller.ts",
+    "clinica-backend/src/lib/fechaCalendario.ts",
+    "clinica-backend/src/routes/cita.routes.ts",
+    "clinica-backend/src/schemas/cita.schema.ts",
+    "clinica-backend/src/schemas/sesion.schema.ts",
+    "clinica-backend/src/services/cita.error.ts",
+    "clinica-backend/src/services/cita.service.ts",
+    "clinica-backend/tests/security.test.mjs",
+    "clinica-backend/tests/sesiones.sql.test.mjs",
+    "clinica-frontend/src/components/citas/CitaFormModal.tsx",
+    "clinica-frontend/src/components/citas/SesionModal.tsx",
+    "clinica-frontend/src/hooks/useCitas.ts",
+    "clinica-frontend/src/hooks/useDisponibilidadCita.ts",
+    "clinica-frontend/src/pages/Citas.tsx",
+    "clinica-frontend/src/pages/Dashboard.tsx",
+    "clinica-frontend/src/services/api.ts",
+    "clinica-frontend/src/utils/fechaCalendario.ts",
+    "clinica-frontend/tests/clinica.test.mjs",
+    "docs/ajuste-fechas-citas-verificacion.json",
+    "docs/ajuste-fechas-citas.md"
+  ],
+  "commit": {
+    "mensaje": "fix(citas): validar fechas y mejorar campos de tratamientos",
+    "identificacion": "Consultar el historial Git: este documento forma parte del commit del ajuste.",
+    "archivos_env_o_credenciales": false,
+    "push_realizado": false
+  }
+}

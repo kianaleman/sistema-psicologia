@@ -3,10 +3,12 @@ import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import { after, afterEach, beforeEach, mock, test } from 'node:test';
 import { JSDOM } from 'jsdom';
-const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/' });
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/', pretendToBeVisual: true });
 for (const key of ['window', 'document', 'HTMLElement', 'HTMLInputElement', 'HTMLTextAreaElement', 'HTMLSelectElement', 'Event', 'MouseEvent', 'localStorage', 'sessionStorage'])
     globalThis[key] = dom.window[key];
 Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, configurable: true });
+globalThis.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window);
+globalThis.cancelAnimationFrame = dom.window.cancelAnimationFrame.bind(dom.window);
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const React = await import('react');
 const { act } = React;
@@ -297,4 +299,164 @@ test('receta de varias páginas conserva la última indicación', () => {
     const doc = generarPDFReceta(pdf.sesion, pdf.nombrePaciente, false);
     assert.ok(doc.getNumberOfPages() > 1);
     assert.match(doc.output(), /24/);
+});
+
+// Ajuste posterior: calendario, disponibilidad y campos de tratamientos.
+const { default: CitaFormModal } = await import('../src/components/citas/CitaFormModal.tsx');
+const { useDisponibilidadCita } = await import('../src/hooks/useDisponibilidadCita.ts');
+const { esFechaCalendario } = await import('../src/utils/fechaCalendario.ts');
+const { default: Dashboard } = await import('../src/pages/Dashboard.tsx');
+const catalogosAgenda = {
+  pacientes: [{ ...cita().Paciente, ID_Direccion: 1, Activo: true }],
+  psicologos: [1, 2].map(id => ({ ID_Psicologo: id, Nombre: 'Profesional', Apellido: String(id), Activo: true })),
+  tiposCita: [{ ID_TipoCita: 1, Nombre_DeCita: 'Consulta' }],
+  metodosPago: [{ ID_Metodo_Pago: 1, Nombre_Metodo: 'Efectivo' }], bancos: [],
+};
+const agendaProps = (props = {}) => ({ isOpen: true, citaEditar: null, onClose: () => {}, onSubmit: async () => true, catalogos: catalogosAgenda, onCheckDisponibilidad: async () => [], ...props });
+function AgendaConApi(props) {
+  const { acciones } = useCitas();
+  return el(CitaFormModal, { ...props, onCheckDisponibilidad: acciones.obtenerHorariosOcupados });
+}
+const llenarCita = async () => {
+  await input('Paciente de la cita', '1');
+  await input('Profesional de la cita', '1');
+  await input('Fecha de la cita', '2099-11-03');
+  await input('Tipo de cita', '1');
+  await input('Precio de la cita', '250.00');
+  await input('Método de pago de la cita', '1');
+};
+for (const fecha of ['', '2026-10-', '20026-10-04', '0000-01-01', '2026-02-30', '2026-02-29', '1900-02-29', '2026-13-01']) {
+  test('calendario y formulario no consultan disponibilidad para ' + JSON.stringify(fecha), async () => {
+    assert.equal(esFechaCalendario(fecha), false);
+    const consultar = mock.fn(async () => []);
+    await render(CitaFormModal, agendaProps({ onCheckDisponibilidad: consultar }));
+    await input('Profesional de la cita', '1');
+    await input('Fecha de la cita', fecha);
+    assert.equal(consultar.mock.callCount(), 0);
+    assert.doesNotMatch(container.textContent, /El profesional tiene disponibilidad horaria/);
+  });
+}
+for (const fecha of ['0001-01-01', '2000-02-29', '2028-02-29', '2099-11-03', '9999-12-31']) test('disponibilidad acepta calendario válido ' + fecha, async () => {
+  const consultar = mock.fn(async () => []);
+  await render(CitaFormModal, agendaProps({ onCheckDisponibilidad: consultar }));
+  await input('Profesional de la cita', '1'); await input('Fecha de la cita', fecha);
+  assert.equal(esFechaCalendario(fecha), true);
+  assert.deepEqual(consultar.mock.calls[0].arguments, [1, fecha]);
+  assert.match(container.textContent, /El profesional tiene disponibilidad horaria/);
+});
+test('fallo de disponibilidad se propaga por useCitas, no significa libre, permite reintento', async () => {
+  const consultar = mock.method(api.citas, 'getHorariosOcupados', async () => { throw new Error('Red no disponible'); });
+  await render(AgendaConApi, agendaProps());
+  await input('Profesional de la cita', '1'); await input('Fecha de la cita', '2099-11-03');
+  assert.match(container.textContent, /No se pudo comprobar la disponibilidad.*Red no disponible/);
+  assert.doesNotMatch(container.textContent, /El profesional tiene disponibilidad horaria/);
+  assert.equal(container.querySelector('button[type="submit"]').disabled, true);
+  consultar.mock.mockImplementation(async () => []);
+  await click(button('Reintentar disponibilidad'));
+  assert.equal(consultar.mock.callCount(), 2);
+  assert.match(container.textContent, /El profesional tiene disponibilidad horaria/);
+});
+for (const cambio of ['fecha', 'profesional']) test(`disponibilidad descarta respuesta anterior al cambiar ${cambio}`, async () => {
+  const a = deferred(), b = deferred();
+  const consultar = mock.fn((id, fecha) => (cambio === 'fecha' ? fecha === '2099-11-03' : id === 1) ? a.promise : b.promise);
+  await render(CitaFormModal, agendaProps({ onCheckDisponibilidad: consultar }));
+  await input('Profesional de la cita', '1'); await input('Fecha de la cita', '2099-11-03');
+  if (cambio === 'fecha') await input('Fecha de la cita', '2099-11-04');
+  else await input('Profesional de la cita', '2');
+  assert.ok(container.querySelector('[role="status"]'));
+  await act(async () => b.resolve(['09:30']));
+  await act(async () => a.resolve(['10:30']));
+  assert.match(container.textContent, /09:30/); assert.doesNotMatch(container.textContent, /10:30/);
+});
+test('volver A -> B -> A no reutiliza disponibilidad anterior mientras consulta de nuevo', async () => {
+  const tercero = deferred(); let calls = 0;
+  const consultar = () => ++calls <= 2 ? Promise.resolve([]) : tercero.promise;
+  function Hook({ fecha }) { const estado = useDisponibilidadCita(1, fecha, consultar); return el('pre', null, estado.estado); }
+  await render(Hook, { fecha: '2099-11-03' }); assert.equal(container.textContent, 'cargada');
+  await render(Hook, { fecha: '2099-11-04' }); assert.equal(container.textContent, 'cargada');
+  await render(Hook, { fecha: '2099-11-03' }); assert.equal(container.textContent, 'cargando');
+  await act(async () => tercero.resolve([])); assert.equal(container.textContent, 'cargada');
+});
+test('payload real de cita futura conserva fecha/precio, bloquea doble envío y conserva datos ante error', async () => {
+  const op = deferred(); let closed = 0;
+  const guardar = mock.fn(() => op.promise);
+  await render(CitaFormModal, agendaProps({ onSubmit: guardar, onClose: () => closed++ }));
+  await llenarCita();
+  const form = container.querySelector('form');
+  await act(async () => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+  assert.equal(guardar.mock.callCount(), 1); assert.equal(closed, 0);
+  const payload = guardar.mock.calls[0].arguments[0];
+  assert.equal(payload.FechaCita, '2099-11-03'); assert.equal(payload.HoraCita, '08:00'); assert.equal(payload.Precio, 250);
+  assert.equal(payload.ID_Paciente, 1); assert.equal(payload.ID_Psicologo, 1);
+  await act(async () => op.reject(new Error('No se pudo crear la cita. Vuelve a intentar.')));
+  assert.equal(closed, 0); assert.match(container.textContent, /No se pudo crear la cita/);
+  assert.equal(container.querySelector('[aria-label="Fecha de la cita"]').value, '2099-11-03');
+  assert.equal(container.querySelector('[aria-label="Precio de la cita"]').value, '250.00');
+});
+test('cita incompleta no envía IDs NaN; se puede completar sin perder datos', async () => {
+  const guardar = mock.fn(async () => true);
+  await render(CitaFormModal, agendaProps({ onSubmit: guardar }));
+  await input('Profesional de la cita', '1'); await input('Fecha de la cita', '2099-11-03');
+  await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  assert.equal(guardar.mock.callCount(), 0); assert.match(container.textContent, /Selecciona paciente/);
+  await llenarCita();
+  await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  assert.equal(guardar.mock.callCount(), 1);
+});
+for (const tipo of ['terapeutico', 'farmacologico']) test('fechas del tratamiento ' + tipo + ': mismas medidas, errores por campo y fin opcional', async () => {
+  const saved = [];
+  await render(SesionModal, formulario({ onSubmit: async value => saved.push(value) }));
+  await llenar(); await input('Tipo de tratamiento', tipo); await input('Frecuencia', 'Semanal');
+  if (tipo === 'terapeutico') { await input('Objetivo terapéutico', 'Objetivo conservado'); await input('Tipo de terapia', '1'); }
+  else { await input('Medicamento', 'Medicamento conservado'); await input('Dosis', '25 mg'); await input('Vía de administración', '1'); }
+  const inicio = container.querySelector('[aria-label="Fecha de inicio del tratamiento"]');
+  const fin = container.querySelector('[aria-label="Fecha de fin del tratamiento"]');
+  assert.equal(inicio.className, fin.className);
+  const grupo = inicio.closest('fieldset'); assert.match(grupo.querySelector('legend').textContent, /Fechas del tratamiento/);
+  assert.match(inicio.parentElement.parentElement.className, /grid-cols-1.*md:grid-cols-2/);
+  await input('Fecha de inicio del tratamiento', ''); await click(button('+ Agregar Indicación'));
+  assert.equal(inicio.getAttribute('aria-invalid'), 'true'); assert.match(document.getElementById(inicio.getAttribute('aria-describedby')).textContent, /obligatoria/);
+  await input('Fecha de inicio del tratamiento', '2026-11-01'); await input('Fecha de fin del tratamiento', '2026-10-31'); await click(button('+ Agregar Indicación'));
+  assert.equal(fin.getAttribute('aria-invalid'), 'true'); assert.match(document.getElementById(fin.getAttribute('aria-describedby')).textContent, /anterior/);
+  assert.equal(container.querySelector(tipo === 'terapeutico' ? '[aria-label="Objetivo terapéutico"]' : '[aria-label="Medicamento"]').value, tipo === 'terapeutico' ? 'Objetivo conservado' : 'Medicamento conservado');
+  assert.equal(container.querySelector('[aria-label="Observaciones clínicas"]').value, 'Notas conservadas');
+  await input('Fecha de fin del tratamiento', ''); await click(button('+ Agregar Indicación')); await click(button('Finalizar Consulta'));
+  assert.equal(saved.length, 1); assert.equal(saved[0].Tratamientos[0].FechaFin, undefined);
+});
+test('API frontend presenta el detalle útil de un 400 de validación', async () => {
+  mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ error: 'Datos inválidos', detalles: [{ campo: 'FechaCita', mensaje: 'Indica una fecha real en formato YYYY-MM-DD.' }] }), { status: 400, headers: { 'Content-Type': 'application/json' } }));
+  await assert.rejects(api.citas.create({}), /Indica una fecha real/);
+});
+test('dashboard espera ancho medido, conserva alturas y reacciona a ocultar/mostrar sin avisos negativos', async () => {
+  const observers = [];
+  const anterior = globalThis.ResizeObserver;
+  const anteriorWindow = window.ResizeObserver;
+  class Observer {
+    constructor(callback) { this.callback = callback; this.nodes = []; observers.push(this); }
+    observe(node) { this.nodes.push(node); }
+    unobserve() {}
+    disconnect() { this.nodes = []; }
+  }
+  globalThis.ResizeObserver = window.ResizeObserver = Observer;
+  const advertencias = [];
+  const originalWarn = console.warn;
+  mock.method(console, 'warn', (...args) => { advertencias.push(args.join(' ')); originalWarn(...args); });
+  mock.method(api.general, 'stats', async () => ({ totalPacientes: 1, psicologosActivos: 1, citasHoy: 0, ingresosTotales: 250 }));
+  mock.method(api.general, 'graficos', async () => ({ ingresos: [{ fecha: '2026-11-03', monto: 250 }], generos: [{ name: 'Femenino', value: 1, fill: '#10b981' }], edades: [] }));
+  try {
+    function Page() { return el(MemoryRouter, null, el(Dashboard)); }
+    await render(Page);
+    const containers = [...container.querySelectorAll('.recharts-responsive-container')];
+    assert.equal(containers.length, 2); assert.equal(containers[0].style.height, '320px'); assert.equal(containers[1].style.height, '224px');
+    assert.equal(container.querySelectorAll('svg.recharts-surface').length, 0);
+    const medir = async (width) => act(async () => {
+      for (const observer of observers) for (const node of observer.nodes) observer.callback([{ target: node, contentRect: { width, height: parseInt(node.style.height) || 224 } }]);
+    });
+    await medir(600); assert.ok(container.querySelectorAll('svg.recharts-surface').length >= 2);
+    await medir(0); assert.equal(container.querySelectorAll('svg.recharts-surface').length, 0);
+    await medir(320); assert.ok(container.querySelectorAll('svg.recharts-surface').length >= 2);
+    assert.equal(advertencias.some(warning => /width\(|height\(/.test(warning)), false);
+  } finally {
+    await unmount(); globalThis.ResizeObserver = anterior; window.ResizeObserver = anteriorWindow;
+  }
 });

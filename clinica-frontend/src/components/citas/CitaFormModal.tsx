@@ -1,4 +1,6 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useDisponibilidadCita } from '../../hooks/useDisponibilidadCita';
+import { errorFechaCalendario, FECHA_MINIMA_SQL, FECHA_MAXIMA_SQL } from '../../utils/fechaCalendario';
+import { useEffect, useState, useRef, type ChangeEvent, type FormEvent } from 'react';
 import type {
   Cita,
   CreateCitaDTO,
@@ -123,8 +125,19 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
   const [timePart, setTimePart] = useState({ hour: '12', minute: '00', period: 'AM' });
   const [busquedaPaciente, setBusquedaPaciente] = useState('');
   const [busquedaPsicologo, setBusquedaPsicologo] = useState('');
-  const [horariosOcupados, setHorariosOcupados] = useState<string[]>([]);
-  const [cargandoHorarios, setCargandoHorarios] = useState(false);
+  const [errorGuardar, setErrorGuardar] = useState<string | null>(null);
+  const enviando = useRef(false);
+  const disponibilidad = useDisponibilidadCita(Number(formData.psicologoId), formData.fecha, onCheckDisponibilidad, isOpen);
+  const errorFecha = formData.fecha ? errorFechaCalendario(formData.fecha) : '';
+  const cargandoHorarios = disponibilidad.estado === 'cargando';
+  // La cita que se está editando no compite consigo misma. Si hay otra a la
+  // misma hora, se conserva la segunda coincidencia y el servidor vuelve a validar.
+  const horaActual = citaEditar?.HoraCita ? new Date(citaEditar.HoraCita).toISOString().slice(11, 16) : '';
+  const excluirActual = citaEditar && formData.fecha === String(citaEditar.FechaCita).slice(0, 10)
+    && Number(formData.psicologoId) === citaEditar.ID_Psicologo;
+  const indiceActual = excluirActual ? disponibilidad.horarios.indexOf(horaActual) : -1;
+  const horariosOcupados = disponibilidad.horarios.filter((_, index) => index !== indiceActual);
+  const horarioOcupado = horariosOcupados.includes(formData.hora);
 
   const parse24to12 = (time24: string) => {
     if (!time24) return { hour: '08', minute: '00', period: 'AM' };
@@ -172,6 +185,7 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
   };
 
   useEffect(() => {
+    setErrorGuardar(null);
     if (citaEditar) {
       const fechaISO = citaEditar.FechaCita ? new Date(citaEditar.FechaCita).toISOString().split('T')[0] : '';
 
@@ -214,51 +228,22 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
     }
   }, [citaEditar, isOpen]);
 
-  useEffect(() => {
-    let activo = true;
-
-    const verificarDisponibilidad = async () => {
-      if (!formData.psicologoId || !formData.fecha) {
-        setHorariosOcupados([]);
-        setCargandoHorarios(false);
-        return;
-      }
-
-      setCargandoHorarios(true);
-
-      try {
-        const horarios = await onCheckDisponibilidad(parseInt(formData.psicologoId), formData.fecha);
-
-        if (activo) {
-          setHorariosOcupados(horarios);
-        }
-      } catch (error) {
-        console.error('Error verificando disponibilidad:', error);
-
-        if (activo) {
-          setHorariosOcupados([]);
-        }
-      } finally {
-        if (activo) {
-          setCargandoHorarios(false);
-        }
-      }
-    };
-
-    verificarDisponibilidad();
-
-    return () => {
-      activo = false;
-    };
-  }, [formData.psicologoId, formData.fecha, onCheckDisponibilidad]);
-
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
-    if (!formData.pacienteId || !formData.psicologoId || !formData.fecha || !formData.hora) return;
-
-    if (formData.metodoPagoId && formData.metodoPagoId !== '1' && !formData.numeroReferencia) {
-      return alert('El número de referencia es obligatorio para transferencias.');
+    if (enviando.current) return;
+    setErrorGuardar(null);
+    const fechaError = errorFechaCalendario(formData.fecha);
+    if (fechaError) return setErrorGuardar(fechaError);
+    if (![formData.pacienteId, formData.psicologoId, formData.tipoCitaId, formData.metodoPagoId].every(value => Number.isInteger(Number(value)) && Number(value) > 0)) {
+      return setErrorGuardar('Selecciona paciente, profesional, tipo de cita y método de pago.');
+    }
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(formData.hora)) return setErrorGuardar('Indica una hora válida.');
+    if (!formData.precio || !Number.isFinite(Number(formData.precio)) || Number(formData.precio) < 0) return setErrorGuardar('Indica un precio válido.');
+    if (disponibilidad.estado !== 'cargada') return setErrorGuardar('Confirma la disponibilidad antes de guardar. Si falló, vuelve a consultarla.');
+    if (horarioOcupado) return setErrorGuardar('El profesional ya tiene una cita en ese horario.');
+    if (formData.metodoPagoId !== '1' && (!formData.bancoId || !formData.numeroReferencia.trim())) {
+      return setErrorGuardar('Selecciona el banco e indica el número de referencia para este método de pago.');
     }
 
     const paciente = catalogos.pacientes?.find((p) => p.ID_Paciente.toString() === formData.pacienteId);
@@ -281,15 +266,18 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
       ...(formData.metodoPagoId !== '1' && formData.numeroReferencia ? { Numero_Referencia: formData.numeroReferencia } : {})
     };
 
+    enviando.current = true;
     setGuardando(true);
 
     try {
       const success = await onSubmit(payload, !!citaEditar);
 
       if (success !== false) onClose();
+      else setErrorGuardar('No se pudo guardar la cita. Revisa el aviso y vuelve a intentar.');
     } catch (error) {
-      console.error('Error:', error);
+      setErrorGuardar(error instanceof Error ? error.message : 'No se pudo guardar la cita. Vuelve a intentar.');
     } finally {
+      enviando.current = false;
       setGuardando(false);
     }
   };
@@ -375,6 +363,7 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
           </div>
         </div>
 
+        {errorGuardar && <p role="alert" className="px-6 py-3 text-sm text-red-700">{errorGuardar}</p>}
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/60 p-5">
             <div className="grid grid-cols-1 gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
@@ -497,6 +486,7 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                       <select
                         required
                         className="select select-bordered h-12 w-full rounded-2xl bg-white text-sm font-medium"
+                        aria-label="Paciente de la cita"
                         value={formData.pacienteId}
                         onChange={(e) => setFormData({ ...formData, pacienteId: e.target.value })}
                       >
@@ -539,6 +529,7 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                       <select
                         required
                         className="select select-bordered h-12 w-full rounded-2xl bg-white text-sm font-medium"
+                        aria-label="Profesional de la cita"
                         value={formData.psicologoId}
                         onChange={(e) => setFormData({ ...formData, psicologoId: e.target.value })}
                       >
@@ -579,10 +570,16 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                       <input
                         required
                         type="date"
+                        aria-label="Fecha de la cita"
+                        min={FECHA_MINIMA_SQL}
+                        max={FECHA_MAXIMA_SQL}
+                        aria-invalid={!!errorFecha}
+                        aria-describedby={errorFecha ? 'error-fecha-cita' : undefined}
                         className="input input-bordered h-12 w-full rounded-2xl bg-slate-50 text-sm font-medium transition-colors focus:bg-white"
                         value={formData.fecha}
                         onChange={(e) => setFormData({ ...formData, fecha: e.target.value })}
                       />
+                      {errorFecha && <p id="error-fecha-cita" role="alert" className="mt-2 text-xs text-red-600">{errorFecha}</p>}
                     </div>
 
                     <div>
@@ -633,39 +630,17 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                     </div>
                   </div>
 
-                  {formData.psicologoId && formData.fecha && (
-                    <div className={`mt-5 rounded-2xl border p-4 ${
-                      cargandoHorarios
-                        ? 'border-slate-200 bg-slate-50 text-slate-500'
-                        : horariosOcupados.length > 0
-                          ? 'border-rose-100 bg-rose-50 text-rose-700'
-                          : 'border-emerald-100 bg-emerald-50 text-emerald-700'
-                    }`}>
-                      {cargandoHorarios ? (
-                        <div className="flex items-center gap-3 text-sm font-bold">
-                          <span className="loading loading-spinner loading-sm"></span>
-                          Consultando disponibilidad del profesional...
-                        </div>
-                      ) : horariosOcupados.length > 0 ? (
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-2 text-sm font-black">
-                            <Icons.Alert />
-                            Horarios ocupados este día
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {horariosOcupados.map((h) => (
-                              <span key={h} className="rounded-full bg-white px-3 py-1 font-mono text-xs font-black text-rose-700 shadow-sm">
-                                {h}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 text-sm font-black">
-                          <Icons.Check />
-                          El profesional tiene disponibilidad horaria este día.
-                        </div>
-                      )}
+                  {disponibilidad.estado !== 'inactiva' && (
+                    <div className={`mt-5 rounded-2xl border p-4 ${disponibilidad.estado === 'error' || horarioOcupado ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                      {cargandoHorarios ? <p role="status">Consultando disponibilidad del profesional...</p>
+                        : disponibilidad.estado === 'error' ? <div role="alert">
+                          <p>No se pudo comprobar la disponibilidad. {disponibilidad.error}</p>
+                          <button type="button" className="btn btn-sm btn-outline mt-3" onClick={disponibilidad.reintentar}>Reintentar disponibilidad</button>
+                        </div> : horariosOcupados.length > 0 ? <div>
+                          <p className="font-bold">Horarios ocupados este día</p>
+                          <div className="mt-2 flex flex-wrap gap-2">{horariosOcupados.map((hora, index) => <span key={`${hora}-${index}`} className="badge badge-outline font-mono">{hora}</span>)}</div>
+                          {horarioOcupado && <p role="alert" className="mt-2 text-sm">El horario seleccionado está ocupado.</p>}
+                        </div> : <p>El profesional tiene disponibilidad horaria este día.</p>}
                     </div>
                   )}
                 </section>
@@ -732,6 +707,7 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                         <select
                           required
                           className="select select-bordered h-11 w-full rounded-2xl bg-white text-sm font-medium"
+                          aria-label="Tipo de cita"
                           value={formData.tipoCitaId}
                           onChange={(e) => setFormData({ ...formData, tipoCitaId: e.target.value })}
                         >
@@ -753,6 +729,7 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                           min="0"
                           placeholder="0.00"
                           className="input input-bordered h-11 w-full rounded-2xl bg-white font-mono text-base font-black text-emerald-600"
+                          aria-label="Precio de la cita"
                           value={formData.precio}
                           onChange={(e) => setFormData({ ...formData, precio: e.target.value })}
                         />
@@ -765,6 +742,7 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                         <select
                           required
                           className="select select-bordered h-11 w-full rounded-2xl bg-white text-sm font-medium"
+                          aria-label="Método de pago de la cita"
                           value={formData.metodoPagoId}
                           onChange={(e) => setFormData({ ...formData, metodoPagoId: e.target.value })}
                         >
@@ -785,6 +763,7 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                               <select
                                 required
                                 className="select select-bordered h-11 w-full rounded-2xl bg-white text-sm font-medium"
+                                aria-label="Banco de la cita"
                                 value={formData.bancoId}
                                 onChange={(e) => setFormData({ ...formData, bancoId: e.target.value })}
                               >
@@ -805,6 +784,7 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
                               type="text"
                               placeholder="Ej: 987654321"
                               className="input input-bordered h-11 w-full rounded-2xl bg-white font-mono text-sm"
+                              aria-label="Referencia de la cita"
                               value={formData.numeroReferencia}
                               onChange={(e) => setFormData({ ...formData, numeroReferencia: e.target.value })}
                             />
@@ -858,7 +838,7 @@ export default function CitaFormModal({ isOpen, onClose, onSubmit, citaEditar, c
               <button
                 type="submit"
                 className="btn rounded-xl bg-slate-950 px-8 text-white shadow-lg hover:bg-slate-800"
-                disabled={guardando}
+                disabled={guardando || disponibilidad.estado !== 'cargada' || horarioOcupado}
               >
                 {guardando ? (
                   <>

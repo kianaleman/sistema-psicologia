@@ -229,4 +229,35 @@ else {
         }
     });
 
+    for (const fecha of ['0001-01-01', '2028-02-29', '9999-12-31']) test('SQL: disponibilidad admite rango DATE real ' + fecha, async () => {
+        const r = await request(`/citas/horarios-ocupados?psicologoId=${fixture.profesionales[0].ID_Psicologo}&fecha=${fecha}`, fixture.users.admin);
+        assert.equal(r.status, 200, JSON.stringify(r.body));
+        assert.ok(Array.isArray(r.body));
+    });
+    test('SQL: payload de cita futura crea recibo y edición conserva día y hora de calendario', async () => {
+        if (!await prisma.metodoPago.findUnique({ where: { ID_Metodo_Pago: 1 } })) {
+            const metodo = await prisma.metodoPago.create({ data: { Nombre_Metodo: 'Efectivo sintetico' } });
+            assert.equal(metodo.ID_Metodo_Pago, 1);
+        }
+        if (!await prisma.divisa.findUnique({ where: { ID_Divisa: 1 } })) {
+            const moneda = await prisma.divisa.create({ data: { Codigo_ISO: 'NIO', Nombre: 'Cordoba sintetica' } });
+            assert.equal(moneda.ID_Divisa, 1);
+        }
+        const datos = await preparar();
+        const r = await request('/citas', fixture.users.recepcion, {
+            ID_Paciente: datos.paciente.ID_Paciente, ID_Psicologo: datos.cita.ID_Psicologo,
+            ID_Direccion: fixture.dir.ID_Direccion, ID_TipoCita: fixture.tipo.ID_TipoCita,
+            FechaCita: '2099-12-01', HoraCita: '09:30', Precio: 250, ID_MetodoPago: 1,
+        });
+        assert.equal(r.status, 201, JSON.stringify(r.body));
+        assert.equal(r.body.cita.FechaCita, '2099-12-01T00:00:00.000Z');
+        assert.equal(r.body.cita.HoraCita, '1970-01-01T09:30:00.000Z');
+        assert.equal(Number(r.body.recibo.MontoTotal), 250);
+        const editada = await request(`/citas/${r.body.cita.ID_Cita}`, fixture.users.recepcion, { FechaCita: '2099-12-02' }, 'PUT');
+        assert.equal(editada.status, 200, JSON.stringify(editada.body));
+        const persistida = await prisma.cita.findUnique({ where: { ID_Cita: r.body.cita.ID_Cita } });
+        assert.equal(persistida.FechaCita.toISOString(), '2099-12-02T00:00:00.000Z');
+        assert.equal(persistida.HoraCita.toISOString(), '1970-01-01T09:30:00.000Z');
+    });
+
 }

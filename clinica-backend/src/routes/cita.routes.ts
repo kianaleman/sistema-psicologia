@@ -9,7 +9,7 @@ import {
 } from '../controllers/cita.controller.js';
 import { permitirRoles, protegerCuentaVigente, ROLES } from '../middlewares/auth.middleware.js';
 import { validateSchema } from '../middlewares/validator.middleware.js';
-import { createCitaSchema, updateCitaSchema, cancelCitaSchema } from '../schemas/cita.schema.js';
+import { createCitaSchema, updateCitaSchema, cancelCitaSchema, disponibilidadCitaSchema } from '../schemas/cita.schema.js';
 
 // Agregamos el tipado explícito para pnpm
 const router: Router = Router();
@@ -30,7 +30,7 @@ router.get('/catalogos', getCatalogosCitas);
 
 // 👇 NUEVA RUTA PARA CONSULTAR DISPONIBILIDAD 👇
 // Se accede vía /api/citas/horarios-ocupados?psicologoId=1&fecha=2026-05-31
-router.get('/horarios-ocupados', getHorariosOcupados);
+router.get('/horarios-ocupados', validateSchema(disponibilidadCitaSchema), getHorariosOcupados);
 
 // 2. RUTAS GENERALES
 router.get('/', getCitas);

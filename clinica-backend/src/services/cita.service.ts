@@ -1,3 +1,6 @@
+import { CitaError } from './cita.error.js';
+import { esFechaCalendario, esHoraCita } from '../lib/fechaCalendario.js';
+import type { CreateCitaDTO, UpdateCitaDTO } from '../schemas/cita.schema.js';
 import type { Prisma } from '@prisma/client';
 import type { AuthUserPayload } from '../middlewares/auth.middleware.js';
 import { prisma } from '../lib/prisma.js';
@@ -17,35 +20,25 @@ const MOTIVOS_CANCELACION = {
 const MINUTOS_GRACIA_INASISTENCIA = 60;
 
 
-interface CreateCitaDTO {
-  ID_Paciente: number;
-  ID_Psicologo: number;
-  ID_TipoCita: number;
-  ID_EstadoCita: number;
-  ID_Direccion: number;
-  FechaCita: string;
-  HoraCita: string;
-  MotivoConsulta?: string;
-
-  Precio: number;
-  ID_Divisa?: number;
-  ID_MetodoPago: number;
-  ID_Banco?: number;
-  Numero_Referencia?: string;
-}
-
-interface UpdateCitaDTO extends Partial<CreateCitaDTO> {}
+const validarFecha = (fecha: string) => {
+  if (!esFechaCalendario(fecha)) throw new CitaError(400, 'Indica una fecha real en formato YYYY-MM-DD, con año entre 0001 y 9999.');
+  return new Date(`${fecha}T00:00:00.000Z`);
+};
+const validarHora = (hora: string) => {
+  if (!esHoraCita(hora)) throw new CitaError(400, 'Indica una hora válida en formato HH:mm (00:00 a 23:59).');
+  return new Date(`1970-01-01T${hora}:00.000Z`);
+};
 
 const traducirConflictoCita = (error: unknown): never => {
   if ((error as { code?: string }).code === 'P2025') {
-    throw new Error('La cita cambió o ya tiene una sesión. Actualice la agenda antes de reintentar.');
+    throw new CitaError(409, 'La cita cambió o ya tiene una sesión. Actualice la agenda antes de reintentar.');
   }
   throw error;
 };
 
 const validarUsuarioAutenticado = (usuario?: AuthUserPayload) => {
   if (!usuario) {
-    throw new Error('Acceso no autorizado.');
+    throw new CitaError(401, 'Acceso no autorizado.');
   }
 
   return usuario;
@@ -53,7 +46,7 @@ const validarUsuarioAutenticado = (usuario?: AuthUserPayload) => {
 
 const validarPsicologoVinculado = (usuario: AuthUserPayload) => {
   if (!usuario.idPsicologo) {
-    throw new Error('El usuario psicólogo no tiene un perfil de psicólogo vinculado.');
+    throw new CitaError(403, 'El usuario psicólogo no tiene un perfil de psicólogo vinculado.');
   }
 
   return usuario.idPsicologo;
@@ -72,7 +65,7 @@ const obtenerWhereCitasPermitidas = (usuario?: AuthUserPayload): Prisma.CitaWher
     };
   }
 
-  throw new Error('No tiene permisos para consultar citas.');
+  throw new CitaError(403, 'No tiene permisos para consultar citas.');
 };
 
 const obtenerPsicologoPermitidoParaCita = (psicologoId: number, usuario?: AuthUserPayload) => {
@@ -86,13 +79,13 @@ const obtenerPsicologoPermitidoParaCita = (psicologoId: number, usuario?: AuthUs
     const idPsicologo = validarPsicologoVinculado(usuarioActual);
 
     if (psicologoId !== idPsicologo) {
-      throw new Error('No tiene permisos para gestionar citas de otro psicólogo.');
+      throw new CitaError(403, 'No tiene permisos para gestionar citas de otro psicólogo.');
     }
 
     return idPsicologo;
   }
 
-  throw new Error('No tiene permisos para gestionar citas.');
+  throw new CitaError(403, 'No tiene permisos para gestionar citas.');
 };
 
 const validarAccesoACitaExistente = (
@@ -109,13 +102,13 @@ const validarAccesoACitaExistente = (
     const idPsicologo = validarPsicologoVinculado(usuarioActual);
 
     if (cita.ID_Psicologo !== idPsicologo) {
-      throw new Error('No tiene permisos para modificar una cita que pertenece a otro psicólogo.');
+      throw new CitaError(403, 'No tiene permisos para modificar una cita que pertenece a otro psicólogo.');
     }
 
     return;
   }
 
-  throw new Error('No tiene permisos para gestionar citas.');
+  throw new CitaError(403, 'No tiene permisos para gestionar citas.');
 };
 
 const verificarDisponibilidad = async (
@@ -151,7 +144,7 @@ const verificarDisponibilidad = async (
   });
 
   if (conflicto) {
-    throw new Error('El psicólogo ya tiene una cita agendada en este horario.');
+    throw new CitaError(409, 'El psicólogo ya tiene una cita agendada en este horario.');
   }
 };
 
@@ -247,15 +240,16 @@ export const CitaService = {
     usuario?: AuthUserPayload
   ) => {
     const psicologoPermitido = obtenerPsicologoPermitidoParaCita(psicologoId, usuario);
-    const fechaBuscar = new Date(fechaStr);
+    const fechaBuscar = validarFecha(fechaStr);
+    if (!Number.isInteger(psicologoPermitido) || psicologoPermitido < 1 || psicologoPermitido > 2147483647) {
+      throw new CitaError(400, 'Selecciona un profesional válido.');
+    }
 
     const citas = await prisma.cita.findMany({
       where: {
         ID_Psicologo: psicologoPermitido,
         FechaCita: fechaBuscar,
-        ID_EstadoCita: {
-          not: 3,
-        },
+        ID_EstadoCita: { notIn: [ESTADOS_CITA.CANCELADA, ESTADOS_CITA.NO_PROCESADA] },
       },
       select: {
         HoraCita: true,
@@ -272,6 +266,8 @@ export const CitaService = {
   },
 
   create: async (data: CreateCitaDTO, usuario?: AuthUserPayload) => {
+    const fechaSoloDia = validarFecha(data.FechaCita);
+    const fechaParaGuardar = validarHora(data.HoraCita);
     const psicologoPermitido = obtenerPsicologoPermitidoParaCita(data.ID_Psicologo, usuario);
 
     const pacienteCheck = await prisma.paciente.findUnique({
@@ -284,7 +280,7 @@ export const CitaService = {
     });
 
     if (!pacienteCheck || !pacienteCheck.Activo) {
-      throw new Error('El paciente no existe o está INACTIVO.');
+      throw new CitaError(400, 'El paciente no existe o está INACTIVO.');
     }
 
     const psicologoCheck = await prisma.psicologo.findUnique({
@@ -297,31 +293,16 @@ export const CitaService = {
     });
 
     if (!psicologoCheck || !psicologoCheck.Activo) {
-      throw new Error('El psicólogo no existe o está INACTIVO.');
+      throw new CitaError(400, 'El psicólogo no existe o está INACTIVO.');
     }
 
     if (data.ID_MetodoPago !== 1 && (!data.ID_Banco || !data.Numero_Referencia)) {
-      throw new Error('Para transferencias o pagos con tarjeta, debe seleccionar un Banco e ingresar el Número de Referencia.');
+      throw new CitaError(400, 'Para transferencias o pagos con tarjeta, debe seleccionar un Banco e ingresar el Número de Referencia.');
     }
 
-    const timeParts = data.HoraCita.split(':').map(Number);
-    const horas = timeParts[0] ?? 0;
-    const minutos = timeParts[1] ?? 0;
-
-    if (Number.isNaN(horas) || Number.isNaN(minutos)) {
-      throw new Error('Hora inválida');
+    if (new Date(`${data.FechaCita}T${data.HoraCita}:00-06:00`) <= new Date()) {
+      throw new CitaError(400, 'No es posible agendar citas en el pasado. Selecciona una fecha y hora futuras.');
     }
-
-    const fechaIsoString = `${data.FechaCita}T${data.HoraCita}:00-06:00`;
-
-    if (new Date(fechaIsoString) < new Date()) {
-      throw new Error('No es posible agendar citas en el pasado.');
-    }
-
-    const fechaParaGuardar = new Date(data.FechaCita);
-    fechaParaGuardar.setUTCHours(horas, minutos, 0, 0);
-
-    const fechaSoloDia = new Date(data.FechaCita);
 
     await verificarDisponibilidad(psicologoPermitido, fechaSoloDia, fechaParaGuardar);
 
@@ -370,6 +351,8 @@ export const CitaService = {
   },
 
   update: async (id: number, data: UpdateCitaDTO, usuario?: AuthUserPayload) => {
+    if (data.FechaCita !== undefined) validarFecha(data.FechaCita);
+    if (data.HoraCita !== undefined) validarHora(data.HoraCita);
     const result = await prisma.cita.findUnique({
       where: {
         ID_Cita: id,
@@ -378,7 +361,7 @@ export const CitaService = {
     });
 
     if (!result) {
-      throw new Error('Cita no encontrada');
+      throw new CitaError(404, 'Cita no encontrada');
     }
 
     validarAccesoACitaExistente(result, usuario);
@@ -391,7 +374,7 @@ export const CitaService = {
       (data.ID_Psicologo !== undefined && data.ID_Psicologo !== result.ID_Psicologo)
       || (data.ID_Paciente !== undefined && data.ID_Paciente !== result.ID_Paciente)
     )) {
-      throw new Error('No tiene permisos para reasignar una cita con sesión clínica registrada.');
+      throw new CitaError(403, 'No tiene permisos para reasignar una cita con sesión clínica registrada.');
     }
 
     if (data.ID_Psicologo !== undefined) {
@@ -427,22 +410,10 @@ export const CitaService = {
     const finalDireccion = data.ID_Direccion ?? oldDireccion;
     const finalEstado = data.ID_EstadoCita ?? oldEstado;
 
-    const timeParts = horaStr.split(':').map(Number);
-    const horas = timeParts[0] ?? 0;
-    const minutos = timeParts[1] ?? 0;
-
-    if (Number.isNaN(horas) || Number.isNaN(minutos)) {
-      throw new Error('Hora inválida');
-    }
-
-    const fechaParaGuardar = new Date(fechaStr);
-    fechaParaGuardar.setUTCHours(horas, minutos, 0, 0);
-
-    const fechaSoloDia = new Date(fechaStr);
-    const fechaIsoString = `${fechaStr}T${horaStr}:00-06:00`;
-
-    if (new Date(fechaIsoString) < new Date()) {
-      throw new Error('No puedes reprogramar la cita a una fecha/hora pasada.');
+    const fechaSoloDia = validarFecha(fechaStr);
+    const fechaParaGuardar = validarHora(horaStr);
+    if (new Date(`${fechaStr}T${horaStr}:00-06:00`) <= new Date()) {
+      throw new CitaError(400, 'No puedes reprogramar la cita a una fecha/hora pasada. Selecciona una fecha y hora futuras.');
     }
 
     await verificarDisponibilidad(idPsicologo, fechaSoloDia, fechaParaGuardar, id);
@@ -518,7 +489,7 @@ export const CitaService = {
     });
 
     if (!cita) {
-      throw new Error('Cita no encontrada');
+      throw new CitaError(404, 'Cita no encontrada');
     }
 
     validarAccesoACitaExistente(cita, usuario);

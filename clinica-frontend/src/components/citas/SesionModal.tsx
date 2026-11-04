@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useDisponibilidadCita } from '../../hooks/useDisponibilidadCita';
+import { esFechaCalendario, erroresFechasTratamiento, errorFechaCalendario, FECHA_MINIMA_SQL, FECHA_MAXIMA_SQL } from '../../utils/fechaCalendario';
+import { useMemo, useState } from "react";
 import type { 
   Cita, 
   ViaAdministracion, 
@@ -126,9 +128,12 @@ function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onC
   const mostrarConfirmacionFechaFutura = horaInicioSistema === null;
   const [mostrarSeguimiento, setMostrarSeguimiento] = useState(false);
   const [seguimientoForm, setSeguimientoForm] = useState<SeguimientoForm>(() => crearSeguimientoInicial(null, catalogos));
-  const [horariosOcupados, setHorariosOcupados] = useState<string[]>([]);
-  const [agendandoSeguimiento, setAgendandoSeguimiento] = useState(false);
   const [seguimientoAgendado, setSeguimientoAgendado] = useState(false);
+  const disponibilidadSeguimiento = useDisponibilidadCita(cita.ID_Psicologo, seguimientoForm.fecha, onCheckDisponibilidad, mostrarSeguimiento && !seguimientoAgendado);
+  const horariosOcupados = disponibilidadSeguimiento.horarios;
+  const [mostrarErroresFechas, setMostrarErroresFechas] = useState(false);
+  const erroresFechas = erroresFechasTratamiento(formTratamiento.fechaInicio, formTratamiento.fechaFin);
+  const [agendandoSeguimiento, setAgendandoSeguimiento] = useState(false);
 
   const obtenerFechaCita = (fecha?: string | Date | null) => {
     if (!fecha) return null;
@@ -139,27 +144,6 @@ function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onC
 
     return fechaCita;
   };
-
-  useEffect(() => {
-    if (!mostrarSeguimiento || !seguimientoForm.fecha || !cita?.ID_Psicologo || !onCheckDisponibilidad) {
-      setHorariosOcupados([]);
-      return;
-    }
-
-    let isMounted = true;
-
-    onCheckDisponibilidad(cita.ID_Psicologo, seguimientoForm.fecha)
-      .then((horarios) => {
-        if (isMounted) setHorariosOcupados(horarios);
-      })
-      .catch(() => {
-        if (isMounted) setHorariosOcupados([]);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [mostrarSeguimiento, seguimientoForm.fecha, cita?.ID_Psicologo, onCheckDisponibilidad]);
 
   const viaMap = useMemo(
     () =>
@@ -192,7 +176,8 @@ function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onC
     onAgendarSeguimiento &&
     cita?.ID_Paciente &&
     cita?.ID_Psicologo &&
-    seguimientoForm.fecha &&
+    esFechaCalendario(seguimientoForm.fecha) &&
+    disponibilidadSeguimiento.estado === 'cargada' &&
     seguimientoForm.hora &&
     seguimientoForm.tipoCitaId &&
     seguimientoForm.precio &&
@@ -335,6 +320,8 @@ function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onC
   };
 
   const agregarTratamiento = () => {
+    setMostrarErroresFechas(true);
+    if (erroresFechas.inicio || erroresFechas.fin) return toast.error(erroresFechas.inicio || erroresFechas.fin);
     if (!formTratamiento.frecuencia) return toast.error("Indica la frecuencia");
     
     if (formTratamiento.tipo === "farmacologico") {
@@ -345,13 +332,11 @@ function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onC
         return toast.error("Completa datos de terapia");
     }
 
-    if (!formTratamiento.fechaInicio || (formTratamiento.fechaFin && formTratamiento.fechaFin < formTratamiento.fechaInicio)) {
-      return toast.error('Revisa las fechas de la indicación');
-    }
     setListaTratamientos(prev => [
       ...prev, { ...formTratamiento, id: Math.max(0, ...prev.map(t => t.id)) + 1 },
     ]); 
     setFormTratamiento(tratamientoVacio());
+    setMostrarErroresFechas(false);
   };
 
   const eliminarTratamiento = (id: number) => {
@@ -384,7 +369,8 @@ function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onC
     const direccionId = Number(seguimientoForm.direccionId || cita.ID_Direccion || 1);
     const bancoId = seguimientoForm.bancoId ? Number(seguimientoForm.bancoId) : undefined;
 
-    if (!seguimientoForm.fecha) return toast.error("Selecciona la fecha de la próxima cita");
+    if (!esFechaCalendario(seguimientoForm.fecha)) return toast.error('Selecciona una fecha válida para la próxima cita.');
+    if (disponibilidadSeguimiento.estado !== 'cargada') return toast.error('Confirma la disponibilidad antes de agendar el seguimiento.');
     if (!seguimientoForm.hora) return toast.error("Selecciona la hora de la próxima cita");
     if (horarioSeleccionadoOcupado) return toast.error("El psicólogo ya tiene una cita en ese horario");
     if (!tipoCitaId) return toast.error("Selecciona el tipo de cita");
@@ -517,8 +503,8 @@ function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onC
               <Icons.Pill /> Plan de Tratamiento y Recomendaciones
             </h4>
             
-            <div className="grid grid-cols-12 gap-3 items-end bg-slate-50 p-4 rounded-lg border border-slate-100 mb-4">
-              <div className="col-span-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-12 items-end bg-slate-50 p-4 rounded-lg border border-slate-100 mb-4">
+              <div className="col-span-1 md:col-span-2">
                 <label className="label-text text-xs text-slate-500 font-bold">Tipo</label>
                 <select
                   className="select select-bordered select-sm w-full bg-white"
@@ -533,7 +519,7 @@ function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onC
 
               {formTratamiento.tipo === "farmacologico" ? (
                 <>
-                  <div className="col-span-3">
+                  <div className="col-span-1 md:col-span-3">
                     <label className="label-text text-xs text-slate-500 font-bold">Medicamento</label>
                     <input
                       className="input input-bordered input-sm w-full bg-white"
@@ -543,7 +529,7 @@ function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onC
                       onChange={(e) => setFormTratamiento({ ...formTratamiento, medicamento: e.target.value })}
                     />
                   </div>
-                  <div className="col-span-2">
+                  <div className="col-span-1 md:col-span-2">
                     <label className="label-text text-xs text-slate-500 font-bold">Dosis</label>
                     <input
                       className="input input-bordered input-sm w-full bg-white"
@@ -553,7 +539,7 @@ function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onC
                       onChange={(e) => setFormTratamiento({ ...formTratamiento, dosis: e.target.value })}
                     />
                   </div>
-                  <div className="col-span-3">
+                  <div className="col-span-1 md:col-span-3">
                     <label className="label-text text-xs text-slate-500 font-bold">Vía Admin.</label>
                     <select
                       className="select select-bordered select-sm w-full bg-white"
@@ -576,7 +562,7 @@ function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onC
                 </>
               ) : (
                 <>
-                  <div className="col-span-3">
+                  <div className="col-span-1 md:col-span-3">
                     <label className="label-text text-xs text-slate-500 font-bold">Objetivo</label>
                     <input
                       className="input input-bordered input-sm w-full bg-white"
@@ -586,7 +572,7 @@ function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onC
                       onChange={(e) => setFormTratamiento({ ...formTratamiento, objetivo: e.target.value })}
                     />
                   </div>
-                  <div className="col-span-5">
+                  <div className="col-span-1 md:col-span-5">
                     <label className="label-text text-xs text-slate-500 font-bold">Tipo Terapia</label>
                     <select
                       className="select select-bordered select-sm w-full bg-white"
@@ -609,7 +595,7 @@ function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onC
                 </>
               )}
 
-              <div className="col-span-2">
+              <div className="col-span-1 md:col-span-2">
                 <label className="label-text text-xs text-slate-500 font-bold">Frecuencia</label>
                 <input
                   className="input input-bordered input-sm w-full bg-white"
@@ -620,13 +606,36 @@ function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onC
                 />
               </div>
 
-              <div className="col-span-6">
-                <label className="label-text text-xs">Fecha de inicio<input aria-label="Fecha de inicio del tratamiento" type="date" className="input input-bordered input-sm w-full" value={formTratamiento.fechaInicio} onChange={e => setFormTratamiento({ ...formTratamiento, fechaInicio: e.target.value })} /></label>
-              </div>
-              <div className="col-span-6">
-                <label className="label-text text-xs">Fecha de fin (opcional)<input aria-label="Fecha de fin del tratamiento" type="date" className="input input-bordered input-sm w-full" value={formTratamiento.fechaFin} min={formTratamiento.fechaInicio} onChange={e => setFormTratamiento({ ...formTratamiento, fechaFin: e.target.value })} /></label>
-              </div>
-              <div className="col-span-12 flex justify-end mt-2">
+              <fieldset className="col-span-1 md:col-span-12 rounded-xl border border-slate-200 bg-white p-4">
+                <legend className="px-2 text-sm font-bold text-slate-700">Fechas del tratamiento</legend>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="form-control min-w-0">
+                    <label htmlFor={`tratamiento-inicio-${cita.ID_Cita}`} className="mb-2 block text-sm font-semibold text-slate-600">Fecha de inicio</label>
+                    <input id={`tratamiento-inicio-${cita.ID_Cita}`} aria-label="Fecha de inicio del tratamiento" type="date" required
+                      className={`input input-bordered h-11 min-h-11 w-full bg-white ${mostrarErroresFechas && erroresFechas.inicio ? 'input-error' : ''}`}
+                      min={FECHA_MINIMA_SQL} max={FECHA_MAXIMA_SQL}
+                      value={formTratamiento.fechaInicio}
+                      onBlur={() => setMostrarErroresFechas(true)}
+                      onChange={e => setFormTratamiento({ ...formTratamiento, fechaInicio: e.target.value })}
+                      aria-invalid={mostrarErroresFechas && !!erroresFechas.inicio}
+                      aria-describedby={mostrarErroresFechas && erroresFechas.inicio ? `error-tratamiento-inicio-${cita.ID_Cita}` : undefined} />
+                    {mostrarErroresFechas && erroresFechas.inicio && <p id={`error-tratamiento-inicio-${cita.ID_Cita}`} role="alert" className="mt-2 text-xs text-red-600">{erroresFechas.inicio}</p>}
+                  </div>
+                  <div className="form-control min-w-0">
+                    <label htmlFor={`tratamiento-fin-${cita.ID_Cita}`} className="mb-2 block text-sm font-semibold text-slate-600">Fecha de fin (opcional)</label>
+                    <input id={`tratamiento-fin-${cita.ID_Cita}`} aria-label="Fecha de fin del tratamiento" type="date"
+                      className={`input input-bordered h-11 min-h-11 w-full bg-white ${mostrarErroresFechas && erroresFechas.fin ? 'input-error' : ''}`}
+                      min={esFechaCalendario(formTratamiento.fechaInicio) ? formTratamiento.fechaInicio : FECHA_MINIMA_SQL} max={FECHA_MAXIMA_SQL}
+                      value={formTratamiento.fechaFin}
+                      onBlur={() => setMostrarErroresFechas(true)}
+                      onChange={e => setFormTratamiento({ ...formTratamiento, fechaFin: e.target.value })}
+                      aria-invalid={mostrarErroresFechas && !!erroresFechas.fin}
+                      aria-describedby={mostrarErroresFechas && erroresFechas.fin ? `error-tratamiento-fin-${cita.ID_Cita}` : undefined} />
+                    {mostrarErroresFechas && erroresFechas.fin && <p id={`error-tratamiento-fin-${cita.ID_Cita}`} role="alert" className="mt-2 text-xs text-red-600">{erroresFechas.fin}</p>}
+                  </div>
+                </div>
+              </fieldset>
+              <div className="col-span-1 md:col-span-12 flex justify-end mt-2">
                 <button
                   type="button"
                   className="btn btn-sm bg-emerald-600 text-white hover:bg-emerald-700 shadow-md"
@@ -732,6 +741,7 @@ function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onC
                     className="input input-bordered input-sm w-full bg-white"
                     value={seguimientoForm.fecha}
                     min={crearFechaInput(new Date())}
+                    max={FECHA_MAXIMA_SQL}
                     onChange={(event) => setSeguimientoForm({ ...seguimientoForm, fecha: event.target.value, hora: "" })}
                     disabled={agendandoSeguimiento}
                   />
@@ -846,6 +856,12 @@ function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onC
                   />
                 </div>
 
+                {seguimientoForm.fecha && !esFechaCalendario(seguimientoForm.fecha) && <p role="alert" className="md:col-span-12 text-xs text-red-600">{errorFechaCalendario(seguimientoForm.fecha)}</p>}
+                {disponibilidadSeguimiento.estado === 'cargando' && <p role="status" className="md:col-span-12 text-xs">Consultando disponibilidad...</p>}
+                {disponibilidadSeguimiento.estado === 'error' && <div role="alert" className="md:col-span-12 text-sm text-red-700">
+                  <p>No se pudo comprobar la disponibilidad. {disponibilidadSeguimiento.error}</p>
+                  <button type="button" className="btn btn-sm btn-outline mt-2" onClick={disponibilidadSeguimiento.reintentar}>Reintentar disponibilidad</button>
+                </div>}
                 {horarioSeleccionadoOcupado && (
                   <div className="md:col-span-12 text-xs text-red-600 font-medium">
                     El horario seleccionado ya está ocupado para este psicólogo.
@@ -869,17 +885,17 @@ function FormularioSesion({ isOpen, onClose, onSubmit, onAgendarSeguimiento, onC
 
         </fieldset>
         {errorGuardado && <p role="alert" className="p-4 text-red-700">{errorGuardado} El borrador se conserva para reintentar.</p>}
-        <div className="bg-white p-4 border-t border-slate-200 flex justify-between items-center flex-shrink-0">
+        <div className="bg-white p-4 border-t border-slate-200 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center flex-shrink-0">
           <div className="text-xs text-slate-500">
             <span className="font-semibold text-slate-700">Inicio:</span>{" "}
             {formatearHoraSistema(horaInicioSistema)}
             <span className="mx-2 text-slate-300">|</span>
             <span>La hora final se registrará al guardar</span>
           </div>
-          <div className="flex gap-3">
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
             <button className="btn btn-ghost" onClick={handleClose} disabled={guardando}>Cancelar</button>
             <button
-              className="btn bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg px-8"
+              className="btn w-full sm:w-auto bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg px-8"
               onClick={handleSave}
               disabled={guardando}
             >

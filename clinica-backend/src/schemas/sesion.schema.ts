@@ -1,7 +1,8 @@
 import { z } from 'zod';
+import { fechaCalendarioSchema } from '../lib/fechaCalendario.js';
 const id = z.coerce.number().int().positive();
 const texto = (max: number) => z.string().trim().min(1).max(max);
-const fecha = z.iso.date();
+const fecha = fechaCalendarioSchema;
 const tratamientoBase = { Frecuencia: texto(100), FechaInicio: fecha, FechaFin: fecha.optional() };
 export const tratamientoSchema = z.discriminatedUnion('Tipo', [
     z.object({ ...tratamientoBase, Tipo: z.literal('terapeutico'),
